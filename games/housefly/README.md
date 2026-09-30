@@ -18,7 +18,17 @@ Open `index.html` in a browser. It is a single file and loads three.js from a CD
 | T, M, Esc | | Bank assist on/off, mute, pause |
 | Mouse drag, wheel | Right stick | Look around, zoom |
 
-On a phone you get a stick plus Thrust, Boost and Hop buttons.
+Bank assist, inverted pitch, sound and the camera also have toggles in the start/pause menu, so you can use a mouse or your finger instead of the keys.
+
+On a phone or tablet, every control has a touch equivalent:
+
+- **Stick** (bottom left): steer and pitch.
+- **Thrust, Brake, Boost, ⟲ Roll, Roll ⟳** (bottom right): hold them.
+- **Hop**: tap to hop off a surface or flip in the air.
+- **Menu, Cam, Reset** (top right): pause and settings, cycle the camera, go back to the start.
+- **Look around**: drag anywhere else on the screen.
+
+In landscape the speedometer moves to the bottom centre, out of the way of your thumbs.
 
 ## How the flying works
 

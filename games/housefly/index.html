@@ -97,15 +97,37 @@ kbd {
 
 /* ---------- touch ---------- */
 .touch { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
-.stick { position: absolute; left: 22px; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); width: 132px; height: 132px; border-radius: 50%; border: 1px solid var(--line); background: rgba(23, 18, 13, 0.25); pointer-events: auto; touch-action: none; }
+.stick { position: absolute; left: max(18px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 118px); width: 132px; height: 132px; border-radius: 50%; border: 1px solid var(--line); background: rgba(23, 18, 13, 0.25); pointer-events: auto; touch-action: none; }
 .knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(247, 239, 227, 0.35); }
-.tbtns { position: absolute; right: 18px; bottom: calc(env(safe-area-inset-bottom, 0px) + 90px); display: grid; grid-template-columns: repeat(2, 72px); gap: 12px; pointer-events: auto; }
-.tbtns button { height: 72px; border-radius: 50%; border: 1px solid var(--line); background: rgba(23, 18, 13, 0.35); color: var(--paper); font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; touch-action: none; }
+.tbtns { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); display: grid; grid-template-columns: repeat(3, 60px); gap: 10px; pointer-events: auto; }
+.tbtns button { height: 60px; border-radius: 50%; border: 1px solid var(--line); background: rgba(23, 18, 13, 0.35); color: var(--paper); font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; touch-action: none; }
 .tbtns button.on { background: rgba(255, 180, 92, 0.55); color: var(--ink); }
-.tbtns .wide { grid-column: span 2; border-radius: 36px; }
+.tbtns .wide { grid-column: span 3; border-radius: 32px; }
+.tbtns .two { grid-column: span 2; border-radius: 32px; }
+.tbtns button:focus-visible, .qbtns button:focus-visible, .toggle:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
+.qbtns { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 52px); display: flex; gap: 8px; pointer-events: auto; }
+.qbtns button { min-width: 44px; height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid var(--line); background: rgba(23, 18, 13, 0.45); color: var(--paper); font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; touch-action: manipulation; }
+.qbtns button:active { background: rgba(255, 180, 92, 0.55); color: var(--ink); }
+.touch .hint-look { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 102px); font: 400 11px/1 var(--mono); color: var(--muted); letter-spacing: 0.06em; white-space: nowrap; transition: opacity 1s ease; }
+@media (max-height: 480px) {
+  .stick { bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); left: max(120px, env(safe-area-inset-left, 0px)); width: 116px; height: 116px; }
+  .tbtns { grid-template-columns: repeat(3, 52px); gap: 8px; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
+  .tbtns button { height: 52px; }
+  .touch .hint-look { display: none; }
+  .is-touch .stick { left: max(18px, env(safe-area-inset-left, 0px)); }
+  .is-touch .speedo { left: 50%; transform: translateX(-50%); align-items: center; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  .is-touch .trick { bottom: calc(env(safe-area-inset-bottom, 0px) + 36%); }
+}
+.settings { display: flex; flex-wrap: wrap; gap: 8px; }
+.toggle {
+  font: 500 12px/1 var(--mono); letter-spacing: 0.04em; color: var(--muted); background: rgba(247, 239, 227, 0.06);
+  border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer; min-height: 36px;
+}
+.toggle b { font-weight: 500; color: var(--paper); margin-left: 6px; }
+.toggle[data-changed="true"] b { color: var(--amber); }
 
 @media (max-width: 720px) {
-  .overlay { align-items: flex-start; align-content: flex-end; background: linear-gradient(180deg, rgba(23, 18, 13, 0.88) 0%, rgba(23, 18, 13, 0.6) 45%, rgba(23, 18, 13, 0.9) 100%); }
+  .overlay { align-items: flex-start; align-content: flex-start; background: linear-gradient(180deg, rgba(23, 18, 13, 0.88) 0%, rgba(23, 18, 13, 0.6) 45%, rgba(23, 18, 13, 0.9) 100%); }
   .controls { flex-basis: 100%; }
   .keys { display: none; }
 }
@@ -136,9 +158,18 @@ kbd {
 
 <div id="touch" class="touch" hidden>
   <div id="stick" class="stick"><div id="knob" class="knob"></div></div>
+  <div class="qbtns">
+    <button id="qPause" type="button" aria-label="Pause and settings">Menu</button>
+    <button id="qCam" type="button" aria-label="Change camera">Cam</button>
+    <button id="qReset" type="button" aria-label="Reset the bike">Reset</button>
+  </div>
+  <div id="lookHint" class="hint-look">Drag anywhere else to look around</div>
   <div class="tbtns">
-    <button id="tBoost" type="button">Boost</button>
+    <button id="tRollL" type="button" aria-label="Roll left">⟲ Roll</button>
     <button id="tHop" type="button">Hop</button>
+    <button id="tRollR" type="button" aria-label="Roll right">Roll ⟳</button>
+    <button id="tBrake" type="button">Brake</button>
+    <button id="tBoost" class="two" type="button">Boost</button>
     <button id="tThrust" class="wide" type="button">Thrust</button>
   </div>
 </div>
@@ -151,6 +182,12 @@ kbd {
     <div class="actions">
       <button id="startBtn" class="start" type="button">Fly</button>
       <p class="hint">Sound on · keyboard, gamepad or touch</p>
+    </div>
+    <div class="settings" role="group" aria-label="Settings">
+      <button id="setAssist" class="toggle" type="button" aria-pressed="true">Bank assist<b>On</b></button>
+      <button id="setInvert" class="toggle" type="button" aria-pressed="false">Pitch inverted<b>No</b></button>
+      <button id="setSound" class="toggle" type="button" aria-pressed="true">Sound<b>On</b></button>
+      <button id="setCam" class="toggle" type="button">Camera<b>Chase</b></button>
     </div>
   </div>
   <div class="controls" id="controlsPanel">
@@ -1705,7 +1742,7 @@ class Input {
   constructor() {
     this.keys = new Set(); this.s = { throttle: 0, brake: 0, pitch: 0, yaw: 0, roll: 0, boost: 0 };
     this.hopQueued = false; this.invert = false; this.assist = true; this.pressed = [];
-    this.touch = { x: 0, y: 0, thrust: false, boost: false, active: false };
+    this.touch = { x: 0, y: 0, thrust: false, boost: false, brake: false, rollL: false, rollR: false, active: false };
     this.look = { x: 0, y: 0 };
     addEventListener('keydown', (e) => {
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -1758,6 +1795,8 @@ class Input {
         analog = true;
       }
       if (this.touch.thrust) raw.throttle = 1;
+      if (this.touch.brake) raw.brake = 1;
+      if (this.touch.rollL || this.touch.rollR) raw.roll = clamp(raw.roll + (this.touch.rollR ? 1 : 0) - (this.touch.rollL ? 1 : 0), -1, 1);
       if (this.touch.boost) { raw.boost = 1; raw.throttle = 1; }
     }
     // keyboard is digital, so ease every axis in and out; analog sources pass through faster
@@ -1785,6 +1824,7 @@ const sparks = new Particles(300, 0xffc070, true, 1.0);
 
 const $ = (id) => document.getElementById(id);
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+const capture = (el, id) => { try { el.setPointerCapture(id); } catch (err) { /* pointer already gone */ } };
 const ui = {
   overlay: $('overlay'), hud: $('hud'), start: $('startBtn'), spd: $('spd'), alt: $('alt'), gload: $('gload'), gfill: $('gfill'),
   rings: $('ringCount'), stall: $('stallChip'), assist: $('assistChip'), invert: $('invertChip'), mute: $('muteChip'), toast: $('toast'), keys: $('keys'),
@@ -1811,6 +1851,9 @@ function begin() {
 function pause() {
   if (!started) return;
   paused = true;
+  Object.assign(input.touch, { thrust: false, boost: false, brake: false, rollL: false, rollR: false, active: false, x: 0, y: 0 });
+  document.querySelectorAll('.tbtns .on').forEach((b) => b.classList.remove('on'));
+  if (ui.knob) ui.knob.style.transform = '';
   ui.eyebrow.textContent = 'Paused';
   ui.start.textContent = 'Keep flying';
   ui.overlay.classList.remove('gone');
@@ -1822,37 +1865,83 @@ function resetBike() {
   trails.forEach((t) => t.clear());
 }
 
+// settings live in one place so keys, the menu toggles and the touch buttons all agree
+const setBtn = (id, pressed, label, changed) => {
+  const b = $(id); if (pressed !== null) b.setAttribute('aria-pressed', String(pressed));
+  b.dataset.changed = String(changed); b.querySelector('b').textContent = label;
+};
+function syncSettings() {
+  setBtn('setAssist', input.assist, input.assist ? 'On' : 'Off', !input.assist);
+  setBtn('setInvert', input.invert, input.invert ? 'Yes' : 'No', input.invert);
+  setBtn('setSound', !sound.muted, sound.muted ? 'Off' : 'On', sound.muted);
+  setBtn('setCam', null, CAM_MODES[chase.mode].name, chase.mode !== 0);
+  ui.assist.hidden = input.assist; ui.invert.hidden = !input.invert; ui.mute.hidden = !sound.muted;
+  ui.pitchHelp.textContent = input.invert ? 'Push the nose down · pull it up' : 'Pull the nose up · push it down';
+}
+const PITCH_MSG = () => IS_TOUCH
+  ? (input.invert ? 'Pitch inverted: stick up now climbs.' : 'Pitch normal: stick down climbs, like pulling back.')
+  : (input.invert ? 'Pitch inverted: ↑ now climbs.' : 'Pitch normal: ↓ climbs, like pulling back on a stick.');
+const actions = {
+  reset() { resetBike(); toast('Back to the rug.', 2); },
+  camera() { chase.mode = (chase.mode + 1) % CAM_MODES.length; syncSettings(); toast(`${CAM_MODES[chase.mode].name} camera`, 1.6); },
+  invert() { input.invert = !input.invert; syncSettings(); toast(PITCH_MSG(), 3); },
+  assist() { input.assist = !input.assist; syncSettings(); toast(input.assist ? 'Bank assist on.' : 'Bank assist off. The bike stays where you roll it.', 3); },
+  sound() { sound.setMuted(!sound.muted); syncSettings(); },
+};
+$('setAssist').addEventListener('click', actions.assist);
+$('setInvert').addEventListener('click', actions.invert);
+$('setSound').addEventListener('click', actions.sound);
+$('setCam').addEventListener('click', actions.camera);
+syncSettings();
+
 function handleKey(code) {
-  if (!started) { if (!['Escape', 'Tab', 'KeyH'].includes(code)) begin(); return; }
+  if (code === 'KeyI') { actions.invert(); return; }
+  if (code === 'KeyT') { actions.assist(); return; }
+  if (code === 'KeyM') { actions.sound(); return; }
+  if (!started) { if (!['Escape', 'Tab', 'KeyH', 'KeyC'].includes(code)) begin(); else if (code === 'KeyC') actions.camera(); return; }
   if (code === 'Escape' || code === 'KeyP' || code === 'KeyH') { paused ? begin() : pause(); return; }
   if (paused) { if (code === 'Enter' || code === 'Space') begin(); return; }
-  if (code === 'KeyR') { resetBike(); toast('Back to the rug.', 2); }
-  if (code === 'KeyC') { chase.mode = (chase.mode + 1) % CAM_MODES.length; toast(`${CAM_MODES[chase.mode].name} camera`, 1.6); }
-  if (code === 'KeyI') {
-    input.invert = !input.invert; ui.invert.hidden = !input.invert;
-    ui.pitchHelp.textContent = input.invert ? 'Push the nose down · pull it up' : 'Pull the nose up · push it down';
-    toast(input.invert ? 'Pitch inverted: ↑ now climbs.' : 'Pitch normal: ↓ climbs, like pulling back on a stick.', 3);
-  }
-  if (code === 'KeyT') { input.assist = !input.assist; ui.assist.hidden = input.assist; toast(input.assist ? 'Bank assist on.' : 'Bank assist off. The bike stays where you roll it.', 3); }
-  if (code === 'KeyM') { sound.setMuted(!sound.muted); ui.mute.hidden = !sound.muted; }
+  if (code === 'KeyR') actions.reset();
+  if (code === 'KeyC') actions.camera();
 }
 
 // mouse drag to look around
 {
-  let dragging = false, lx = 0, ly = 0;
+  let dragId = null, lx = 0, ly = 0;
   const el = renderer.domElement;
-  el.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') return; if (!started) { begin(); return; } dragging = true; lx = e.clientX; ly = e.clientY; el.setPointerCapture(e.pointerId); });
-  el.addEventListener('pointermove', (e) => { if (!dragging) return; chase.orbitYaw -= (e.clientX - lx) * 0.006; chase.orbitPitch = clamp(chase.orbitPitch - (e.clientY - ly) * 0.005, -1.1, 1.1); lx = e.clientX; ly = e.clientY; });
-  el.addEventListener('pointerup', () => { dragging = false; });
+  el.addEventListener('pointerdown', (e) => {
+    if (!started) { if (e.pointerType !== 'touch') begin(); return; }
+    if (dragId !== null) return;
+    dragId = e.pointerId; lx = e.clientX; ly = e.clientY; capture(el, e.pointerId);
+    if (e.pointerType === 'touch') $('lookHint').style.opacity = '0';
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== dragId) return;
+    const k = e.pointerType === 'touch' ? 1.4 : 1;
+    chase.orbitYaw -= (e.clientX - lx) * 0.006 * k; chase.orbitPitch = clamp(chase.orbitPitch - (e.clientY - ly) * 0.005 * k, -1.1, 1.1); lx = e.clientX; ly = e.clientY;
+  });
+  const release = (e) => { if (e.pointerId === dragId) dragId = null; };
+  el.addEventListener('pointerup', release); el.addEventListener('pointercancel', release);
+  const dragging = () => dragId !== null;
   el.addEventListener('wheel', (e) => { chase.zoom = clamp(chase.zoom * (1 + Math.sign(e.deltaY) * 0.08), 0.6, 2.2); }, { passive: true });
-  chase.isDragging = () => dragging;
+  chase.isDragging = dragging;
 }
 // touch controls
 if (IS_TOUCH) {
   ui.touch.hidden = false;
-  $('controlsPanel').innerHTML = '<h2>Touch controls</h2><dl><dt>Stick</dt><dd>Left and right steers. Down lifts the nose, up pushes it down.</dd><dt>Thrust</dt><dd>Hold to accelerate</dd><dt>Boost</dt><dd>Hold for more</dd><dt>Hop</dt><dd>Kick off a surface. In the air, flip the way the stick points.</dd></dl><p class="pad">A keyboard or gamepad works too, if you have one connected.</p>';
+  document.body.classList.add('is-touch');
+  setTimeout(() => { $('lookHint').style.opacity = '0'; }, 25000);
+  $('controlsPanel').innerHTML = '<h2>Touch controls</h2><dl>'
+    + '<dt>Stick</dt><dd>Left and right steers. Down lifts the nose, up pushes it down.</dd>'
+    + '<dt>Thrust · Brake</dt><dd>Hold to speed up or slow down</dd>'
+    + '<dt>Boost</dt><dd>Hold for more push</dd>'
+    + '<dt>⟲ Roll ⟳</dt><dd>Hold to barrel roll</dd>'
+    + '<dt>Hop</dt><dd>Kick off a surface. In the air, flip the way the stick points. Upside down, it flips you back over.</dd>'
+    + '<dt>Drag</dt><dd>Anywhere else on screen to look around</dd>'
+    + '<dt>Menu · Cam · Reset</dt><dd>Top right: pause and settings, camera, back to the start</dd>'
+    + '</dl><p class="pad">Bank assist, pitch direction, sound and camera are the toggles in this menu. A keyboard or gamepad works too.</p>';
   let id = null, cx = 0, cy = 0;
-  ui.stick.addEventListener('pointerdown', (e) => { if (!started) begin(); id = e.pointerId; const r = ui.stick.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; ui.stick.setPointerCapture(id); input.touch.active = true; move(e); });
+  ui.stick.addEventListener('pointerdown', (e) => { if (!started) begin(); id = e.pointerId; const r = ui.stick.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; capture(ui.stick, id); input.touch.active = true; move(e); });
   const move = (e) => {
     if (e.pointerId !== id) return;
     const dx = clamp((e.clientX - cx) / 55, -1, 1), dy = clamp((e.clientY - cy) / 55, -1, 1);
@@ -1863,12 +1952,20 @@ if (IS_TOUCH) {
   const end = (e) => { if (e.pointerId !== id) return; id = null; input.touch.active = false; input.touch.x = input.touch.y = 0; ui.knob.style.transform = ''; };
   ui.stick.addEventListener('pointerup', end); ui.stick.addEventListener('pointercancel', end);
   const hold = (el, key) => {
-    el.addEventListener('pointerdown', (e) => { if (!started) begin(); input.touch[key] = true; el.classList.add('on'); el.setPointerCapture(e.pointerId); });
+    el.addEventListener('pointerdown', (e) => { if (!started) begin(); input.touch[key] = true; el.classList.add('on'); capture(el, e.pointerId); });
     const off = () => { input.touch[key] = false; el.classList.remove('on'); };
     el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off);
   };
-  hold($('tThrust'), 'thrust'); hold($('tBoost'), 'boost');
-  $('tHop').addEventListener('pointerdown', () => { if (!started) begin(); input.hopQueued = true; });
+  hold($('tThrust'), 'thrust'); hold($('tBoost'), 'boost'); hold($('tBrake'), 'brake');
+  hold($('tRollL'), 'rollL'); hold($('tRollR'), 'rollR');
+  $('tHop').addEventListener('pointerdown', (e) => { if (!started) begin(); input.hopQueued = true; e.currentTarget.classList.add('on'); setTimeout(() => $('tHop').classList.remove('on'), 150); });
+  const tap = (id, fn) => $(id).addEventListener('click', (e) => { e.stopPropagation(); if (!started) begin(); fn(); });
+  tap('qPause', () => (paused ? begin() : pause()));
+  tap('qCam', actions.camera);
+  tap('qReset', actions.reset);
+  // controls sit under the menu while it is open
+  new MutationObserver(() => { ui.touch.style.visibility = ui.overlay.classList.contains('gone') ? 'visible' : 'hidden'; }).observe(ui.overlay, { attributes: true, attributeFilter: ['class'] });
+  ui.touch.style.visibility = 'hidden';
   ui.keys.textContent = '';
 }
 
@@ -1996,8 +2093,8 @@ function frame(now) {
     stallTime = phys.stall ? stallTime + dt : Math.max(0, stallTime - dt * 2);
     if (stallTime > 0.4 && !seen.has('stall')) { stallCount++; tip('stall', 'Stalled. Ease off, let the nose fall, and fly out of it.', 6); }
     if (simTime > 50) tip('rings', `Gold rings hide all over the house, ${RINGS.length} of them. Some are tucked under furniture.`, 6);
-    if (simTime > 80) tip('tricks', IS_TOUCH ? 'In the air, tap Hop to flip. Push the stick first to choose the direction.' : 'In the air, Space flips you: hold ↑ for a front flip, A or D for a side flip. Q and E roll.', 7);
-    if (simTime > 200 && !IS_TOUCH) tip('assist', 'Press T to turn the bank assist off and fly fully manual.', 5);
+    if (simTime > 80) tip('tricks', IS_TOUCH ? 'In the air, tap Hop to flip. Push the stick first to choose the direction. Hold a Roll button to barrel roll.' : 'In the air, Space flips you: hold ↑ for a front flip, A or D for a side flip. Q and E roll.', 7);
+    if (simTime > 200) tip('assist', IS_TOUCH ? 'Open Menu to turn the bank assist off and fly fully manual.' : 'Press T to turn the bank assist off and fly fully manual.', 5);
     phys.axes();
     stuckT = (phys.contact < 0.2 && speed < 1.5 && phys.up.y < 0.4) ? stuckT + dt : 0;
     if (stuckT > 1.5 && toastTimer <= 0) toast(IS_TOUCH ? 'Upside down? Tap Hop to flip back over.' : 'Upside down? Tap Space to flip back over, or R to reset.', 3);
