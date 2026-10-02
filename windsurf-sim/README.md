@@ -12,6 +12,28 @@ Focus of this first version: **freeride / blasting** and **learning the basics**
 
 No controller? The keyboard works too (see below), though analog triggers make it far more natural.
 
+New to it, or to windsurfing? Open **Lessons** in the menu.
+
+## Lessons
+
+Six lessons, each with two modes:
+
+- **Watch:** a coach sails the technique step by step, with a caption for each step. An on-screen controller shows exactly what the coach does with the sticks, triggers and buttons, in Xbox or PlayStation layout.
+- **Try it:** you sail the same lesson. The steps tick off as you complete them, and the same controller overlay shows your own inputs.
+
+Press Y (△, or G on the keyboard) while watching to take over.
+
+| # | Lesson | Gear and wind |
+| --- | --- | --- |
+| 1 | Uphaul and first reach | Beginner 210 L, 5.3 m², 9 kn |
+| 2 | Steering with the rig | Beginner 210 L, 5.3 m², 10 kn |
+| 3 | Getting planing (pump, hook in, straps) | Freeride 135 L, 7.0 m², 16 kn |
+| 4 | Tack | Beginner 210 L, 5.3 m², 10 kn |
+| 5 | Carve gybe | Freeride 135 L, 7.0 m², 17 kn |
+| 6 | Waterstart | Freeride 115 L, 6.3 m², 16 kn |
+
+The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls, loses its grip or spins out.
+
 ## Controls
 
 Sticks are relative to the board. Push the left stick where you want the mast tip to go; push the right stick toward the rail you want to sink.
@@ -76,7 +98,10 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 **The sailor**
 
-- The sail's heeling moment about the board's centreline is fought by your leaning body weight, plus limited core strength and foot pressure on the rails.
+- Set your weight and height in the Gear menu. The body is built from standard anthropometric proportions.
+- The boom sits between chest and shoulder height by default, adjustable like on a real rig. A higher boom gives more leverage; a lower one gives more control.
+- The sail's heeling moment about the board's centreline is fought by your leaning body weight, plus core strength (which scales with body mass) and foot pressure on the rails.
+- You can pull yourself back upright on the boom, since the rig is pinned at the mast foot.
 - Too little hike for the power and you're pulled over (a catapult if you're hooked in and fast). Hanging out in a lull and you fall in to windward.
 - Unhooked, your forearms tire and a big gust rips the sail out of your back hand. The harness takes the load off your arms but won't let you escape a gust.
 - Hooked in and in the straps, the stance pulls the rig back, and harness load goes into the mast foot (mast-foot pressure keeps the nose down).
@@ -85,7 +110,7 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 - **Tack:** sheet in and rake back to head up, then step round once the nose crosses the wind. Stall head to wind and you fall in.
 - **Carve gybe:** the sail flip at dead downwind sends the clew round the front of the mast. Flip early and it backwinds.
-- **Waterstart:** the sail's lift has to raise you out of the water, so it doesn't work in light wind.
+- **Waterstart:** held up into the wind, the sail pulls like a kite. That needs the sail filled (not flapping, not stalled past the clew) and the board across the wind. You steer the board by pushing it through the mast foot. Minimum winds come out at about 12 kn for 7.0 m² and 75 kg, and about 14 kn for 5.3 m² or a 90 kg sailor.
 - **Uphaul, secure position, dropping the rig.**
 
 ### Validation
@@ -111,14 +136,15 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 npm install        # three.js and esbuild
 npm run dev        # http://localhost:8000 serves index.html with live ES modules
 npm run build      # writes dist/beam-reach.html (single file, ~670 KB)
-npm test           # physics speed polar + maneuver checks
+npm test           # physics speed polar, maneuver checks, and every lesson sailed by the coach
 ```
 
 ```
 src/physics/   wind & chop, sail aero, planing hull & foils, sailor + state machine (no rendering deps)
+src/coach/     the coach (an expert sailor driving the controls) and the lesson scripts
 src/render/    three.js: water shader, sky & spot, board/rig/sailor models, spray & wake, cameras
 src/ui/        gamepad & keyboard input, HUD, menu, procedural audio
-tools/         build script, physics checks, test autopilot
+tools/         build script, physics, maneuver and lesson checks
 ```
 
 The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the frame rate.

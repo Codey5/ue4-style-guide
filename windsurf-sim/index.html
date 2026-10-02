@@ -105,6 +105,45 @@ body {
 .telemetry h3 { margin: 8px 0 0; font: 700 10px var(--ui); letter-spacing: .14em; text-transform: uppercase; color: var(--signal); }
 .cam { position: absolute; left: 50%; transform: translateX(-50%); top: max(14px, env(safe-area-inset-top, 0px)); font: 11px var(--mono); color: var(--ink-dim); background: var(--glass); padding: 4px 10px; border-radius: 6px; transition: opacity .5s; }
 
+/* ---------- Lessons ---------- */
+.lesson { top: max(14px, env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); width: min(620px, calc(100vw - 32px - 2 * 200px)); min-width: min(420px, calc(100vw - 32px)); padding: 12px 16px; }
+.lesson-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.lesson-mode { font: 700 10px/1 var(--ui); letter-spacing: .1em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; background: rgba(105,212,234,.18); color: var(--wind); white-space: nowrap; }
+.lesson-mode.you { background: rgba(255,197,49,.18); color: var(--signal); }
+.lesson-step { margin: 8px 0 0; font-size: 15px; line-height: 1.45; text-wrap: pretty; }
+.lesson-step .key, .lesson-foot .key { display: inline-block; padding: 1px 5px; margin: 0 1px; }
+.lesson-dots { list-style: none; display: flex; gap: 6px; margin: 10px 0 0; padding: 0; }
+.lesson-dots li { width: 22px; height: 4px; border-radius: 2px; background: rgba(233,242,245,.18); }
+.lesson-dots li.done { background: var(--good); }
+.lesson-dots li.now { background: var(--signal); }
+.lesson-foot { margin-top: 8px; font-size: 11px; color: var(--ink-dim); }
+#hud.lesson-on .toasts { top: 30%; }
+#hud.lesson-on .hints, #hud.lesson-on .cam { display: none; }
+.padviz { right: 16px; bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: 256px; }
+.padsvg { display: block; width: 100%; height: auto; margin-top: 4px; }
+.pad-body { fill: rgba(233,242,245,.06); stroke: rgba(233,242,245,.3); stroke-width: 1.2; }
+.pv-track, .pv-btn-r { fill: rgba(233,242,245,.08); stroke: rgba(233,242,245,.3); }
+.pv-fill { fill: var(--signal); opacity: .85; }
+#pv-lt .pv-fill { fill: var(--wind); }
+.pv-well { fill: rgba(7,19,27,.6); stroke: rgba(233,242,245,.3); }
+.pv-well.on { stroke: var(--signal); stroke-width: 2.5; }
+.pv-knob { fill: var(--ink); }
+.pv-face circle { fill: rgba(7,19,27,.6); stroke: rgba(233,242,245,.4); transition: fill .1s; }
+.pv-face circle.on { fill: var(--signal); stroke: var(--signal); }
+.pv-btn-r.on, g.on .pv-btn-r { fill: var(--signal); }
+.pv-t { font: 700 7.5px var(--ui); fill: var(--ink); text-anchor: middle; letter-spacing: .03em; }
+.pv-g { font: 700 9px var(--ui); fill: var(--ink); text-anchor: middle; pointer-events: none; }
+.pv-legend { font: 11px/1.5 var(--mono); color: var(--ink-dim); margin-top: 2px; }
+.lesson-list { display: grid; gap: 10px; }
+.lesson-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--hair); border-radius: 10px; padding: 12px 14px; }
+.lesson-row .n { font: 900 26px/1 var(--display); color: var(--signal); }
+.lesson-row b { font: 800 19px/1.1 var(--display); letter-spacing: .02em; display: block; }
+.lesson-row p { margin: 3px 0 0; font-size: 12px; color: var(--ink-dim); }
+.lesson-row .spec { font: 11px var(--mono); color: var(--ink-dim); margin-top: 4px; }
+.lesson-row .acts { display: flex; gap: 8px; }
+.lesson-row .btn { padding: 8px 12px; }
+.lesson-row.done { border-color: rgba(95,209,143,.5); }
+
 /* ---------- Menu ---------- */
 .overlay { position: fixed; inset: 0; display: grid; place-items: safe center; padding: 24px 16px; background: radial-gradient(ellipse at 30% 20%, rgba(7,19,27,.55), rgba(7,19,27,.88)); overflow-y: auto; }
 .panel { width: min(980px, 100%); background: var(--glass-solid); border: 1px solid var(--hair); border-radius: 14px; display: grid; grid-template-columns: 220px minmax(0, 1fr); height: min(680px, calc(100dvh - 48px)); }
@@ -159,7 +198,9 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
   .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .field { grid-template-columns: minmax(0, 1fr) 80px; }
   .field input[type="range"] { grid-column: 1 / -1; grid-row: 2; }
-  .hints, .stance, .telemetry { display: none; }
+  .hints, .stance, .telemetry, .padviz { display: none; }
+  .lesson { width: calc(100vw - 32px); min-width: 0; top: auto; bottom: 150px; }
+  .lesson-row { grid-template-columns: minmax(0, 1fr); }
   .speed .sog b { font-size: 44px; }
   .wind { width: 140px; }
   .wind svg { width: 96px; height: 96px; }
@@ -225,6 +266,15 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
     </div>
   </section>
 
+  <section class="pod lesson" id="lesson" hidden aria-live="polite">
+    <div class="lesson-head"><span class="label" id="lesson-eyebrow">Lesson</span><span class="lesson-mode" id="lesson-mode">Watching the coach</span></div>
+    <p class="lesson-step" id="lesson-step"></p>
+    <ol class="lesson-dots" id="lesson-dots"></ol>
+    <div class="lesson-foot" id="lesson-foot"></div>
+  </section>
+
+  <section class="pod padviz" id="padviz" hidden aria-label="Controller inputs"></section>
+
   <section class="pod hints" aria-label="What you can do now">
     <div class="label" id="hint-title">Now</div>
     <ul id="hints"></ul>
@@ -238,6 +288,7 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
       <p>A windsurfing simulator. Real sail aerodynamics, a planing hull and a sailor who has to balance the rig. Built for a gamepad.</p>
       <nav class="tabs" role="tablist" id="tabs">
         <button class="tab" role="tab" data-tab="sail" aria-selected="true">Go sailing</button>
+        <button class="tab" role="tab" data-tab="lessons" aria-selected="false">Lessons</button>
         <button class="tab" role="tab" data-tab="conditions" aria-selected="false">Conditions</button>
         <button class="tab" role="tab" data-tab="gear" aria-selected="false">Gear</button>
         <button class="tab" role="tab" data-tab="controls" aria-selected="false">Controls</button>

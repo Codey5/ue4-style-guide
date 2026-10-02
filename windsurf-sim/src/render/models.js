@@ -338,24 +338,25 @@ export class Sailor {
   constructor(height = 1.8) {
     this.group = new THREE.Group();
     this.h = height;
+    const k = height / 1.78;
     const suit = new THREE.MeshStandardMaterial({ color: 0x1d2328, roughness: 0.7 });
     const panel = new THREE.MeshStandardMaterial({ color: 0x168a9a, roughness: 0.7 });
     const skin = new THREE.MeshStandardMaterial({ color: 0xc59474, roughness: 0.75 });
     const harness = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.6 });
     const g = this.group;
-    this.torso = new Limb(0.15, suit, g);
+    this.torso = new Limb(0.15 * k, suit, g);
     this.neck = new Limb(0.05, skin, g);
     this.upperL = new Limb(0.048, panel, g); this.upperR = new Limb(0.048, panel, g);
     this.foreL = new Limb(0.04, suit, g); this.foreR = new Limb(0.04, suit, g);
     this.thighF = new Limb(0.075, suit, g); this.thighB = new Limb(0.075, suit, g);
     this.shinF = new Limb(0.055, suit, g); this.shinB = new Limb(0.055, suit, g);
-    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), skin);
-    this.cap = new THREE.Mesh(new THREE.SphereGeometry(0.115, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.6 }));
+    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.105 * k, 16, 12), skin);
+    this.cap = new THREE.Mesh(new THREE.SphereGeometry(0.11 * k, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.6 }));
     this.handL = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), skin);
     this.handR = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), skin);
-    this.belt = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.165, 0.16, 16), harness);
+    this.belt = new THREE.Mesh(new THREE.CylinderGeometry(0.17 * k, 0.165 * k, 0.16, 16), harness);
     this.hook = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.01, 6, 10), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.3 }));
-    this.feet = [0, 1].map(() => new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.07, 0.1), suit));
+    this.feet = [0, 1].map(() => new THREE.Mesh(new THREE.BoxGeometry(0.27 * k, 0.07, 0.1), suit));
     for (const m of [this.head, this.cap, this.handL, this.handR, this.belt, this.hook, ...this.feet]) { m.castShadow = true; g.add(m); }
     this.pose = null;
     this.fallPose = null;
@@ -365,8 +366,11 @@ export class Sailor {
   targetPose(sim, rig) {
     const b = sim.board, s = sim.sailor, st = sim.state;
     const side = s.side;
+    // Segment lengths from standard anthropometric ratios of body height H:
+    // hip joint 0.53H off the floor, thigh/shank 0.25H, hip-to-neck 0.31H,
+    // shoulders 0.82H, upper arm 0.19H, forearm-to-grip 0.19H.
     const H = this.h;
-    const leg = 0.47 * H, torsoLen = 0.29 * H;
+    const leg = 0.49 * H, torsoLen = 0.31 * H;
     const p = {};
     const deck = (x) => deckY(b, x);
     const toBoard = (vRig) => vRig.clone().applyMatrix4(rig.group.matrix);
@@ -376,45 +380,46 @@ export class Sailor {
       feetF = new THREE.Vector3(b.mastFootX - 0.16, 0, side * 0.12);
       feetB = new THREE.Vector3(b.mastFootX - 0.5, 0, side * 0.1);
       beta = st === S.UPHAUL ? 12 * DEG * (1 - (sim.stateData.progress ?? 0)) + 4 * DEG : 4 * DEG;
-      sit = st === S.UPHAUL ? 0.35 * (1 - (sim.stateData.progress ?? 0)) + 0.1 : 0.12;
+      sit = st === S.UPHAUL ? 0.3 * (1 - (sim.stateData.progress ?? 0)) + 0.06 : 0.06;
     } else if (st === S.TACK) {
       const d = sim.stateData;
       const k = d.switched ? 1 : clamp(sim.stateTime / 0.6, 0, 1);
       feetF = new THREE.Vector3(b.mastFootX + 0.12 * k, 0, side * (0.16 - 0.1 * k));
       feetB = new THREE.Vector3(b.mastFootX - 0.25 + 0.2 * k, 0, side * 0.12);
       beta = 3 * DEG;
-      sit = 0.12;
+      sit = 0.08;
     } else {
       const strapZF = 0.29 * b.width, strapZB = 0.2 * b.width;
       if (s.straps === 2) {
         feetF = new THREE.Vector3(b.frontStrapX, 0, side * strapZF);
         feetB = new THREE.Vector3(b.backStrapX, 0, side * strapZB);
-        sit = s.hooked ? 0.22 : 0.12;
+        sit = s.hooked ? 0.18 : 0.1;
       } else if (s.straps === 1) {
         feetF = new THREE.Vector3(b.frontStrapX, 0, side * strapZF);
         feetB = new THREE.Vector3(s.x - 0.32, 0, side * 0.04);
-        sit = 0.14;
+        sit = 0.1;
       } else {
         feetF = new THREE.Vector3(s.x + 0.26, 0, side * 0.03);
         feetB = new THREE.Vector3(s.x - 0.32, 0, side * 0.06);
-        sit = s.hooked ? 0.18 : 0.1;
+        sit = s.hooked ? 0.14 : 0.07;
       }
-      if (st === S.FLIP) sit = 0.2;
+      if (st === S.FLIP) sit = 0.16;
     }
-    feetF.y = deck(feetF.x) + 0.035;
-    feetB.y = deck(feetB.x) + 0.035;
+    // Joint positions are ankles; the foot boxes are drawn below them.
+    feetF.y = deck(feetF.x) + 0.075;
+    feetB.y = deck(feetB.x) + 0.075;
 
     const leanDir = new THREE.Vector3(-0.22 - s.leanX * 0.8, 0, side).normalize();
     const facing = leanDir.clone().negate(); // toward the sail
     const across = new THREE.Vector3(1, 0, 0); // shoulder line roughly along the board
     const base = feetF.clone().add(feetB).multiplyScalar(0.5);
     const bodyAxis = new THREE.Vector3().addScaledVector(UP, Math.cos(beta)).addScaledVector(leanDir, Math.sin(beta));
-    const pelvis = base.clone().addScaledVector(bodyAxis, leg * (0.97 - sit)).addScaledVector(facing, sit * 0.25);
-    const chest = pelvis.clone().addScaledVector(bodyAxis, torsoLen * 0.72).addScaledVector(facing, 0.04);
+    const pelvis = base.clone().addScaledVector(bodyAxis, leg * (1 - sit)).addScaledVector(facing, sit * 0.3);
+    const chest = pelvis.clone().addScaledVector(bodyAxis, torsoLen * 0.72).addScaledVector(facing, 0.03);
     const neck = pelvis.clone().addScaledVector(bodyAxis, torsoLen);
-    const head = neck.clone().addScaledVector(bodyAxis, 0.16).addScaledVector(facing, 0.05);
-    const shL = neck.clone().addScaledVector(across, 0.19).addScaledVector(bodyAxis, -0.04);
-    const shR = neck.clone().addScaledVector(across, -0.19).addScaledVector(bodyAxis, -0.04);
+    const head = neck.clone().addScaledVector(bodyAxis, 0.09 * H).addScaledVector(facing, 0.02);
+    const shL = neck.clone().addScaledVector(across, 0.13 * H).addScaledVector(bodyAxis, -0.028 * H);
+    const shR = neck.clone().addScaledVector(across, -0.13 * H).addScaledVector(bodyAxis, -0.028 * H);
 
     // Hands: front hand forward on the boom, back hand further aft.
     let haF, haB;
@@ -426,7 +431,7 @@ export class Sailor {
       haB = toBoard(rig.boomPoint(rig.boomLength * (s.hooked ? 0.52 : 0.46), side));
     }
     // Reach limit: if the boom is out of reach (falls, transitions) let go.
-    const reach = 0.62;
+    const reach = 0.37 * H;
     const shF = shL, shB = shR;
     const clampReach = (sh, ha) => {
       const d = ha.clone().sub(sh);
@@ -437,10 +442,10 @@ export class Sailor {
     haB = clampReach(shB, haB);
 
     Object.assign(p, { pelvis, chest, neck, head, shL, shR, haL: haF, haR: haB, footF: feetF, footB: feetB });
-    p.elL = ik(shL, haF, 0.31, 0.3, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
-    p.elR = ik(shR, haB, 0.31, 0.3, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
-    p.kneeF = ik(pelvis, feetF, leg * 0.52, leg * 0.5, facing.clone().add(new THREE.Vector3(0.4, 0.1, 0)));
-    p.kneeB = ik(pelvis, feetB, leg * 0.52, leg * 0.5, facing.clone().add(new THREE.Vector3(-0.1, 0.1, 0)));
+    p.elL = ik(shL, haF, 0.19 * H, 0.19 * H, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
+    p.elR = ik(shR, haB, 0.19 * H, 0.19 * H, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
+    p.kneeF = ik(pelvis, feetF, 0.25 * H, 0.25 * H, facing.clone().add(new THREE.Vector3(0.4, 0.1, 0)));
+    p.kneeB = ik(pelvis, feetB, 0.25 * H, 0.25 * H, facing.clone().add(new THREE.Vector3(-0.1, 0.1, 0)));
 
     // In the water: floating beside the board, or hanging on near the tail.
     if (st === S.WATER || st === S.WATERSTART || st === S.FALLING || st === S.CLIMB || st === S.RISING) {
@@ -526,7 +531,7 @@ export class Sailor {
     const facing = new THREE.Vector3(0.2, 0, -sim.sailor.side).normalize();
     this.hook.position.copy(beltPos).addScaledVector(facing, 0.18);
     this.hook.lookAt(this.hook.position.clone().add(facing));
-    this.feet[0].position.copy(p.footF); this.feet[1].position.copy(p.footB);
+    this.feet[0].position.copy(p.footF).y -= 0.04; this.feet[1].position.copy(p.footB).y -= 0.04;
     this.feet[0].rotation.y = sim.sailor.straps ? 0.9 * sim.sailor.side : 0.2 * sim.sailor.side;
     this.feet[1].rotation.y = sim.sailor.side * 1.3;
   }

@@ -2,6 +2,7 @@
 // Navigable with a gamepad (D-pad + A/B) as well as mouse and keyboard.
 import { BOARDS, SAILS } from '../physics/gear.js';
 import { CONTROL_MAP } from './input.js';
+import { LESSONS } from '../coach/lessons.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -9,6 +10,11 @@ const BEAUFORT = [[1, 'Calm'], [4, 'Light air'], [7, 'Light breeze'], [11, 'Gent
 const beaufort = (kn) => {
   for (let i = 0; i < BEAUFORT.length; i++) if (kn < BEAUFORT[i][0]) return `Bft ${i} · ${BEAUFORT[i][1]}`;
   return 'Bft 8 · Gale';
+};
+const boomLabel = (s) => {
+  const cm = Math.round(s.height * 0.8 + s.boomRel);
+  const where = s.boomRel <= -8 ? 'chest' : s.boomRel <= 2 ? 'chest–shoulder' : s.boomRel <= 6 ? 'shoulder' : 'chin';
+  return `${cm} cm · ${where}`;
 };
 export const recommendedSail = (massKg, windKn) => (massKg * 1.34) / Math.max(windKn, 5);
 
@@ -104,7 +110,31 @@ export class Menu {
     const slider = (id, label, min, max, step, value, out) =>
       `<div class="field"><label for="${id}">${label}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}"><output id="${id}-out">${out}</output></div>`;
     const toggle = (id, label, checked) => `<label class="toggle"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''}> ${label}</label>`;
-    if (this.tab === 'sail') {
+    if (this.tab === 'sail' && this.activeLesson) {
+      const l = this.activeLesson;
+      c.innerHTML = `
+        <h2>Paused</h2>
+        <p>Lesson: <b>${l.lesson.title}</b> · ${l.mode === 'watch' ? 'watching the coach' : 'your turn'}${l.done ? ' · complete' : ''}.</p>
+        <div class="actions">
+          <button class="btn primary" id="act-resume">Resume</button>
+          <button class="btn" id="act-lesson-restart">Restart lesson</button>
+          <button class="btn" id="act-lesson-switch">${l.mode === 'watch' ? 'Try it yourself' : 'Watch the coach'}</button>
+          <button class="btn" id="act-lesson-exit">Exit to free sailing</button>
+        </div>
+        <p class="muted">The Lessons tab has the full list.</p>`;
+    } else if (this.tab === 'lessons') {
+      c.innerHTML = `
+        <h2>Lessons</h2>
+        <p class="muted">Watch the coach sail each technique with real controller inputs. The on-screen controller shows every stick, trigger and button. Then take over and do it yourself; the steps tick off as you go.</p>
+        <div class="lesson-list">
+          ${LESSONS.map((l, i) => `<div class="lesson-row ${this.completed?.has(l.id) ? 'done' : ''}">
+            <span class="n">${i + 1}</span>
+            <div><b>${l.title}</b><p>${l.summary}</p>
+              <div class="spec">${BOARDS.find((x) => x.id === l.setup.boardId)?.name} · ${l.setup.sailArea.toFixed(1)} m² · ${l.setup.wind.speedKn} kn${this.completed?.has(l.id) ? ' · done ✓' : ''}</div></div>
+            <div class="acts"><button class="btn primary" data-lesson="${l.id}" data-mode="watch">Watch</button><button class="btn" data-lesson="${l.id}" data-mode="try">Try it</button></div>
+          </div>`).join('')}
+        </div>`;
+    } else if (this.tab === 'sail') {
       const b = BOARDS.find((x) => x.id === s.boardId);
       c.innerHTML = `
         <h2>${this.started ? 'Paused' : 'Go sailing'}</h2>
@@ -144,6 +174,9 @@ export class Menu {
         ${slider('sail', 'Sail size', 0, SAILS.length - 1, 1, SAILS.findIndex((x) => Math.abs(x.area - s.sailArea) < 0.05), `${s.sailArea.toFixed(1)} m²`)}
         <p class="rec">Rule of thumb for ${s.mass} kg in ${s.windKn} kn: about ${rec.toFixed(1)} m².</p>
         ${slider('mass', 'Your weight', 50, 110, 1, s.mass, `${s.mass} kg`)}
+        ${slider('height', 'Your height', 155, 200, 1, s.height, `${s.height} cm`)}
+        ${slider('boom', 'Boom height', -14, 10, 1, s.boomRel, boomLabel(s))}
+        <p class="muted">Set the boom between chest and shoulder height. Higher gives more leverage and puts more weight through the harness; lower gives more control.</p>
         <h3>Assists</h3>
         ${toggle('autohike', 'Auto-hike: the game balances your body against the pull (LT is ignored)', s.autoHike)}
         ${toggle('nofalls', 'No falls: you never get pulled over or fall back', s.noFalls)}
@@ -177,6 +210,12 @@ export class Menu {
     on('act-restart-secure', 'click', () => h.start('secure'));
     on('act-restart-water', 'click', () => h.start('water'));
     on('act-restart-sailing', 'click', () => h.start('sailing'));
+    on('act-lesson-restart', 'click', () => h.lesson(this.activeLesson.lesson.id, this.activeLesson.mode));
+    on('act-lesson-switch', 'click', () => h.lesson(this.activeLesson.lesson.id, this.activeLesson.mode === 'watch' ? 'try' : 'watch'));
+    on('act-lesson-exit', 'click', () => h.exitLesson());
+    for (const b of this.content.querySelectorAll('[data-lesson]')) {
+      b.addEventListener('click', () => h.lesson(b.dataset.lesson, b.dataset.mode));
+    }
     const range = (id, key, fmt, apply) => on(id, 'input', (e) => {
       const v = parseFloat(e.target.value);
       $(`${id}-out`).textContent = fmt(v);
@@ -188,6 +227,8 @@ export class Menu {
     range('chop', 'chop', (v) => `${v.toFixed(1)}×`, (v) => { s.chop = v; h.conditions(); });
     range('sail', 'sail', (v) => `${SAILS[v].area.toFixed(1)} m²`, (v) => { s.sailArea = SAILS[v].area; h.gear(); });
     range('mass', 'mass', (v) => `${v} kg`, (v) => { s.mass = v; h.gear(); });
+    range('height', 'height', (v) => `${v} cm`, (v) => { s.height = v; const o = $('boom-out'); if (o) o.textContent = boomLabel(s); h.gear(); });
+    range('boom', 'boomRel', () => '', (v) => { s.boomRel = v; $('boom-out').textContent = boomLabel(s); h.gear(); });
     range('volume', 'volume', (v) => `${Math.round(v * 100)}%`, (v) => { s.volume = v; h.options(); });
     for (const card of this.content.querySelectorAll('[data-board]')) {
       card.addEventListener('click', () => { s.boardId = card.dataset.board; h.gear(); this.render(); });

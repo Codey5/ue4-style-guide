@@ -8,9 +8,9 @@ import { CONTROL_MAP } from './input.js';
 const $ = (id) => document.getElementById(id);
 
 const GLYPHS = {
-  xbox: { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', LS: 'L-stick', RS: 'R-stick', L3: 'L3' },
-  ps: { A: '✕', B: '○', X: '□', Y: '△', LB: 'L1', RB: 'R1', LT: 'L2', RT: 'R2', LS: 'L-stick', RS: 'R-stick', L3: 'L3' },
-  kb: { A: 'H', B: 'T', X: 'F', Y: 'G', LB: 'U', RB: 'P', LT: 'C / Z', RT: 'E / Q', LS: 'W A S D', RS: 'Arrows', L3: 'X' },
+  xbox: { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', LS: 'L-stick', RS: 'R-stick', L3: 'L3', MENU: 'Menu' },
+  ps: { A: '✕', B: '○', X: '□', Y: '△', LB: 'L1', RB: 'R1', LT: 'L2', RT: 'R2', LS: 'L-stick', RS: 'R-stick', L3: 'L3', MENU: 'Options' },
+  kb: { A: 'H', B: 'T', X: 'F', Y: 'G', LB: 'U', RB: 'P', LT: 'C / Z', RT: 'E / Q', LS: 'W A S D', RS: 'Arrows', L3: 'X', MENU: 'Esc' },
 };
 
 export function pointOfSail(twaAbsDeg) {
@@ -46,9 +46,13 @@ export class Hud {
   show(on) { this.root.hidden = !on; }
 
   glyphs(input) {
-    if (input.lastDevice !== 'gamepad' || !input.gamepad) return GLYPHS.kb;
-    const id = input.gamepad.id.toLowerCase();
-    return /054c|playstation|dualsense|dualshock|sony/.test(id) ? GLYPHS.ps : GLYPHS.xbox;
+    // Prefer controller glyphs whenever one is connected, unless you're typing.
+    if (!input.gamepad || input.lastDevice === 'keyboard') return GLYPHS.kb;
+    return this.isPs(input) ? GLYPHS.ps : GLYPHS.xbox;
+  }
+
+  isPs(input) {
+    return !!input.gamepad && /054c|playstation|dualsense|dualshock|sony/.test(input.gamepad.id.toLowerCase());
   }
 
   flashCamera(name) {

@@ -11,14 +11,16 @@ import { Input } from './ui/input.js';
 import { Hud } from './ui/hud.js';
 import { Menu } from './ui/menu.js';
 import { Audio } from './ui/audio.js';
+import { LessonUi } from './ui/lessonui.js';
+import { LESSONS, findLesson, LessonRunner } from './coach/lessons.js';
 
 const DT = 1 / 240;
 const STORE_KEY = 'beam-reach-settings-v1';
 
 const defaults = {
   windKn: 15, gustiness: 0.45, shifts: 0.5, chop: 1,
-  boardId: 'free135', sailArea: 7.0, mass: 75,
-  autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8,
+  boardId: 'free135', sailArea: 7.0, mass: 75, height: 178, boomRel: 0,
+  autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
 };
 function loadSettings() {
   try {
@@ -32,6 +34,8 @@ function saveSettings(s) {
 }
 
 const settings = loadSettings();
+/** Boom height above the deck in cm: just under shoulder height, plus the rider's adjustment. */
+export const boomHeightFor = (st) => Math.round(st.height * 0.8 + st.boomRel);
 const canvas = document.getElementById('view');
 const renderer = createRenderer(canvas);
 const env = createEnvironment();
@@ -46,17 +50,23 @@ const effects = new Effects(scene);
 const input = new Input(canvas);
 const hud = new Hud();
 const audio = new Audio();
+const lessonUi = new LessonUi();
+let lesson = null; // active LessonRunner
 
 const boardGroup = new THREE.Group();
 scene.add(boardGroup);
 let boardMesh = null, rig = null, sailor = null;
 
-function makeSim(start) {
+/** A sim from the sandbox settings, or from a lesson's setup (keeping your body and boom height). */
+function makeSim(start, setup = null, watch = false) {
+  const wind = setup ? setup.wind : { speedKn: settings.windKn, gustiness: settings.gustiness, shifts: settings.shifts, chop: settings.chop };
   return new Sim({
-    boardId: settings.boardId, sailArea: settings.sailArea, sailorMass: settings.mass,
-    wind: { speedKn: settings.windKn, gustiness: settings.gustiness, shifts: settings.shifts, chop: settings.chop, fromDeg: 270 },
-    assists: { autoHike: settings.autoHike, noFalls: settings.noFalls },
-    start,
+    boardId: setup?.boardId ?? settings.boardId, sailArea: setup?.sailArea ?? settings.sailArea, sailorMass: settings.mass,
+    sailorHeight: settings.height / 100, boomHeight: boomHeightFor(settings) / 100,
+    wind: { ...wind, fromDeg: 270 },
+    // The coach does its own hiking and never uses the no-falls assist.
+    assists: watch ? { autoHike: false, noFalls: false } : { autoHike: settings.autoHike, noFalls: settings.noFalls },
+    start: setup?.start ?? start,
   });
 }
 
@@ -77,11 +87,11 @@ function syncWorld() {
   skyUniforms.uWindSpeed.value = sim.wind.speed;
 }
 
-function restart(mode) {
+function restart(mode, setup = null, watch = false) {
   const at = sim ? [sim.pos[0], 0, sim.pos[2]] : null;
   const nearShore = at && at[2] < BEACH_Z + 40;
-  sim = makeSim(mode);
-  if (at && !nearShore && Math.hypot(at[0], at[2]) < 2500) sim.reset(mode, at);
+  sim = makeSim(mode, setup, watch);
+  if (!setup && at && !nearShore && Math.hypot(at[0], at[2]) < 2500) sim.reset(mode, at);
   buildModels();
   syncWorld();
   effects.clearTrail();
@@ -102,17 +112,46 @@ function applyOptions() {
 }
 
 let paused = true;
+let gearTimer = 0;
+
+function startLesson(id, mode) {
+  const def = findLesson(id);
+  if (!def) return;
+  audio.start();
+  restart(def.setup.start, def.setup, mode === 'watch');
+  lesson = new LessonRunner(def, mode, sim);
+  menu.activeLesson = lesson;
+  menu.started = true;
+  lessonUi.show(true);
+  camRig.mode = 0;
+  resume();
+}
+function exitLesson() {
+  lesson = null;
+  menu.activeLesson = null;
+  lessonUi.show(false);
+}
+
 const menu = new Menu(settings, {
-  start: (mode) => { audio.start(); restart(mode); menu.started = true; resume(); },
+  start: (mode) => { audio.start(); exitLesson(); restart(mode); menu.started = true; resume(); },
+  lesson: (id, mode) => startLesson(id, mode),
+  exitLesson: () => { exitLesson(); restart('secure'); resume(); },
   resume: () => resume(),
   conditions: () => {
+    if (lesson) { exitLesson(); restart('secure'); }
     sim.setWind({ speedKn: settings.windKn, gustiness: settings.gustiness, shifts: settings.shifts, chop: settings.chop });
     syncWorld();
     saveSettings(settings);
   },
-  gear: () => { saveSettings(settings); restart('secure'); },
+  gear: () => {
+    saveSettings(settings);
+    if (lesson) exitLesson();
+    clearTimeout(gearTimer); // sliders fire continuously; rebuild once they settle
+    gearTimer = setTimeout(() => restart('secure'), 200);
+  },
   options: () => applyOptions(),
 });
+menu.completed = new Set(settings.lessonsDone);
 
 function resume() {
   paused = false;
@@ -146,6 +185,8 @@ let acc = 0;
 let rumbleTimer = 0;
 let rumbleKick = 0;
 let lastControls = null;
+let usedControls = null;
+let framePressed = {};
 let renderTime = 0;
 
 function frame(now) {
@@ -168,18 +209,47 @@ function frame(now) {
     if (ui.zoom) camRig.zoomBy(ui.zoom);
     if (ui.drag) camRig.drag(ui.drag[0], ui.drag[1]);
 
-    // Fixed-step physics; button presses go to the first sub-step only.
+    // Watching the coach: Y / T hands the lesson over to you.
+    if (lesson && lesson.mode === 'watch' && controls.pressed.flip) {
+      startLesson(lesson.lesson.id, 'try');
+      controls.pressed = {}; // that press was "take over", not a sail flip
+    }
+
+    // Fixed-step physics; button presses go to the first sub-step only. In a
+    // watched lesson the coach supplies the controls, one physics step at a time.
     acc += dt;
     let first = true;
     let steps = 0;
+    framePressed = {};
+    let restartLesson = null;
     while (acc >= DT && steps < 24) {
-      const c = first ? controls : { ...controls, pressed: {} };
+      const coachDriving = lesson && lesson.mode === 'watch';
+      const c = coachDriving ? lesson.controls(DT) : first ? controls : { ...controls, pressed: {} };
       sim.step(DT, c);
+      usedControls = c;
+      for (const [k, v] of Object.entries(c.pressed)) if (v) framePressed[k] = true;
+      if (lesson) {
+        const r = lesson.update(DT);
+        if (r === 'step' && lesson.mode === 'try') sim.emit('lesson', '✓ Step done', 1);
+        if (r === 'complete') {
+          sim.emit('lesson', lesson.mode === 'watch' ? 'Lesson complete. Your turn!' : '✓ Lesson complete!', 2);
+          if (lesson.mode === 'try' && !settings.lessonsDone.includes(lesson.lesson.id)) {
+            settings.lessonsDone.push(lesson.lesson.id);
+            menu.completed.add(lesson.lesson.id);
+            saveSettings(settings);
+          }
+        }
+        if (r === 'fell') restartLesson = lesson;
+      }
       first = false;
       acc -= DT;
       steps++;
     }
     if (steps >= 24) acc = 0;
+    if (restartLesson) {
+      startLesson(restartLesson.lesson.id, restartLesson.mode);
+      sim.emit('lesson', 'The coach fell in. It happens to everyone! Starting the lesson again.', 2);
+    }
 
     for (const e of hud.pushEvents(sim)) {
       if (e.type === 'fall') {
@@ -208,7 +278,14 @@ function frame(now) {
   sun.target.position.set(sim.pos[0], 0, sim.pos[2]);
   sun.target.updateMatrixWorld();
 
-  hud.update(dt, sim, input, controls);
+  const shown = usedControls ?? controls;
+  hud.update(dt, sim, input, shown);
+  if (lesson) {
+    lessonUi.update(dt, lesson, shown, framePressed, hud.glyphs(input), hud.isPs(input), {
+      index: LESSONS.indexOf(lesson.lesson), count: LESSONS.length,
+      inWater: sim.state === S.WATER || sim.state === S.FALLING,
+    });
+  }
   if (!paused) audio.update(sim);
 
   // Rumble: the low motor carries the load in the sail, the high motor the
@@ -226,6 +303,6 @@ function frame(now) {
   }
 
   renderer.render(scene, camera);
-  window.__beamReach = { sim, controls: lastControls, paused };
+  window.__beamReach = { sim, controls: lastControls, paused, lesson };
 }
 requestAnimationFrame(frame);

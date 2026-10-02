@@ -1,4 +1,5 @@
-// Scripted maneuver checks: uphaul, tack, carve gybe with sail flip, waterstart.
+// Scripted maneuver checks: uphaul, tack, waterstart, overpowering, sinkers.
+// The carve gybe and the other techniques are checked through the lessons.
 // Run: node tools/maneuver-check.mjs
 import { DEG, MS_TO_KN, clamp } from '../src/physics/math.js';
 import { Sim, S, emptyControls } from '../src/physics/sim.js';
@@ -50,45 +51,7 @@ const lastEvents = (sim, n = 6) => sim.events.slice(-n).map((e) => `[${e.t.toFix
   report('tack (step round the mast)', sim.sailor.side === -side0 && sim.state === S.SAILING, `side ${side0}->${sim.sailor.side} state ${sim.state} twa ${(sim.twa / DEG).toFixed(0)} | ${lastEvents(sim, 4)}`);
 }
 
-// 3. Carve gybe on the plane: bear away with rail and rig, flip at dead downwind.
-{
-  const sim = new Sim({ boardId: 'free135', sailArea: 7, wind: { speedKn: 17, gustiness: 0, shifts: 0 }, start: 'sailing', assists: { autoHike: true } });
-  const ap = new Autopilot(sim, 110);
-  run(sim, 25, () => ap.controls(DT));
-  const kn0 = sim.telemetry.kn;
-  const side0 = sim.sailor.side;
-  // Ease the sheet gradually, unhook and take the feet out of the straps.
-  const sheet0 = ap.sheet;
-  let tEase = 0;
-  run(sim, 1.5, () => { tEase += DT; const c = ap.controls(DT); c.sheet = sheet0 - Math.min(1, tEase / 1.5) * 0.2; return c; });
-  let unhooked = false;
-  run(sim, 0.6, (s) => { const c = ap.controls(DT); c.sheet = sheet0 - 0.2; if (s.sailor.hooked && !unhooked) { c.pressed.hook = true; unhooked = true; } c.strapsHeld = true; return c; });
-  let flipped = false, minKn = 99, maxTwa = 0;
-  run(sim, 7, (s) => {
-    if (s.state === S.SAILING && s.sailor.side === side0) {
-      const c = emptyControls();
-      c.sheet = 0.75;
-      c.rake = 1;
-      c.lean = side0 * 0.6;
-      c.rail = -side0 * 1; // sink the leeward rail: toes
-      c.weight = 0.3;
-      maxTwa = Math.max(maxTwa, Math.abs(s.twa));
-      if (Math.abs(s.twa) > 168 * DEG && !flipped) { c.pressed.flip = true; flipped = true; }
-      minKn = Math.min(minKn, s.telemetry.kn);
-      return c;
-    }
-    if (s.state === S.FLIP) { const c = emptyControls(); c.rail = -side0 * 0.8; c.sheet = 0; c.rake = 0.3; return c; }
-    if (s.state === S.SAILING) {
-      // Carve out of the gybe on the new tack.
-      const c = emptyControls(); c.sheet = 0.7; c.rail = side0 * 0.3; c.rake = -0.2; c.lean = -side0 * 0.3;
-      minKn = Math.min(minKn, s.telemetry.kn);
-      return c;
-    }
-    return emptyControls();
-  });
-  report('carve gybe with sail flip', flipped && sim.sailor.side === -side0 && sim.state === S.SAILING,
-    `entry ${kn0.toFixed(1)} kn, min ${minKn.toFixed(1)} kn, exit ${sim.telemetry.kn.toFixed(1)} kn, twa ${(sim.twa / DEG).toFixed(0)} state ${sim.state} | ${lastEvents(sim, 5)}`);
-}
+// 3. The carve gybe is covered by the coach's lesson (tools/lesson-check.mjs).
 
 // 4. Waterstart in 16 kn.
 {

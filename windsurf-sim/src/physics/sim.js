@@ -12,7 +12,7 @@ import {
 } from './math.js';
 import { Wind, Waves } from './environment.js';
 import { BOARDS, DEFAULT_SAILOR, findBoard, findSail } from './gear.js';
-import { BOOM_HEIGHT, buildSailGeometry, sailForces } from './sail.js';
+import { buildSailGeometry, sailForces } from './sail.js';
 import { foilPolar, planingSolve } from './hull.js';
 
 /** Smooth proportional servo with a rate cap — how hands move a rig. */
@@ -51,16 +51,19 @@ export class Sim {
     this.assists = { autoHike: false, noFalls: false, ...(opts.assists ?? {}) };
     this.events = [];
     this.t = 0;
-    this.setGear(opts.boardId ?? 'free135', opts.sailArea ?? 7, opts.sailorMass ?? DEFAULT_SAILOR.mass);
+    this.setGear(opts.boardId ?? 'free135', opts.sailArea ?? 7, opts.sailorMass ?? DEFAULT_SAILOR.mass,
+      opts.sailorHeight ?? DEFAULT_SAILOR.height, opts.boomHeight);
     this.reset(opts.start ?? 'secure');
   }
 
-  setGear(boardId, sailArea, sailorMass) {
+  /** boomHeight: above the deck; defaults to just under shoulder height (0.8 × body height). */
+  setGear(boardId, sailArea, sailorMass, sailorHeight = DEFAULT_SAILOR.height, boomHeight) {
     this.board = findBoard(boardId);
     this.sail = findSail(sailArea);
-    this.sailGeo = buildSailGeometry(this.sail);
     this.sailorMass = sailorMass;
-    this.sailorHeight = clamp(1.55 + (sailorMass - 50) * 0.006, 1.6, 1.95);
+    this.sailorHeight = clamp(sailorHeight, 1.5, 2.05);
+    this.boomHeight = clamp(boomHeight ?? 0.8 * this.sailorHeight, 1.1, 1.75);
+    this.sailGeo = buildSailGeometry(this.sail, this.boomHeight);
     this.daggerDown = !!this.board.dagger;
     this.prevPoints = null;
   }
@@ -103,8 +106,8 @@ export class Sim {
     if (mode === 'sailing') {
       const f = [Math.cos(this.yaw), 0, -Math.sin(this.yaw)];
       this.vel = scale(f, 4.5);
-      this.rig.boom = side * 25 * DEG;
-      this.sailor.beta = 25 * DEG;
+      this.rig.boom = side * 62 * DEG; // eased: you sheet in from here
+      this.sailor.beta = 12 * DEG;
     }
     if (mode === 'water') this.rig.up = 0;
   }
@@ -186,7 +189,7 @@ export class Sim {
     }
     const transmit = this.state === S.SAILING ? 1 : this.state === S.FLIP ? 0.35 : this.state === S.TACK ? 0.3 : 0;
     const tauPull = -sailor.side * tauAero * transmit; // + pulls the sailor toward the rig
-    const handForce = Math.max(0, tauPull) / (BOOM_HEIGHT + deckY);
+    const handForce = Math.max(0, tauPull) / (this.boomHeight + deckY);
     this.handForce = handForce;
 
     // ---- Vertical load and its fore/aft centre (drives planing trim).
@@ -221,7 +224,10 @@ export class Sim {
     };
     const boardPoint = (x, y, z = 0) => add(this.pos, mulMV(R, [x, y, z]));
 
-    if (aero) for (const st of aero.strips) applyAt(st.p, st.f);
+    // In a waterstart the sailor in the water takes most of the sail's pull;
+    // only part of it reaches the board through the mast foot.
+    const aeroShare = this.state === S.WATERSTART ? 0.3 : 1;
+    if (aero) for (const st of aero.strips) applyAt(st.p, scale(st.f, aeroShare));
 
     // Sailor windage.
     if (sailorOnBoard) {
@@ -285,6 +291,13 @@ export class Sim {
         const drift = scale(d, 0.25 * this.wind.speed / 8);
         F = add(F, scale(sub(drift, this.vel), 40 * strength));
       }
+    }
+
+    // Waterstart: you steer the board by pushing it through the mast foot —
+    // rig toward the nose pushes the nose away from the wind. Your body in the
+    // water and your back foot on the board damp the turning.
+    if (this.state === S.WATERSTART && this.stateData.phase === 'power') {
+      N += sailor.side * ctl.rake * 70 - this.yawRate * 90;
     }
 
     // Tacking: the feet push the board round through the wind.
@@ -380,7 +393,10 @@ export class Sim {
       const demand = slope * Math.abs(alpha);
       const windwardRoll = this.roll * this.sailor.side / DEG;
       const tauDeg = hull.trim / DEG;
-      const vent = 0.92 - 0.07 * Math.max(0, tauDeg - 4.5) - 0.025 * Math.max(0, windwardRoll - 6) -
+      // A board pressed onto its windward rail in a straight line loads the fin
+      // badly; in a carve the board turns with the rail and it doesn't.
+      const carving = smoothstep(0.2, 0.5, Math.abs(this.yawRate));
+      const vent = 0.92 - 0.07 * Math.max(0, tauDeg - 4.5) - Math.min(0.3, 0.015 * Math.max(0, windwardRoll - 6)) * (1 - carving) -
         0.1 * this.waves.hs - (this.sailor.straps === 2 && this.sailor.leanX < -0.08 ? 0.08 : 0);
       if (!this.finVentilated && sp > 5 && demand > vent && HOLDS_BOOM.has(this.state)) {
         this.finVentilated = true;
@@ -550,6 +566,8 @@ export class Sim {
           d.switched = true;
           s.side *= -1;
           r.side *= -1;
+          s.beta = clamp(-0.5 * s.beta, -12 * DEG, 12 * DEG); // lean is measured from the new windward side now
+          s.betaRate = 0;
           s.x = Math.min(s.x, b.frontStrapX + 0.1);
         }
         if (ph >= 1) {
@@ -613,11 +631,16 @@ export class Sim {
           }
         } else {
           r.up = 1;
-          // Upward pull plus part of the sideways pull, which levers you up
-          // over the board as it starts to move.
-          const f = this.aero ? this.aero.force : [0, 0, 0];
-          const lift = f[1] + 0.25 * Math.hypot(f[0], f[2]);
-          const need = 0.12 * this.sailorMass * G;
+          // Held up into the wind, the sail works like a kite: its pull tows you
+          // and levers you up over the board. That needs the sail filled (not
+          // luffing, not backwinded) and the board across the wind.
+          const wv = this.wind.sample(this.pos[0], 2.2, this.pos[2], this.t);
+          const q = 0.5 * RHO_AIR * (wv[0] * wv[0] + wv[2] * wv[2]);
+          const aDeg = this.aero ? this.aero.alphaMid / DEG : 0;
+          const fill = smoothstep(5, 25, aDeg) * (1 - smoothstep(80, 115, aDeg));
+          const across = smoothstep(35, 60, Math.abs(twa) / DEG) * (1 - smoothstep(140, 165, Math.abs(twa) / DEG));
+          const lift = q * this.sail.area * 0.7 * fill * across;
+          const need = 0.11 * this.sailorMass * G;
           d.lift = lift;
           if (lift > need) d.liftProgress = (d.liftProgress ?? 0) + dt / 0.6;
           else d.liftProgress = Math.max(0, (d.liftProgress ?? 0) - dt * 0.6);
@@ -817,25 +840,31 @@ export class Sim {
     const rigCgSide = Math.sin(this.rig.lean) * 1.7;
     const tauRig = this.sailor.side * rigCgSide * this.sail.rigMass * G * 0.6;
     const kRoll = RHO_WATER * G * (b.width ** 3) * b.length / 12 * 0.12;
-    const tauMax = 260 + kRoll * (1 - 0.5 * p) + 80 * p;
+    // Core and leg strength scale roughly with body mass. Holding the mast
+    // (tacks, sail flips) steadies you: the rig is pinned at the mast foot.
+    const holdingMast = this.state === S.TACK || this.state === S.FLIP;
+    const tauMax = (260 + 80 * p) * (mS / 75) * (holdingMast ? 1.6 : 1) + kRoll * (1 - 0.5 * p);
     const betaMax = (s.hooked ? 74 : 56) * DEG;
     let target;
     const sinEq = (tauPull - tauRig) / (mS * G * L) - dFeet / L;
     this.betaEq = Math.asin(clamp(sinEq, -0.5, 0.99));
     if (this.assists.autoHike || this.state !== S.SAILING) {
       target = Math.asin(clamp(sinEq, -0.2, Math.sin(betaMax)));
-      if (this.state !== S.SAILING) target = clamp(target, -5 * DEG, 30 * DEG);
+      if (this.state !== S.SAILING) target = clamp(target, -5 * DEG, holdingMast ? 10 * DEG : 30 * DEG);
     } else {
       target = (4 * DEG) + ctl.hike * (betaMax - 4 * DEG);
     }
     this.betaTarget = target;
     const tauGrav = mS * G * (L * Math.sin(s.beta) + dFeet);
     const I = mS * L * L + this.sail.rigMass * 0.8;
-    const muscle = clamp(2400 * (target - s.beta) - 420 * s.betaRate, -tauMax, tauMax);
+    // Coming back in you can also pull yourself up on the boom: the rig is
+    // pinned at the mast foot, so it works as a handle (until you pull it over).
+    const handle = 200 * (mS / 75);
+    const muscle = clamp(2400 * (target - s.beta) - 420 * s.betaRate, -(tauMax + handle), tauMax);
     const tau = tauGrav + tauRig - tauPull + muscle - 60 * s.betaRate;
     s.betaRate += (tau / I) * dt;
     s.beta += s.betaRate * dt;
-    this.balance = { tauPull, tauGrav, tauRig, muscle, tauMax, saturated: Math.abs(muscle) >= tauMax * 0.999, net: tau };
+    this.balance = { tauPull, tauGrav, tauRig, muscle, tauMax, saturated: muscle >= tauMax * 0.999 || muscle <= -(tauMax + handle) * 0.999, net: tau };
 
     // Arms: holding the rig unhooked burns the forearms; the harness takes most of it.
     const armLoad = s.hooked ? handForce * 0.15 : handForce;

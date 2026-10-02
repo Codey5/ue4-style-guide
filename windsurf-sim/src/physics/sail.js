@@ -4,13 +4,13 @@
 import { DEG, RHO_AIR, add, clamp, cross, dot, lerp, norm, scale, smoothstep, sub } from './math.js';
 
 export const TACK_HEIGHT = 0.14; // tack (bottom of luff) above the mast foot, along the mast
-export const BOOM_HEIGHT = 1.42; // boom on the mast above the mast foot
+export const BOOM_HEIGHT = 1.42; // default boom height on the mast above the mast foot
 export const CE_CHORD = 0.4; // centre of pressure of a cambered strip, fraction of chord
 
 /** Build the sail outline and aero strips for a sail definition. */
-export function buildSailGeometry(def) {
+export function buildSailGeometry(def, boomHeight = BOOM_HEIGHT) {
   const tack = TACK_HEIGHT;
-  const hb = BOOM_HEIGHT;
+  const hb = boomHeight;
   const head = def.luff + 0.02;
   const B = def.boom;
   const raw = (h) => {

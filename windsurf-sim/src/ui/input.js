@@ -45,7 +45,7 @@ export class Input {
     this.fHeld = 0;
     this.ui = {};
     this.gamepad = null;
-    this.lastDevice = 'keyboard';
+    this.lastDevice = 'none'; // 'keyboard' or 'gamepad' once one is used
     this.rumbleEnabled = true;
     this.invertRake = false;
     window.addEventListener('keydown', (e) => {

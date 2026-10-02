@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "dev": "node tools/build.mjs --serve",
-    "test": "node tools/physics-check.mjs && node tools/maneuver-check.mjs",
+    "test": "node tools/physics-check.mjs && node tools/maneuver-check.mjs && node tools/lesson-check.mjs",
     "drag": "node tools/drag-curve.mjs"
   },
   "devDependencies": {
