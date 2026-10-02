@@ -100,7 +100,7 @@ export const LESSONS = [
         done: (sim) => planing(sim) && kn(sim) > 11,
       },
       {
-        say: 'Planing! The board lifts onto the water and the drag drops. Move your weight back ({RS} down) and hook into the harness ({A}).',
+        say: 'Planing! The board lifts onto the water and the drag drops. Move your weight back ({RS} down), come in toward the boom and hook into the harness ({A}).',
         wait: 1,
         minTime: 3.5,
         run: (x) => x.coach.sail(x.dt, { twa: 105, moveBack: true, hook: true, hike: 'auto' }),
@@ -114,7 +114,7 @@ export const LESSONS = [
         done: (sim) => sim.sailor.straps === 2,
       },
       {
-        say: 'Hang off the harness lines with {LT} and let your weight counter the pull. Watch the balance needle, and sheet out a touch when a gust hits.',
+        say: 'Hang off the harness lines with {LT} and let your weight counter the pull. To hang further out, lean the rig to windward ({LS}). Watch the balance needle, and sheet out a touch when a gust hits.',
         run: (x) => x.coach.sail(x.dt, { twa: 108, straps: true, hook: true, hike: 'auto' }),
         done: (sim, x) => x.t > 9 && planing(sim),
       },

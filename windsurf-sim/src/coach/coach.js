@@ -1,7 +1,7 @@
 // The coach: an expert sailor that produces the same controls a player would
 // (sticks, triggers, button presses). Used by the in-game lessons and by the
 // headless physics checks.
-import { DEG, clamp, smoothstep } from '../physics/math.js';
+import { DEG, clamp, damp, smoothstep } from '../physics/math.js';
 import { emptyControls, S } from '../physics/sim.js';
 
 export class Coach {
@@ -24,10 +24,12 @@ export class Coach {
 
   /** LT value that balances the current pull (what a good sailor does by feel). */
   hikeFor(dt) {
-    const sim = this.sim, s = sim.sailor;
-    const betaMax = (s.hooked ? 74 : 56) * DEG;
+    const sim = this.sim;
+    const betaMax = sim.betaMax ?? 30 * DEG; // as far out as the arms and lines reach
     const eq = sim.betaEq ?? 0;
-    const want = clamp((eq - 4 * DEG) / (betaMax - 4 * DEG), 0, 1);
+    // Coming in to hook in: no further out than the harness lines reach.
+    const lean = Math.min(eq, this.hookCap ?? Infinity);
+    const want = betaMax > 5 * DEG ? clamp((lean - 4 * DEG) / (betaMax - 4 * DEG), 0, 1) : 0;
     this.hike += (want - this.hike) * clamp(dt * 8, 0, 1);
     return this.hike;
   }
@@ -61,21 +63,13 @@ export class Coach {
     // Broad reaches: the apparent wind is light and the sail no longer
     // overpowers you, so sheet in toward maximum lift and sit back on the tail.
     const deep = smoothstep(105 * DEG, 140 * DEG, this.cur);
-    // Rig lean: a little to windward when planing on a reach (the centre of
-    // effort comes over the board, so you can hold more power), upright on a
-    // broad reach, where the sail's force points forward and leaning it would
-    // only tip it upward. Further to windward when the rig is already fully
-    // forward and we still need to bear away.
     const p = t.planing;
-    const bearAway = Math.max(0, steer - 0.7) * 1.4;
-    const headUp = Math.max(0, -steer - 0.5) * 1.2;
-    c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + bearAway - headUp, -0.2, 1);
-    // Sheet for the target angle of attack, but never more power than the body can hold.
+    // How close the pull is to what the body can hold, hanging as far out as
+    // the arms and lines reach.
     const bal = sim.balance;
     let over = 0;
     if (bal) {
-      const L = sim.sailorHeight * 0.56 + (sim.sailor.hooked ? 0.08 : 0);
-      const capacity = sim.sailorMass * 9.81 * L * Math.sin((sim.sailor.hooked ? 64 : 48) * DEG) + 0.4 * bal.tauMax;
+      const capacity = sim.sailorMass * 9.81 * (bal.leverMax ?? 0.5) + 0.6 * bal.tauMax;
       over = (bal.tauPull - capacity) / capacity;
       // Unhooked, the hands are the limit: ease off before the grip goes.
       if (!sim.sailor.hooked) {
@@ -83,9 +77,31 @@ export class Coach {
         over = Math.max(over, (sim.handForce - 0.8 * grip) / grip * 3);
       }
     }
+    // Rig lean: a little to windward when planing on a reach. More whenever
+    // you need to hang further out than your arms (or harness lines) reach:
+    // leaning the rig brings the boom out over the water to you, and the
+    // centre of effort over the board. On a broad reach, only as much as that
+    // takes: the sail's force points forward there, and leaning it more just
+    // tips it upward. Further to windward when the rig is already fully
+    // forward and we still need to bear away.
+    const bearAway = Math.max(0, steer - 0.7) * 1.4;
+    const headUp = Math.max(0, -steer - 0.5) * 1.2;
+    // How far beyond reach the balanced lean is: the arms, or the harness
+    // lines when hooked in or about to hook in (lean the rig out to bring them to you).
+    const s0 = sim.sailor;
+    const wantHook = !!(o.hook ?? o.straps) && !s0.hooked && p > 0.95 && t.speed > 5.5 && sim.hookReach?.fits;
+    const reach = wantHook ? sim.hookReach.betaMax : (sim.betaMax ?? 0);
+    this.hookCap = wantHook ? sim.hookReach.betaMax : undefined;
+    const short = (sim.betaEq ?? 0) - reach;
+    // (felt over a second or two, not snapped to every gust)
+    // Past about 15° of lean the sail loses more drive than the extra hang
+    // gains, so beyond that you sheet out instead.
+    this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22, 0.8, dt);
+    c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp, -0.2, 1);
     const aTarget = (o.alpha ?? 20 + 4 * deep) * DEG - clamp(over, 0, 1) * 14 * DEG;
-    // Don't sheet in faster than you can get your body out against it.
-    const lag = sim.betaTarget !== undefined ? Math.max(0, sim.betaTarget - sim.sailor.beta) : 0;
+    // Don't sheet in faster than you can get your body out against it (a few
+    // degrees short of full stretch is just your legs and core holding you).
+    const lag = sim.betaTarget !== undefined ? Math.max(0, sim.betaTarget - sim.sailor.beta - 6 * DEG) : 0;
     if (sim.sailor.gripLost > 0) this.sheet = Math.min(this.sheet, 0.3);
     else this.sheet = clamp(this.sheet + clamp(-(t.alpha - aTarget) * 2.2 - Math.max(0, over) * 1.5 - lag * 4, -1.5, 0.2) * dt, 0.05, 1);
     c.sheet = this.sheet;
@@ -107,7 +123,10 @@ export class Coach {
     else if (o.straps && going && s.straps < 2) this.press(c, 'straps', 0.6);
     else if (s.straps === 0) c.weight = o.weight ?? 0.2;
     else if (s.straps === 2 && going) c.weight = o.weight ?? -(0.35 + 0.55 * deep) * smoothstep(6, 9, t.speed);
-    if ((o.hook ?? o.straps) && going && !s.hooked && this.sheet > 0.45) this.press(c, 'hook', 1.2);
+    // Hook in once sheeted in enough that the lines reach where you need to hang.
+    const lines = sim.hookReach;
+    if ((o.hook ?? o.straps) && going && !s.hooked && this.sheet > 0.45 && lines?.fits &&
+      lines.betaMax >= s.beta - 4 * DEG) this.press(c, 'hook', 1.2);
     return c;
   }
 }

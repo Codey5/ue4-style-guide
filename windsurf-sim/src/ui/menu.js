@@ -1,6 +1,6 @@
 // Start / pause menu: conditions, gear, controls and a technique primer.
 // Navigable with a gamepad (D-pad + A/B) as well as mouse and keyboard.
-import { BOARDS, BOOM_RATIO, SAILS } from '../physics/gear.js';
+import { BOARDS, BOOM_RATIO, LINES_RATIO, SAILS } from '../physics/gear.js';
 import { CONTROL_MAP } from './input.js';
 import { LESSONS } from '../coach/lessons.js';
 
@@ -16,6 +16,10 @@ const boomLabel = (s) => {
   const r = cm / s.height;
   const where = r < 0.715 ? 'chest' : r < 0.79 ? 'chest–shoulder' : r < 0.835 ? 'shoulder' : 'chin';
   return `${cm} cm · ${where}`;
+};
+const linesLabel = (s) => {
+  const inch = Math.round((s.height * LINES_RATIO) / 2.54 + (s.linesRel ?? 0));
+  return `${inch} in · ${Math.round(inch * 2.54)} cm`;
 };
 export const recommendedSail = (massKg, windKn) => (massKg * 1.34) / Math.max(windKn, 5);
 
@@ -38,8 +42,12 @@ const TECHNIQUE = `
 <li>When the board releases and the wake goes quiet, move back (right stick down), hook in (A) and step into the front strap, then the back strap (X).</li>
 <li>Hang off the harness lines with LT. The balance needle shows the fight between the sail's pull and your body weight. When a gust hits, sheet out a touch. If you're hooked in when it gets too much, it's a catapult.</li>
 </ol>
+<h3>Hanging off the rig</h3>
+<p>Your weight only counters the sail as far out as you can hang. Unhooked that's your arms' reach to the boom; hooked in it's your harness lines. The HUD shows your lean and how far out you can go (lean 24° of 33°). To hang further out, lean the rig to windward (left stick toward the wind): the boom comes out over the water to you. Past about 15° the sail loses more drive than you gain, so sheet out instead.</p>
+<p>To hook in, sheet in and come in toward the boom (ease LT) so the lines reach the hook. In the straps the lines sit over your feet and you hang furthest out; hooked in with your feet still forward, you can't.</p>
+<p>Hang out with too little wind in the sail (a lull, or LT held in light air) and your weight pulls the rig over on top of you: ease LT when the power drops.</p>
 <h3>Speed on a broad reach</h3>
-<p>Once planing, a broad reach (about 120–135° to the wind) is the fastest point of sail: the sail's pull points forward instead of over the side, so you're no longer overpowered. Stand the rig up (left stick back toward the middle), sheet in close to the stall and sit back on the tail (right stick down) so the board rides on less water. Leaning the rig to windward helps on a beam reach, but with the boom eased it only tips the sail's force upward.</p>
+<p>Once planing, a broad reach (about 120–135° to the wind) is the fastest point of sail: the sail's pull points forward instead of over the side, so you're no longer overpowered. Keep the rig fairly upright, with only enough windward lean to keep the boom within reach (with the boom eased, leaning it more just tips the sail's force upward), sheet in close to the stall and sit back on the tail (right stick down) so the board rides on less water.</p>
 <p>Bear away much further and the apparent wind gets lighter as it swings behind you. In a moderate breeze you drop off the plane somewhere past 135°; it takes more wind to plane deep downwind.</p>
 <h3>Tack</h3>
 <p>Head up by raking the rig back while keeping the sail sheeted in. When the nose approaches the wind, press B and step round the front of the mast. As the nose crosses the wind you change sides; then rake the rig forward to bear away on the new tack. Small boards sink if you tack slowly.</p>
@@ -61,6 +69,7 @@ const TECHNIQUE = `
 <dt>Spin-out</dt><dd>The fin ventilates and loses grip; the tail slides out. Sheet out and press on the front foot.</dd>
 <dt>Catapult</dt><dd>Launched over the front by a gust while hooked in.</dd>
 <dt>Sinker</dt><dd>A board with less volume (litres) than you, your rig and the board weigh (kg): it only floats you when planing.</dd>
+<dt>Harness lines</dt><dd>The loop of rope on the boom you hook into. Its length (in inches, typically 26–34") sets how far out you hang.</dd>
 <dt>Mast foot pressure</dt><dd>Weight hung through the harness into the mast foot; keeps the nose down at speed.</dd>
 </dl>`;
 
@@ -180,7 +189,8 @@ export class Menu {
         ${slider('mass', 'Your weight', 50, 110, 1, s.mass, `${s.mass} kg`)}
         ${slider('height', 'Your height', 155, 200, 1, s.height, `${s.height} cm`)}
         ${slider('boom', 'Boom height', -12, 16, 1, s.boomRel, boomLabel(s))}
-        <p class="muted">Set the boom between chest and shoulder height. Higher gives more leverage and puts more weight through the harness; lower gives more control.</p>
+        ${slider('lines', 'Harness lines', -6, 6, 1, s.linesRel ?? 0, linesLabel(s))}
+        <p class="muted">How far out you can hang decides how much power you can hold. Unhooked, it's your arms; hooked in, it's the harness lines. Longer lines let you hang further out but take the boom further from your hands; shorter lines keep you upright and close to the rig. A higher boom lets you lean further out on straight arms but needs longer lines, or the hook won't reach. Leaning the rig to windward brings the boom out over the water to you.</p>
         <h3>Assists</h3>
         ${toggle('autohike', 'Auto-hike: the game balances your body against the pull (LT is ignored)', s.autoHike)}
         ${toggle('nofalls', 'No falls: you never get pulled over or fall back', s.noFalls)}
@@ -233,7 +243,14 @@ export class Menu {
     range('chop', 'chop', (v) => `${v.toFixed(1)}×`, (v) => { s.chop = v; h.conditions(); });
     range('sail', 'sail', (v) => `${SAILS[v].area.toFixed(1)} m²`, (v) => { s.sailArea = SAILS[v].area; h.gear(); });
     range('mass', 'mass', (v) => `${v} kg`, (v) => { s.mass = v; h.gear(); });
-    range('height', 'height', (v) => `${v} cm`, (v) => { s.height = v; const o = $('boom-out'); if (o) o.textContent = boomLabel(s); h.gear(); });
+    range('height', 'height', (v) => `${v} cm`, (v) => {
+      s.height = v;
+      const o = $('boom-out'), l = $('lines-out');
+      if (o) o.textContent = boomLabel(s);
+      if (l) l.textContent = linesLabel(s);
+      h.gear();
+    });
+    range('lines', 'linesRel', () => '', (v) => { s.linesRel = v; $('lines-out').textContent = linesLabel(s); h.gear(); });
     range('boom', 'boomRel', () => '', (v) => { s.boomRel = v; $('boom-out').textContent = boomLabel(s); h.gear(); });
     range('volume', 'volume', (v) => `${Math.round(v * 100)}%`, (v) => { s.volume = v; h.options(); });
     for (const card of this.content.querySelectorAll('[data-board]')) {

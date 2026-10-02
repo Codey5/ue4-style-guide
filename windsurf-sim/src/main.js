@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Sim, S, BEACH_Z } from './physics/sim.js';
 import { clamp } from './physics/math.js';
-import { BOOM_RATIO } from './physics/gear.js';
+import { BOOM_RATIO, LINES_RATIO } from './physics/gear.js';
 import { createEnvironment, createRenderer, createScene, World } from './render/scene.js';
 import { Water } from './render/water.js';
 import { buildBoard, Rig, Sailor } from './render/models.js';
@@ -21,7 +21,7 @@ const STORE_KEY = 'beam-reach-settings-v2';
 
 const defaults = {
   windKn: 15, gustiness: 0.45, shifts: 0.5, chop: 1,
-  boardId: 'free135', sailArea: 7.0, mass: 75, height: 183, boomRel: 0,
+  boardId: 'free135', sailArea: 7.0, mass: 75, height: 183, boomRel: 0, linesRel: 0,
   autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
   windParticles: true, cameraShake: true,
 };
@@ -49,6 +49,8 @@ function saveSettings(s) {
 const settings = loadSettings();
 /** Boom height above the deck in cm: between chest and shoulder, plus the rider's adjustment. */
 export const boomHeightFor = (st) => Math.round(st.height * BOOM_RATIO + st.boomRel);
+/** Harness line length in inches (as they're sold): scaled to your height, plus your adjustment. */
+export const linesFor = (st) => Math.round((st.height * LINES_RATIO) / 2.54 + st.linesRel);
 const canvas = document.getElementById('view');
 const renderer = createRenderer(canvas);
 const env = createEnvironment();
@@ -76,7 +78,7 @@ function makeSim(start, setup = null, watch = false) {
   const wind = setup ? setup.wind : { speedKn: settings.windKn, gustiness: settings.gustiness, shifts: settings.shifts, chop: settings.chop };
   return new Sim({
     boardId: setup?.boardId ?? settings.boardId, sailArea: setup?.sailArea ?? settings.sailArea, sailorMass: settings.mass,
-    sailorHeight: settings.height / 100, boomHeight: boomHeightFor(settings) / 100,
+    sailorHeight: settings.height / 100, boomHeight: boomHeightFor(settings) / 100, harnessLines: linesFor(settings) * 0.0254,
     wind: { ...wind, fromDeg: 270 },
     // The coach does its own hiking and never uses the no-falls assist.
     assists: watch ? { autoHike: false, noFalls: false } : { autoHike: settings.autoHike, noFalls: settings.noFalls },

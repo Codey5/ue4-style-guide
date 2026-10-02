@@ -142,7 +142,7 @@ export class Hud {
     $('chip-spin').hidden = !sim.finVentilated;
     $('chip-spin').className = 'chip alarm';
     const holding = sim.state === S.SAILING || sim.state === S.FLIP || sim.state === S.TACK;
-    $('bal-text').textContent = holding ? `lean ${(sim.sailor.beta * RAD).toFixed(0)}°` : '—';
+    $('bal-text').textContent = holding ? `lean ${(sim.sailor.beta * RAD).toFixed(0)}°${sim.state === S.SAILING && sim.betaMax !== undefined ? ` of ${(sim.betaMax * RAD).toFixed(0)}°` : ''}` : '—';
     $('v-sheet').textContent = (controls.sheet * 100).toFixed(0);
     $('v-hike').textContent = (controls.hike * 100).toFixed(0);
     $('v-pull').textContent = `${pull.toFixed(0)} N`;
@@ -278,6 +278,8 @@ export class Hud {
       row('Body moment', `${f(bal.tauGrav)} N·m`) +
       row('Core / feet', `${f(bal.muscle)} of ±${f(bal.tauMax)} N·m`) +
       row('Lean / balanced at', `${f(sim.sailor.beta * RAD)}° / ${f((sim.betaEq ?? 0) * RAD)}°`) +
+      row('Reach (arms or lines)', `${f((sim.betaMin ?? 0) * RAD)}° to ${f((sim.betaMax ?? 0) * RAD)}°${sim.bodyGeo && !sim.bodyGeo.fits ? ' (boom out of reach)' : ''}`) +
+      row('Weight out from centreline', `${f((bal.leverMax ?? 0) * 100)} cm at full reach`) +
       `</dl>`;
   }
 }
