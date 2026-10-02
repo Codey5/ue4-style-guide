@@ -1,7 +1,7 @@
 // The coach: an expert sailor that produces the same controls a player would
 // (sticks, triggers, button presses). Used by the in-game lessons and by the
 // headless physics checks.
-import { DEG, clamp } from '../physics/math.js';
+import { DEG, clamp, smoothstep } from '../physics/math.js';
 import { emptyControls, S } from '../physics/sim.js';
 
 export class Coach {
@@ -58,12 +58,18 @@ export class Coach {
     if (sim.state !== S.SAILING) return c;
     const steer = this.steer(dt, o.twa ?? 100, o.turnRate ?? 6);
     c.rake = clamp(steer, -1, 1);
-    // Rig lean: to windward when planing (lift and balance), and further to
-    // windward when the rig is already fully forward and we still need to bear away.
+    // Broad reaches: the apparent wind is light and the sail no longer
+    // overpowers you, so sheet in toward maximum lift and sit back on the tail.
+    const deep = smoothstep(105 * DEG, 140 * DEG, this.cur);
+    // Rig lean: a little to windward when planing on a reach (the centre of
+    // effort comes over the board, so you can hold more power), upright on a
+    // broad reach, where the sail's force points forward and leaning it would
+    // only tip it upward. Further to windward when the rig is already fully
+    // forward and we still need to bear away.
     const p = t.planing;
     const bearAway = Math.max(0, steer - 0.7) * 1.4;
     const headUp = Math.max(0, -steer - 0.5) * 1.2;
-    c.lean = o.lean ?? side * clamp(0.5 * p + bearAway - headUp, -0.2, 1);
+    c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + bearAway - headUp, -0.2, 1);
     // Sheet for the target angle of attack, but never more power than the body can hold.
     const bal = sim.balance;
     let over = 0;
@@ -77,7 +83,7 @@ export class Coach {
         over = Math.max(over, (sim.handForce - 0.8 * grip) / grip * 3);
       }
     }
-    const aTarget = (o.alpha ?? 20) * DEG - clamp(over, 0, 1) * 14 * DEG;
+    const aTarget = (o.alpha ?? 20 + 4 * deep) * DEG - clamp(over, 0, 1) * 14 * DEG;
     // Don't sheet in faster than you can get your body out against it.
     const lag = sim.betaTarget !== undefined ? Math.max(0, sim.betaTarget - sim.sailor.beta) : 0;
     if (sim.sailor.gripLost > 0) this.sheet = Math.min(this.sheet, 0.3);
@@ -85,16 +91,22 @@ export class Coach {
     c.sheet = this.sheet;
     c.pump = !!o.pump && p < 0.85;
     // On the plane, steer with the feet too: toes (leeward rail) bear away,
-    // heels (windward rail) head up.
-    c.rail = o.rail ?? (p > 0.9 && Math.abs(steer) > 0.35 ? clamp(-side * steer * 0.6, -0.8, 0.8) : 0);
+    // heels (windward rail) head up. Off the wind a little steady heel
+    // pressure stops the eased sail's drive turning the board further downwind.
+    const heel = p > 0.9 ? side * 0.3 * deep : 0;
+    const carve = p > 0.9 && Math.abs(steer) > 0.35 ? -side * steer * 0.6 : 0;
+    c.rail = o.rail ?? clamp(heel + carve, -0.8, 0.8);
     c.hike = o.hike === 'auto' ? this.hikeFor(dt) : 0;
-    // Stance: weight forward to get planing, back toward the straps once going.
+    // Stance: weight forward to get planing, back toward the straps once going,
+    // then onto the tail at speed so the board rides on less water (furthest
+    // back on a broad reach, where the fin is lightly loaded and won't spin out).
     const s = sim.sailor, b = sim.board;
     const going = p > 0.95 && t.speed > 5.5;
     const wantBack = going && (o.straps || o.moveBack);
     if (wantBack && s.straps === 0 && s.x > b.frontStrapX + 0.18) c.weight = -1;
     else if (o.straps && going && s.straps < 2) this.press(c, 'straps', 0.6);
     else if (s.straps === 0) c.weight = o.weight ?? 0.2;
+    else if (s.straps === 2 && going) c.weight = o.weight ?? -(0.35 + 0.55 * deep) * smoothstep(6, 9, t.speed);
     if ((o.hook ?? o.straps) && going && !s.hooked && this.sheet > 0.45) this.press(c, 'hook', 1.2);
     return c;
   }

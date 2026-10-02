@@ -2,7 +2,7 @@
 // with real controller inputs; in "try" mode the player does, and the same
 // checks tick the steps off. Captions use {TOKENS} that the UI turns into the
 // right button glyphs for the player's controller or keyboard.
-import { DEG, MS_TO_KN, clamp } from '../physics/math.js';
+import { DEG, MS_TO_KN, clamp, smoothstep } from '../physics/math.js';
 import { S, emptyControls } from '../physics/sim.js';
 import { Coach } from './coach.js';
 
@@ -186,9 +186,12 @@ export const LESSONS = [
           const sim = x.sim, side = sim.sailor.side;
           x.lesson.turnSide = side;
           const c = emptyControls();
+          // Move the rig into the carve over a moment rather than throwing it:
+          // a rig snapped forward pumps a burst of apparent wind into the sail.
+          const k = smoothstep(0, 0.8, x.t);
           c.rail = -side;
-          c.rake = 0.7;
-          c.lean = side * 0.55;
+          c.rake = 0.7 * k;
+          c.lean = side * (0.2 + 0.35 * k);
           c.weight = 0.35;
           x.coach.sheet = clamp(x.coach.sheet + (0.62 - x.coach.sheet) * x.dt * 2, 0, 1);
           c.sheet = x.coach.sheet;

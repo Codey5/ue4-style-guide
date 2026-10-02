@@ -200,9 +200,11 @@ export class Sim {
       const up = Math.max(0, aeroUp);
       W = (mB + mS + rigOnBoard) * G - aeroUp;
       const feetLoad = Math.max(0.05 * mS * G, mS * G - mfp - up);
-      const ceH = this.sailGeo.ceHeight;
+      // The sail's drive reaches the board through the feet and the mast foot,
+      // at deck level (the sailor leans back against it), so it only pitches
+      // the nose down with the deck's height above the planing surface.
       xLoad = (mB * G * -0.05 + (rigOnBoard * G + mfp) * b.mastFootX + feetLoad * this.feetLoadX()) /
-        Math.max(1, mB * G * 1 + rigOnBoard * G + mfp + feetLoad) + (0.2 * aeroFwd * ceH) / Math.max(200, W);
+        Math.max(1, mB * G * 1 + rigOnBoard * G + mfp + feetLoad) + (aeroFwd * (deckY + 0.05)) / Math.max(200, W);
     } else {
       W = (mB + mS * 0.12 + rigOnBoard * 0.4) * G - Math.max(0, aeroUp) * 0.3;
       xLoad = b.mastFootX - 0.3;

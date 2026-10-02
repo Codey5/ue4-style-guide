@@ -43,10 +43,25 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
   }
   if (!only || only === 'polar') {
-    console.log('\nFreeride 135 L, 7.0 m², 16 kn — points of sail');
-    for (const twa of [45, 55, 70, 90, 110, 130, 150]) {
-      const r = runSteady({ wind: 16, twa });
-      console.log(`  TWA ${String(twa).padStart(3)}: ${fmt(r)}`);
+    const polar = {};
+    for (const wind of [16, 22]) {
+      console.log(`\nFreeride 135 L, 7.0 m², ${wind} kn — points of sail`);
+      for (const twa of wind === 16 ? [45, 55, 70, 90, 110, 130, 140, 150] : [100, 130, 145]) {
+        const r = runSteady({ wind, twa });
+        polar[`${wind}/${twa}`] = r;
+        console.log(`  TWA ${String(twa).padStart(3)}: ${fmt(r)}`);
+      }
+    }
+    // A planing board is fastest on a broad reach once there's enough wind:
+    // bearing away from a beam reach to 130° must not drop it off the plane.
+    const checks = [
+      ['16 kn: 130° keeps at least 90% of the beam-reach speed', polar['16/130'].kn >= 0.9 * polar['16/90'].kn && polar['16/130'].planing > 0.95],
+      ['22 kn: 130° is faster than a beam reach', polar['22/130'].kn > polar['22/100'].kn],
+      ['22 kn: still planing at 145°', polar['22/145'].planing > 0.95],
+    ];
+    for (const [name, ok] of checks) {
+      console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+      if (!ok) process.exitCode = 1;
     }
   }
   if (!only || only === 'gear') {

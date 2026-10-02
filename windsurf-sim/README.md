@@ -32,7 +32,7 @@ Press Y (△, or G on the keyboard) while watching to take over.
 | 5 | Carve gybe | Freeride 135 L, 7.0 m², 17 kn |
 | 6 | Waterstart | Freeride 115 L, 6.3 m², 16 kn |
 
-The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls, loses its grip or spins out. It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom.
+The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; sits back on the tail at speed and stands the rig up on a broad reach; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls, loses its grip or spins out. It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom.
 
 ## Controls
 
@@ -75,13 +75,14 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 - Soft-sail lift/drag polar with luffing below about 5°, a gentle stall past 23°, flat-plate behaviour beyond, and a weaker inverted-camber response when backwinded.
 - The leech twists open as dynamic pressure rises, which is the sail's own gust depower.
 - Raking the rig back and keeping it upright closes the foot gap and raises the effective aspect ratio.
-- The force acts at each strip's centre of pressure. Steering comes from the centre of effort moving relative to the fin and daggerboard (rake forward = bear away, sheet in = head up). Leaning the rig to windward gives vertical lift that unweights the board.
+- The force acts at each strip's centre of pressure. Steering comes from the centre of effort moving relative to the fin and daggerboard (rake forward = bear away, sheet in = head up). Leaning the rig to windward gives vertical lift that unweights the board. With the boom eased on a broad reach, the same lean mostly tips the force upward and costs drive.
 
 **Hull**
 
 - Savitsky's prismatic planing equations give the wetted length from the fore-aft load position and the trim angle needed for dynamic lift. Whatever weight dynamic lift can't carry, buoyancy carries, and that part pays wave-making drag.
 - That gap is the planing hump. You get through it with power, a flat board, weight forward and pumping.
-- Standing in the straps before planing sinks the tail. Weight too far forward at speed digs the nose in.
+- Standing in the straps before planing sinks the tail. Weight too far forward at speed digs the nose in. Once planing, weight back on the tail shortens the wetted length and cuts friction; mast-foot pressure and the rig's weight pull the load forward again.
+- The sail's drive reaches the board at deck level, through your feet and the mast foot, so it only pitches the nose down by the deck's height. You lean back against the rest.
 - Friction uses the ITTC-57 line on the actual wetted area. At speed you ride on the narrow tail.
 - Small boards sink when the speed drops: volume (litres) against total mass (kg).
 - Chop is a set of directional wave trains travelling downwind; the board rides them.
@@ -116,16 +117,19 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 ### Validation
 
-`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers. Typical results (75 kg, 183 cm sailor):
+`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers, and fails if bearing away from a beam reach to 130° costs more than 10% of the speed. Typical results (75 kg, 183 cm sailor):
 
 | Setup | Result | Real-world reference |
 | --- | --- | --- |
 | 135 L, 7.0 m², 6–10 kn, beam reach | 4–6 kn, displacement | Slogging speeds |
-| 135 L, 7.0 m², 12 kn | on the edge of planing (92%) | Planing threshold ~12 kn for this combination |
-| 135 L, 7.0 m², 14 / 16 / 20 kn | 17.7 / 19.1 / 21.1 kn board speed | Typical freeride GPS speeds |
-| 135 L, 7.0 m², 24 kn | 22 kn, sailor at the limit | 7.0 m² is too big here |
+| 135 L, 7.0 m², 11 / 12 kn | 6.7 kn slogging / just planes | Planing threshold ~12 kn for this combination |
+| 135 L, 7.0 m², 14 / 16 / 20 kn | 19.7 / 21.2 / 23.7 kn board speed | Typical freeride GPS speeds |
+| 135 L, 7.0 m², 24 kn | 25 kn, sailor at the limit | 7.0 m² is too big here |
 | 135 L, 16 kn, close-hauled planing | holds about 55° to the true wind | 50–55° typical for freeride |
-| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 21.8 / 24.8 kn | Smaller, faster boards |
+| 135 L, 16 kn, 90° / 130° | 20.4 / 20.8 kn | A broad reach is as fast or faster once planing |
+| 135 L, 22 kn, 100° / 130° / 145° | 24.5 / 26.0 / 20.0 kn | Fastest on a broad reach; deep angles need more wind |
+| 135 L, 16 kn, 140° and deeper | drops off the plane | The apparent wind gets too light to carry the board |
+| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 24.3 / 27.8 kn | Smaller, faster boards |
 | 210 L beginner, 5.3 m², 8 kn | 4.5 kn, can sail 55° upwind | Daggerboard boards point in light wind |
 | 95 L board, 85 kg sailor | refuses to float you standing still | A sinker |
 
@@ -158,4 +162,3 @@ The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the fra
 - Remappable controls.
 - A detailed sailor animation rig: the sailor is posed with inverse kinematics from the simulation state. The hands are placed on the boom first and the body leans out only as far as the arms reach, so at full hike the drawn lean is less than the physics lean shown in the HUD.
 
-Broad reaches beyond about 125° to the wind drop off the plane earlier than they would for a real sailor.

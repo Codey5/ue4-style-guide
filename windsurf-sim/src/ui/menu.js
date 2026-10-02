@@ -38,6 +38,9 @@ const TECHNIQUE = `
 <li>When the board releases and the wake goes quiet, move back (right stick down), hook in (A) and step into the front strap, then the back strap (X).</li>
 <li>Hang off the harness lines with LT. The balance needle shows the fight between the sail's pull and your body weight. When a gust hits, sheet out a touch. If you're hooked in when it gets too much, it's a catapult.</li>
 </ol>
+<h3>Speed on a broad reach</h3>
+<p>Once planing, a broad reach (about 120–135° to the wind) is the fastest point of sail: the sail's pull points forward instead of over the side, so you're no longer overpowered. Stand the rig up (left stick back toward the middle), sheet in close to the stall and sit back on the tail (right stick down) so the board rides on less water. Leaning the rig to windward helps on a beam reach, but with the boom eased it only tips the sail's force upward.</p>
+<p>Bear away much further and the apparent wind gets lighter as it swings behind you. In a moderate breeze you drop off the plane somewhere past 135°; it takes more wind to plane deep downwind.</p>
 <h3>Tack</h3>
 <p>Head up by raking the rig back while keeping the sail sheeted in. When the nose approaches the wind, press B and step round the front of the mast. As the nose crosses the wind you change sides; then rake the rig forward to bear away on the new tack. Small boards sink if you tack slowly.</p>
 <h3>Carve gybe</h3>
