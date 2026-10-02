@@ -413,39 +413,66 @@ export class Sailor {
     const facing = leanDir.clone().negate(); // toward the sail
     const across = new THREE.Vector3(1, 0, 0); // shoulder line roughly along the board
     const base = feetF.clone().add(feetB).multiplyScalar(0.5);
-    const bodyAxis = new THREE.Vector3().addScaledVector(UP, Math.cos(beta)).addScaledVector(leanDir, Math.sin(beta));
-    const pelvis = base.clone().addScaledVector(bodyAxis, leg * (1 - sit)).addScaledVector(facing, sit * 0.3);
-    const chest = pelvis.clone().addScaledVector(bodyAxis, torsoLen * 0.72).addScaledVector(facing, 0.03);
-    const neck = pelvis.clone().addScaledVector(bodyAxis, torsoLen);
-    const head = neck.clone().addScaledVector(bodyAxis, 0.09 * H).addScaledVector(facing, 0.02);
-    const shL = neck.clone().addScaledVector(across, 0.13 * H).addScaledVector(bodyAxis, -0.028 * H);
-    const shR = neck.clone().addScaledVector(across, -0.13 * H).addScaledVector(bodyAxis, -0.028 * H);
+    const reach = 0.37 * H;
 
-    // Hands: front hand forward on the boom, back hand further aft.
+    // Hands first: front hand forward on the boom, back hand further aft (or on
+    // the mast and uphaul in secure position).
     let haF, haB;
-    if (st === S.SECURE || st === S.UPHAUL || st === S.CLIMB || (st === S.TACK && !sim.stateData.switched)) {
+    const onBoom = !(st === S.SECURE || st === S.UPHAUL || st === S.CLIMB || (st === S.TACK && !sim.stateData.switched));
+    if (!onBoom) {
       haF = toBoard(new THREE.Vector3(0.02, Math.min(rig.geo.boomHeight - 0.1, 0.4 + (sim.rig.up ?? 1) * 0.9), -side * 0.05));
       haB = toBoard(new THREE.Vector3(0.12, Math.min(rig.geo.boomHeight, 0.5 + (sim.rig.up ?? 1) * 0.9), -side * 0.08));
     } else {
       haF = toBoard(rig.boomPoint(0.26 + (s.hooked ? 0.04 : 0), side));
-      haB = toBoard(rig.boomPoint(rig.boomLength * (s.hooked ? 0.52 : 0.46), side));
+      haB = toBoard(rig.boomPoint(rig.boomLength * (s.hooked ? 0.5 : 0.44), side));
     }
-    // Reach limit: if the boom is out of reach (falls, transitions) let go.
-    const reach = 0.37 * H;
-    const shF = shL, shB = shR;
+
+    // Body: legs lean out by the physics lean (drawn a little compressed), the
+    // torso stays more upright when sitting in the harness, and if the boom is
+    // out of reach the sailor comes in until the hands are on it.
+    const build = (bLeg) => {
+      const bTorso = bLeg * (s.hooked ? 0.7 : 0.85);
+      const legAxis = new THREE.Vector3().addScaledVector(UP, Math.cos(bLeg)).addScaledVector(leanDir, Math.sin(bLeg));
+      const torsoAxis = new THREE.Vector3().addScaledVector(UP, Math.cos(bTorso)).addScaledVector(leanDir, Math.sin(bTorso));
+      const pelvis = base.clone().addScaledVector(legAxis, leg * (1 - sit)).addScaledVector(facing, sit * 0.3);
+      const neck = pelvis.clone().addScaledVector(torsoAxis, torsoLen);
+      const shL = neck.clone().addScaledVector(across, 0.13 * H).addScaledVector(torsoAxis, -0.028 * H);
+      const shR = neck.clone().addScaledVector(across, -0.13 * H).addScaledVector(torsoAxis, -0.028 * H);
+      return { pelvis, neck, shL, shR, torsoAxis };
+    };
+    const fits = (bd) => bd.shL.distanceTo(haF) <= reach * 0.97 && bd.shR.distanceTo(haB) <= reach * 0.97;
+    let bVis = clamp(beta * 0.85, -20 * DEG, 62 * DEG);
+    let body = build(bVis);
+    if (onBoom && !fits(body)) {
+      let lo = -20 * DEG, hi = bVis;
+      if (fits(build(lo))) {
+        for (let i = 0; i < 14; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(build(mid))) lo = mid; else hi = mid;
+        }
+        bVis = lo;
+        body = build(bVis);
+      }
+    }
+    const { pelvis, neck, shL, shR, torsoAxis } = body;
+    const chest = pelvis.clone().lerp(neck, 0.72).addScaledVector(facing, 0.03);
+    const head = neck.clone().addScaledVector(torsoAxis, 0.09 * H).addScaledVector(facing, 0.02);
+
+    // If the boom still can't be reached (mid-fall, odd transitions) let go.
     const clampReach = (sh, ha) => {
       const d = ha.clone().sub(sh);
-      if (d.length() > reach) ha = sh.clone().addScaledVector(d.normalize(), reach);
-      return ha;
+      return d.length() > reach ? sh.clone().addScaledVector(d.normalize(), reach) : ha;
     };
-    haF = clampReach(shF, haF);
-    haB = clampReach(shB, haB);
+    const gripF = haF.distanceTo(shL) <= reach, gripB = haB.distanceTo(shR) <= reach;
+    haF = clampReach(shL, haF);
+    haB = clampReach(shR, haB);
 
     Object.assign(p, { pelvis, chest, neck, head, shL, shR, haL: haF, haR: haB, footF: feetF, footB: feetB });
     p.elL = ik(shL, haF, 0.19 * H, 0.19 * H, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
     p.elR = ik(shR, haB, 0.19 * H, 0.19 * H, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
     p.kneeF = ik(pelvis, feetF, 0.25 * H, 0.25 * H, facing.clone().add(new THREE.Vector3(0.4, 0.1, 0)));
     p.kneeB = ik(pelvis, feetB, 0.25 * H, 0.25 * H, facing.clone().add(new THREE.Vector3(-0.1, 0.1, 0)));
+    p.grip = { L: gripF, R: gripB, pole: new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4) };
 
     // In the water: floating beside the board, or hanging on near the tail.
     if (st === S.WATER || st === S.WATERSTART || st === S.FALLING || st === S.CLIMB || st === S.RISING) {
@@ -474,20 +501,52 @@ export class Sailor {
     const y = -0.32;
     const p = {};
     if (st === S.WATERSTART) {
-      // Back foot on the board near the tail, body low in the water, hands on the boom.
-      const footB = new THREE.Vector3(b.backStrapX + 0.1, deckY(b, b.backStrapX) + 0.03, side * 0.12);
-      const pelvis = new THREE.Vector3(b.backStrapX - 0.1, y, side * 0.75);
-      const neck = pelvis.clone().add(new THREE.Vector3(0.35, 0.38, -side * 0.05));
-      const head = neck.clone().add(new THREE.Vector3(0.08, 0.15, 0));
+      // Hands on the boom once it's within reach (on the mast or the board
+      // before that), shoulders just below and to windward of the hands, body
+      // trailing in the water, back foot on the board near the tail.
+      const H = this.h, reach = 0.37 * H;
       const toBoard = (v) => v.clone().applyMatrix4(rig.group.matrix);
-      const reach = (sh, ha) => { const d = ha.clone().sub(sh); return d.length() > 0.62 ? sh.clone().addScaledVector(d.normalize(), 0.62) : ha; };
-      const shL = neck.clone().add(new THREE.Vector3(0.15, 0, 0)), shR = neck.clone().add(new THREE.Vector3(-0.15, 0, 0));
-      const haL = reach(shL, toBoard(rig.boomPoint(0.25, side))), haR = reach(shR, toBoard(rig.boomPoint(rig.boomLength * 0.4, side)));
-      const footF = pelvis.clone().add(new THREE.Vector3(0.3, -0.55, side * 0.2));
+      const windward = new THREE.Vector3(0, 0, side);
+      const outside = b.width / 2 + 0.22;
+      const placeShoulders = (hF, hB) => {
+        const mid = hF.clone().add(hB).multiplyScalar(0.5);
+        const sh = mid.add(new THREE.Vector3(-0.12, -0.3, 0)).addScaledVector(windward, 0.3);
+        sh.y = clamp(sh.y, -0.1, 0.9);
+        if (sh.z * side < outside) sh.z = side * outside;
+        return sh;
+      };
+      const candidates = [
+        [toBoard(rig.boomPoint(0.3, side)), toBoard(rig.boomPoint(rig.boomLength * 0.42, side))],
+        [toBoard(new THREE.Vector3(0, 0.35, 0)), toBoard(new THREE.Vector3(0, 0.75, 0))],
+      ];
+      let haL, haR, shMid;
+      for (const [hF, hB] of candidates) {
+        const sm = placeShoulders(hF, hB);
+        if (sm.distanceTo(hF) <= reach * 1.05 && sm.distanceTo(hB) <= reach * 1.05) { haL = hF; haR = hB; shMid = sm; break; }
+      }
+      if (!shMid) {
+        // Hold the board by the mast foot until the rig comes round.
+        haL = new THREE.Vector3(b.mastFootX + 0.05, deckY(b, b.mastFootX) + 0.03, side * 0.12);
+        haR = new THREE.Vector3(b.mastFootX - 0.25, deckY(b, b.mastFootX) + 0.03, side * 0.2);
+        shMid = new THREE.Vector3(b.mastFootX - 0.15, -0.05, side * outside);
+      }
+      const shL = shMid.clone().add(new THREE.Vector3(0.13 * H, 0, 0));
+      const shR = shMid.clone().add(new THREE.Vector3(-0.13 * H, 0, 0));
+      const neck = shMid.clone().add(new THREE.Vector3(0, 0.05, 0));
+      const pelvis = shMid.clone().add(new THREE.Vector3(-0.28, -0.42, 0)).addScaledVector(windward, 0.32);
+      pelvis.y = Math.min(pelvis.y, -0.35);
+      const up = neck.clone().sub(pelvis).normalize();
+      const head = neck.clone().addScaledVector(up, 0.07 * H).add(new THREE.Vector3(0, 0.06, 0));
+      let footB = new THREE.Vector3(b.backStrapX + 0.12, deckY(b, b.backStrapX) + 0.075, side * 0.16);
+      const legLen = 0.49 * H;
+      if (footB.distanceTo(pelvis) > legLen) footB = pelvis.clone().addScaledVector(footB.clone().sub(pelvis).normalize(), legLen);
+      const footF = pelvis.clone().add(new THREE.Vector3(0.15, -0.65, 0)).addScaledVector(windward, 0.12);
+      const clampReach = (sh, ha) => { const d = ha.clone().sub(sh); return d.length() > reach ? sh.clone().addScaledVector(d.normalize(), reach) : ha; };
+      haL = clampReach(shL, haL); haR = clampReach(shR, haR);
       Object.assign(p, {
         pelvis, chest: pelvis.clone().lerp(neck, 0.7), neck, head, shL, shR, haL, haR, footF, footB,
-        elL: ik(shL, haL, 0.31, 0.3, new THREE.Vector3(0, -1, 0)), elR: ik(shR, haR, 0.31, 0.3, new THREE.Vector3(0, -1, 0)),
-        kneeF: ik(pelvis, footF, 0.44, 0.42, new THREE.Vector3(1, 0, 0)), kneeB: ik(pelvis, footB, 0.44, 0.42, new THREE.Vector3(0, 1, 0)),
+        elL: ik(shL, haL, 0.19 * H, 0.19 * H, new THREE.Vector3(0, -1, 0)), elR: ik(shR, haR, 0.19 * H, 0.19 * H, new THREE.Vector3(0, -1, 0)),
+        kneeF: ik(pelvis, footF, 0.25 * H, 0.25 * H, new THREE.Vector3(1, 0, 0)), kneeB: ik(pelvis, footB, 0.25 * H, 0.25 * H, new THREE.Vector3(0, 1, 0)),
       });
       return p;
     }
@@ -515,6 +574,16 @@ export class Sailor {
     const k = 1 - Math.exp(-dt * (fast ? 22 : 9));
     for (const j of JOINTS) this.pose[j].lerp(target[j], k);
     const p = this.pose;
+    if (target.grip) {
+      const H = this.h, reach = 0.37 * H;
+      const snap = (sh, el, ha, tHa, on) => {
+        if (!on || p[sh].distanceTo(target[tHa]) > reach) return;
+        p[ha].copy(target[tHa]);
+        p[el].copy(ik(p[sh], p[ha], 0.19 * H, 0.19 * H, target.grip.pole));
+      };
+      snap('shL', 'elL', 'haL', 'haL', target.grip.L);
+      snap('shR', 'elR', 'haR', 'haR', target.grip.R);
+    }
     this.torso.set(p.pelvis, p.neck);
     this.neck.set(p.neck, p.head);
     this.upperL.set(p.shL, p.elL); this.foreL.set(p.elL, p.haL);

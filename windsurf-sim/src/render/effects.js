@@ -139,11 +139,11 @@ export class Effects {
       let dx = pv.x - nx.x, dz = pv.z - nx.z;
       const l = Math.hypot(dx, dz) || 1;
       dx /= l; dz /= l;
-      const width = 0.18 + (i / this.trailN) * 1.6;
+      const width = 0.14 + (i / this.trailN) * 0.9;
       const y = waves.height(tp.x, tp.z, sim.t) + 0.04;
       this.tPos.set([tp.x - dz * width, y, tp.z + dx * width, tp.x + dz * width, y, tp.z - dx * width], o);
       const age = i / this.trailN;
-      const a = Math.min(1, i / 4) * (1 - age) * (1 - age) * 0.26 * tp.k;
+      const a = Math.min(1, i / 4) * (1 - age) * (1 - age) * 0.18 * tp.k;
       this.tCol.set([0.93, 0.96, 0.98, a, 0.93, 0.96, 0.98, a], c);
     }
     this.wake.geometry.attributes.position.needsUpdate = true;

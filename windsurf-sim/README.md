@@ -64,6 +64,7 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 **Wind**
 
+- You can read the wind like on a real spot: dark gust patches, streaks and wind lanes lined up with the wind on the water, flags, a windsock, and air particles drifting with the local wind (gusts visibly speed them up; they can be turned off in Controls).
 - Forecast wind is given at 10 m. A logarithmic boundary layer over water (z₀ = 0.2 mm) means the sail sees about 85% of it.
 - Gusts are a moving noise field advected with the wind. The water shader evaluates the same noise, so the dark patches you see coming are the gusts you will feel.
 - Slow and gust-correlated wind shifts.
@@ -147,7 +148,7 @@ src/ui/        gamepad & keyboard input, HUD, menu, procedural audio
 tools/         build script, physics, maneuver and lesson checks
 ```
 
-The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the frame rate.
+The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the frame rate; rendering interpolates between the last two physics states so motion stays smooth at any refresh rate. The water has no textures: waves and ripples are evaluated per pixel and filtered by their size on screen (the procedural equivalent of mipmapping), so distant water doesn't shimmer.
 
 ## Not in this version
 
@@ -155,6 +156,6 @@ The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the fra
 - Real swell and breaking waves.
 - Race courses and timing.
 - Remappable controls.
-- A detailed sailor animation rig: the sailor is posed with inverse kinematics from the simulation state.
+- A detailed sailor animation rig: the sailor is posed with inverse kinematics from the simulation state, hands placed on the boom first.
 
 Broad reaches beyond about 125° to the wind drop off the plane earlier than they would for a real sailor.

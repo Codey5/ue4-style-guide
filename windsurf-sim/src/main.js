@@ -7,6 +7,7 @@ import { Water } from './render/water.js';
 import { buildBoard, Rig, Sailor } from './render/models.js';
 import { Effects } from './render/effects.js';
 import { CameraRig } from './render/camera.js';
+import { WindParticles } from './render/windfx.js';
 import { Input } from './ui/input.js';
 import { Hud } from './ui/hud.js';
 import { Menu } from './ui/menu.js';
@@ -21,6 +22,7 @@ const defaults = {
   windKn: 15, gustiness: 0.45, shifts: 0.5, chop: 1,
   boardId: 'free135', sailArea: 7.0, mass: 75, height: 178, boomRel: 0,
   autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
+  windParticles: true, cameraShake: true,
 };
 function loadSettings() {
   try {
@@ -47,6 +49,7 @@ let sim = makeSim('secure');
 const water = new Water(scene, env);
 const world = new World(scene, sim.wind);
 const effects = new Effects(scene);
+const windFx = new WindParticles(scene);
 const input = new Input(canvas);
 const hud = new Hud();
 const audio = new Audio();
@@ -99,6 +102,8 @@ function restart(mode, setup = null, watch = false) {
   camRig.yaw = null;
   camRig.pos.set(0, 0, 0); // snap instead of flying in from the old spot
   camRig.look.set(0, 0, 0);
+  camRig.boardY = undefined;
+  prevState = null;
 }
 
 function applyOptions() {
@@ -106,6 +111,8 @@ function applyOptions() {
   sim.assists.noFalls = settings.noFalls;
   input.rumbleEnabled = settings.rumble;
   input.invertRake = settings.invertRake;
+  windFx.enabled = settings.windParticles;
+  camRig.shakeEnabled = settings.cameraShake;
   audio.volume = settings.volume;
   audio.setMuted(audio.muted);
   saveSettings(settings);
@@ -169,7 +176,7 @@ syncWorld();
 applyOptions();
 // Browsers only allow sound after a user gesture; unlock on the first one.
 for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => audio.start(), { once: true });
-camRig.update(0.016, sim, sim.waves);
+camRig.update(0.016, sim, sim.waves, { pos: sim.pos, yaw: sim.yaw, t: sim.t });
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -185,6 +192,10 @@ let acc = 0;
 let rumbleTimer = 0;
 let rumbleKick = 0;
 let lastControls = null;
+// Physics runs at a fixed 240 Hz; rendering interpolates between the last two
+// physics states so motion is smooth whatever the display refresh rate.
+let prevState = null;
+const snapshot = () => ({ pos: [...sim.pos], yaw: sim.yaw, pitch: sim.pitch, roll: sim.roll, t: sim.t });
 let usedControls = null;
 let framePressed = {};
 let renderTime = 0;
@@ -225,6 +236,7 @@ function frame(now) {
     while (acc >= DT && steps < 24) {
       const coachDriving = lesson && lesson.mode === 'watch';
       const c = coachDriving ? lesson.controls(DT) : first ? controls : { ...controls, pressed: {} };
+      prevState = snapshot();
       sim.step(DT, c);
       usedControls = c;
       for (const [k, v] of Object.entries(c.pressed)) if (v) framePressed[k] = true;
@@ -263,17 +275,27 @@ function frame(now) {
   }
   renderTime += paused ? dt * 0.25 : 0;
 
-  // ---- Visuals
-  boardGroup.position.set(sim.pos[0], sim.pos[1], sim.pos[2]);
-  boardGroup.rotation.set(sim.roll, sim.yaw, sim.pitch, 'YZX');
+  // ---- Visuals, interpolated between the last two physics steps
+  const cur = snapshot();
+  const prev = prevState ?? cur;
+  const a = paused ? 1 : clamp(acc / DT, 0, 1);
+  const lerpAngle = (x, y) => x + Math.atan2(Math.sin(y - x), Math.cos(y - x)) * a;
+  const view = {
+    pos: [0, 1, 2].map((i) => prev.pos[i] + (cur.pos[i] - prev.pos[i]) * a),
+    yaw: lerpAngle(prev.yaw, cur.yaw), pitch: lerpAngle(prev.pitch, cur.pitch), roll: lerpAngle(prev.roll, cur.roll),
+    t: prev.t + (cur.t - prev.t) * a,
+  };
+  boardGroup.position.set(view.pos[0], view.pos[1], view.pos[2]);
+  boardGroup.rotation.set(view.roll, view.yaw, view.pitch, 'YZX');
   boardGroup.updateMatrixWorld(true);
   rig.update(sim, dt, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);
   sailor.update(sim, rig, dt);
   effects.update(paused ? 0 : dt, sim, boardGroup, sim.waves);
-  water.update(sim.t, camera);
-  skyUniforms.uTime.value = sim.t;
-  world.update(sim.t, sim.waves);
-  camRig.update(dt, sim, sim.waves);
+  camRig.update(dt, sim, sim.waves, view);
+  water.update(view.t, camera);
+  skyUniforms.uTime.value = view.t;
+  world.update(view.t, sim.waves);
+  windFx.update(paused ? 0 : dt, camera, sim.wind, view.t, sim.waves.height(camera.position.x, camera.position.z, view.t));
   sun.position.set(sim.pos[0] + env.sunDir.x * 40, env.sunDir.y * 40, sim.pos[2] + env.sunDir.z * 40);
   sun.target.position.set(sim.pos[0], 0, sim.pos[2]);
   sun.target.updateMatrixWorld();

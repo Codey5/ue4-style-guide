@@ -32,40 +32,35 @@ float fbm3(vec3 p) {
 const vertexShader = /* glsl */ `
 uniform float uTime;
 uniform vec3 uCenter;
+uniform float uSpacing;   // vertex spacing of the radial grid per metre of distance
 uniform vec4 uWaveA[8];   // dirX, dirZ, k, omega
 uniform vec2 uWaveB[8];   // amplitude, phase
 varying vec3 vWorld;
-varying vec3 vNormal;
+varying vec2 vBase;
 varying float vHeight;
-varying float vDist;
 void main() {
   vec3 p = position + vec3(uCenter.x, 0.0, uCenter.z);
+  vBase = p.xz;
   float dist = length(position.xz);
-  float fadeW = 1.0 - smoothstep(250.0, 900.0, dist);
-  vec3 disp = vec3(0.0);
-  vec3 n = vec3(0.0, 1.0, 0.0);
+  // Only displace the mesh with waves it has enough vertices to draw; the
+  // rest are drawn per pixel as normals. Stops the far water swimming.
+  float spacing = max(0.1, dist * uSpacing);
+  float far = 1.0 - smoothstep(600.0, 1400.0, dist);
+  vec2 disp = vec2(0.0);
   float h = 0.0;
   for (int i = 0; i < 8; i++) {
     vec4 a = uWaveA[i];
-    float amp = uWaveB[i].x * fadeW;
+    float lambda = 6.2831853 / a.z;
+    float amp = uWaveB[i].x * smoothstep(2.5 * spacing, 5.0 * spacing, lambda) * far;
     float th = a.z * (a.x * p.x + a.y * p.z) - a.w * uTime + uWaveB[i].y;
-    float s = sin(th), c = cos(th);
-    float q = 0.55 / (a.z * max(uWaveB[i].x, 1e-4) * 8.0 + 1e-3);
-    q = min(q, 1.0);
-    disp.x += q * amp * a.x * c;
-    disp.z += q * amp * a.y * c;
-    h += amp * s;
-    float wa = a.z * amp;
-    n.x -= a.x * wa * c;
-    n.z -= a.y * wa * c;
-    n.y -= q * wa * s;
+    float q = min(0.55 / (a.z * max(uWaveB[i].x, 1e-4) * 8.0 + 1e-3), 1.0);
+    disp += q * amp * a.xy * cos(th);
+    h += amp * sin(th);
   }
-  p.xz += disp.xz;
+  p.xz += disp;
   p.y = h;
   vHeight = h;
   vWorld = p;
-  vNormal = normalize(n);
-  vDist = dist;
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }
 `;
@@ -85,10 +80,11 @@ uniform float uWindSpeed;
 uniform float uGustiness;
 uniform float uHs;
 uniform float uShoreZ;
+uniform vec4 uWaveA[8];
+uniform vec2 uWaveB[8];
 varying vec3 vWorld;
-varying vec3 vNormal;
+varying vec2 vBase;
 varying float vHeight;
-varying float vDist;
 ${NOISE_GLSL}
 float gustFactor(vec2 xz) {
   if (uGustiness <= 0.0) return 1.0;
@@ -103,23 +99,55 @@ vec3 skyColor(vec3 dir) {
   c += uSunColor * pow(sun, 350.0) * 6.0 + uSunColor * pow(sun, 8.0) * 0.15;
   return c;
 }
+// How much of a pattern with wavelength lambda survives at this pixel size:
+// the procedural equivalent of mip-mapping. Detail smaller than a few pixels
+// is faded out instead of aliasing into shimmer.
+float keep(float lambda, float fp) { return 1.0 - smoothstep(lambda / 8.0, lambda / 3.0, fp); }
+
 void main() {
   vec3 viewVec = cameraPosition - vWorld;
   float camDist = length(viewVec);
   vec3 V = viewVec / camDist;
-  float g = gustFactor(vWorld.xz);
-  // Wind ripples: small capillary waves running downwind, rougher in gusts.
+  vec2 xz = vWorld.xz;
+  float fp = max(length(fwidth(vBase)), 1e-4); // metres per pixel
+  float g = gustFactor(xz);
   float rough = clamp((uWindSpeed * g) / 9.0, 0.05, 1.6);
   vec2 wd = uWindDir;
   vec2 wp = vec2(-wd.y, wd.x);
-  vec2 xz = vWorld.xz;
-  float detailFade = 1.0 - smoothstep(30.0, 260.0, camDist);
+
+  // Wind lanes: long bands of rougher and slicker water lined up with the wind.
+  float along = dot(xz, wd), across = dot(xz, wp);
+  float drift = uTime * uWindSpeed * 0.035;
+  float windy = smoothstep(4.5, 9.0, uWindSpeed * g);
+  float lane = noise3(vec3((along - drift) / 140.0, across / 9.0, uTime * 0.01)) * keep(18.0, fp);
+  rough *= 1.0 + 0.3 * lane * windy;
+
+  // Chop: the same wave trains as the physics, as per-pixel normals.
+  vec3 n = vec3(0.0, 1.0, 0.0);
+  float lost = 0.0;
+  for (int i = 0; i < 8; i++) {
+    vec4 a = uWaveA[i];
+    float amp = uWaveB[i].x;
+    float w = keep(6.2831853 / a.z, fp);
+    float th = a.z * (a.x * vBase.x + a.y * vBase.y) - a.w * uTime + uWaveB[i].y;
+    float q = min(0.55 / (a.z * max(amp, 1e-4) * 8.0 + 1e-3), 1.0);
+    float wa = a.z * amp;
+    n.x -= a.x * wa * cos(th) * w;
+    n.z -= a.y * wa * cos(th) * w;
+    n.y -= q * wa * sin(th) * w;
+    lost += (1.0 - w) * wa;
+  }
+  // Capillary ripples running downwind, rougher in gusts.
+  vec2 d2 = normalize(wd + wp * 0.6), d3 = normalize(wd - wp * 0.7);
+  float k1 = keep(1.0, fp), k2 = keep(0.69, fp), k3 = keep(0.49, fp), k4 = keep(0.37, fp);
   vec2 r = vec2(0.0);
-  r += wd * cos(dot(xz, wd) * 6.3 - uTime * 6.0) * 0.6;
-  r += normalize(wd + wp * 0.6) * cos(dot(xz, normalize(wd + wp * 0.6)) * 9.1 - uTime * 7.3) * 0.45;
-  r += normalize(wd - wp * 0.7) * cos(dot(xz, normalize(wd - wp * 0.7)) * 12.7 - uTime * 8.8) * 0.35;
-  r += wp * cos(dot(xz, wp) * 17.0 + noise3(vec3(xz * 0.3, uTime * 0.4)) * 3.0 - uTime * 4.0) * 0.25;
-  vec3 N = normalize(vNormal + vec3(r.x, 0.0, r.y) * 0.09 * rough * (0.35 + 0.65 * detailFade));
+  r += wd * cos(dot(xz, wd) * 6.3 - uTime * 6.0) * 0.6 * k1;
+  r += d2 * cos(dot(xz, d2) * 9.1 - uTime * 7.3) * 0.45 * k2;
+  r += d3 * cos(dot(xz, d3) * 12.7 - uTime * 8.8) * 0.35 * k3;
+  r += wp * cos(dot(xz, wp) * 17.0 + noise3(vec3(xz * 0.3, uTime * 0.4)) * 3.0 - uTime * 4.0) * 0.25 * k4;
+  float rippleAmp = 0.09 * rough;
+  lost += rippleAmp * ((1.0 - k1) * 0.6 + (1.0 - k2) * 0.45 + (1.0 - k3) * 0.35 + (1.0 - k4) * 0.25);
+  vec3 N = normalize(n + vec3(r.x, 0.0, r.y) * rippleAmp);
 
   float ndv = max(dot(N, V), 0.0);
   float fresnel = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
@@ -128,26 +156,28 @@ void main() {
   vec3 R = reflect(-V, N);
   R.y = abs(R.y);
   vec3 refl = skyColor(R);
-  // Shallow water near the beach.
   float shallow = smoothstep(uShoreZ + 160.0, uShoreZ + 20.0, vWorld.z);
   vec3 body = mix(uDeep, uShallow, shallow * 0.8 + clamp(vHeight / max(uHs, 0.05), 0.0, 1.0) * 0.12);
   body *= mix(1.0, 0.82, smoothstep(1.0, 1.35, g));
   float scatter = pow(max(dot(-V, uSunDir), 0.0), 3.0) * 0.15;
   vec3 col = mix(body + uShallow * scatter, refl, fresnel);
-  // Sun glitter.
+  // Sun glitter. Slopes too small to draw widen the highlight instead of
+  // sparkling on and off (keeps the far water calm).
   vec3 H = normalize(uSunDir + V);
-  // Tight glitter: a sparkling path toward the sun rather than broad sheens.
   float shin = mix(2400.0, 700.0, clamp(rough, 0.0, 1.0));
-  col += uSunColor * pow(max(dot(N, H), 0.0), shin) * (1.4 + rough * 0.6);
-  // Whitecaps on crests once the wind gets up.
-  // (Beaufort 4 brings the first white horses; they get frequent from Bft 5-6.)
+  float shinEff = max(shin / (1.0 + lost * lost * shin * 0.6), 160.0);
+  col += uSunColor * pow(max(dot(N, H), 0.0), shinEff) * (1.4 + rough * 0.6) * pow(shinEff / shin, 0.7);
+  // Wind streaks: thin lines of foam and bubbles stretched along the wind.
+  float streakN = noise3(vec3((along - drift) / 45.0, across / 1.2, uTime * 0.015));
+  float streak = smoothstep(0.4, 0.75, streakN) * windy * keep(3.0, fp);
+  // Whitecaps on crests once the wind gets up (Bft 4 brings the first white horses).
   float capWind = smoothstep(7.0, 14.0, uWindSpeed * g);
   float crest = smoothstep(0.6, 1.0, vHeight / max(uHs * 0.55, 0.05));
-  float foamNoise = noise3(vec3(xz * 1.7, uTime * 0.6)) * 0.5 + 0.5;
-  float foam = capWind * crest * smoothstep(0.72 - 0.12 * capWind, 0.92, foamNoise) * (0.25 + 0.75 * detailFade);
-  // Breaking shore line.
+  float kf = keep(1.6, fp);
+  float foamNoise = mix(0.5, noise3(vec3(xz * 1.7, uTime * 0.6)) * 0.5 + 0.5, kf);
+  float foam = capWind * crest * smoothstep(0.72 - 0.12 * capWind, 0.92, foamNoise) * (0.3 + 0.7 * kf);
   float shoreFoam = smoothstep(uShoreZ + 6.0, uShoreZ + 1.0, vWorld.z) * (0.5 + 0.5 * sin(uTime * 0.8 + xz.x * 0.05));
-  col = mix(col, vec3(0.92, 0.95, 0.97), clamp(foam * 0.7 + shoreFoam * 0.6, 0.0, 1.0));
+  col = mix(col, vec3(0.92, 0.95, 0.97), clamp(foam * 0.7 + shoreFoam * 0.6 + streak * 0.24, 0.0, 1.0));
   float fog = 1.0 - exp(-uFogDensity * uFogDensity * camDist * camDist);
   col = mix(col, uFogColor, fog);
   gl_FragColor = vec4(col, 1.0);
@@ -157,7 +187,7 @@ void main() {
 `;
 
 /** Radial grid: dense near the camera, coarse out to the horizon. */
-function radialGrid(rings = 150, segments = 200, r0 = 0.6, rMax = 3200) {
+function radialGrid(rings = 190, segments = 256, r0 = 0.5, rMax = 3200) {
   const positions = [0, 0, 0];
   const indices = [];
   const growth = Math.pow(rMax / r0, 1 / (rings - 1));
@@ -180,6 +210,7 @@ function radialGrid(rings = 150, segments = 200, r0 = 0.6, rMax = 3200) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setIndex(indices);
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), rMax * 2);
+  geo.userData.spacing = Math.max(growth - 1, (2 * Math.PI) / segments);
   return geo;
 }
 
@@ -203,9 +234,12 @@ export class Water {
       uGustiness: { value: 0.4 },
       uHs: { value: 0.3 },
       uShoreZ: { value: -260 },
+      uSpacing: { value: 0.06 },
     };
     this.material = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader, fragmentShader });
-    this.mesh = new THREE.Mesh(radialGrid(), this.material);
+    const grid = radialGrid();
+    this.uniforms.uSpacing.value = grid.userData.spacing;
+    this.mesh = new THREE.Mesh(grid, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -1;
     scene.add(this.mesh);

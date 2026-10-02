@@ -191,6 +191,8 @@ export class Menu {
         <h3>Options</h3>
         ${toggle('rumble', 'Rumble: feel the load in the sail and the chop under the board', s.rumble)}
         ${toggle('invert', 'Invert rig rake (stick up = rig back)', s.invertRake)}
+        ${toggle('particles', 'Wind particles: specks drifting with the wind', s.windParticles)}
+        ${toggle('shake', 'Camera sway over chop', s.cameraShake)}
         ${slider('volume', 'Volume', 0, 1, 0.05, s.volume, `${Math.round(s.volume * 100)}%`)}`;
     } else {
       c.innerHTML = `<h2>Technique</h2>${TECHNIQUE}`;
@@ -237,6 +239,8 @@ export class Menu {
     on('nofalls', 'change', (e) => { s.noFalls = e.target.checked; h.options(); });
     on('rumble', 'change', (e) => { s.rumble = e.target.checked; h.options(); });
     on('invert', 'change', (e) => { s.invertRake = e.target.checked; h.options(); });
+    on('particles', 'change', (e) => { s.windParticles = e.target.checked; h.options(); });
+    on('shake', 'change', (e) => { s.cameraShake = e.target.checked; h.options(); });
     // Re-render the rule-of-thumb line when the weight changes.
     on('mass', 'change', () => this.render());
   }
