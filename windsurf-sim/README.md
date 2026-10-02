@@ -32,7 +32,7 @@ Press Y (△, or G on the keyboard) while watching to take over.
 | 5 | Carve gybe | Freeride 135 L, 7.0 m², 17 kn |
 | 6 | Waterstart | Freeride 115 L, 6.3 m², 16 kn |
 
-The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls, loses its grip or spins out.
+The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls, loses its grip or spins out. It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom.
 
 ## Controls
 
@@ -100,7 +100,7 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 **The sailor**
 
 - Set your weight and height in the Gear menu. The body is built from standard anthropometric proportions.
-- The boom sits between chest and shoulder height by default, adjustable like on a real rig. A higher boom gives more leverage; a lower one gives more control.
+- The default sailor is 183 cm and 75 kg. The boom sits between chest and shoulder height (0.74 × your height, 135 cm for 183 cm), adjustable like on a real rig. A higher boom gives more leverage; a lower one gives more control.
 - The sail's heeling moment about the board's centreline is fought by your leaning body weight, plus core strength (which scales with body mass) and foot pressure on the rails.
 - You can pull yourself back upright on the boom, since the rig is pinned at the mast foot.
 - Too little hike for the power and you're pulled over (a catapult if you're hooked in and fast). Hanging out in a lull and you fall in to windward.
@@ -116,16 +116,16 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 ### Validation
 
-`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers. Typical results (75 kg sailor):
+`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers. Typical results (75 kg, 183 cm sailor):
 
 | Setup | Result | Real-world reference |
 | --- | --- | --- |
 | 135 L, 7.0 m², 6–10 kn, beam reach | 4–6 kn, displacement | Slogging speeds |
-| 135 L, 7.0 m², 12 kn | on the edge of planing (93%) | Planing threshold ~12 kn for this combination |
-| 135 L, 7.0 m², 14 / 16 / 20 kn | 17.5 / 18.9 / 20.8 kn board speed | Typical freeride GPS speeds |
+| 135 L, 7.0 m², 12 kn | on the edge of planing (92%) | Planing threshold ~12 kn for this combination |
+| 135 L, 7.0 m², 14 / 16 / 20 kn | 17.7 / 19.1 / 21.1 kn board speed | Typical freeride GPS speeds |
 | 135 L, 7.0 m², 24 kn | 22 kn, sailor at the limit | 7.0 m² is too big here |
 | 135 L, 16 kn, close-hauled planing | holds about 55° to the true wind | 50–55° typical for freeride |
-| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 21.6 / 24.6 kn | Smaller, faster boards |
+| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 21.8 / 24.8 kn | Smaller, faster boards |
 | 210 L beginner, 5.3 m², 8 kn | 4.5 kn, can sail 55° upwind | Daggerboard boards point in light wind |
 | 95 L board, 85 kg sailor | refuses to float you standing still | A sinker |
 
@@ -136,8 +136,8 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 ```bash
 npm install        # three.js and esbuild
 npm run dev        # http://localhost:8000 serves index.html with live ES modules
-npm run build      # writes dist/beam-reach.html (single file, ~670 KB)
-npm test           # physics speed polar, maneuver checks, and every lesson sailed by the coach
+npm run build      # writes dist/beam-reach.html (single file, ~710 KB)
+npm test           # physics speed polar, maneuver checks, every lesson sailed by the coach, hands-on-boom pose check
 ```
 
 ```
@@ -145,7 +145,7 @@ src/physics/   wind & chop, sail aero, planing hull & foils, sailor + state mach
 src/coach/     the coach (an expert sailor driving the controls) and the lesson scripts
 src/render/    three.js: water shader, sky & spot, board/rig/sailor models, spray & wake, cameras
 src/ui/        gamepad & keyboard input, HUD, menu, procedural audio
-tools/         build script, physics, maneuver and lesson checks
+tools/         build script, physics, maneuver, lesson and pose checks
 ```
 
 The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the frame rate; rendering interpolates between the last two physics states so motion stays smooth at any refresh rate. The water has no textures: waves and ripples are evaluated per pixel and filtered by their size on screen (the procedural equivalent of mipmapping), so distant water doesn't shimmer.
@@ -156,6 +156,6 @@ The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the fra
 - Real swell and breaking waves.
 - Race courses and timing.
 - Remappable controls.
-- A detailed sailor animation rig: the sailor is posed with inverse kinematics from the simulation state, hands placed on the boom first.
+- A detailed sailor animation rig: the sailor is posed with inverse kinematics from the simulation state. The hands are placed on the boom first and the body leans out only as far as the arms reach, so at full hike the drawn lean is less than the physics lean shown in the HUD.
 
 Broad reaches beyond about 125° to the wind drop off the plane earlier than they would for a real sailor.

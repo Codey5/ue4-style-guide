@@ -2,6 +2,7 @@
 // each step, the same way the in-game demo plays it. Run: node tools/lesson-check.mjs [lessonId]
 import { Sim } from '../src/physics/sim.js';
 import { LESSONS, LessonRunner } from '../src/coach/lessons.js';
+import { DEFAULT_SAILOR } from '../src/physics/gear.js';
 
 const DT = 1 / 240;
 let failures = 0;
@@ -11,7 +12,7 @@ const verbose = process.argv.includes('-v');
 export function lessonSim(lesson, overrides = {}) {
   const s = lesson.setup;
   return new Sim({
-    boardId: s.boardId, sailArea: s.sailArea, sailorMass: overrides.mass ?? 75, sailorHeight: overrides.height ?? 1.78,
+    boardId: s.boardId, sailArea: s.sailArea, sailorMass: overrides.mass ?? 75, sailorHeight: overrides.height ?? DEFAULT_SAILOR.height,
     wind: { fromDeg: 270, ...s.wind }, start: s.start, assists: { autoHike: false, noFalls: false },
   });
 }

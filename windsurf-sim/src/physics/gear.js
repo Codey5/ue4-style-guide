@@ -77,7 +77,9 @@ export const SAILS = SAIL_TABLE.map(([area, luff, boom]) => ({
   clMax: 1.55,
 }));
 
-export const DEFAULT_SAILOR = { mass: 75, height: 1.78 };
+export const DEFAULT_SAILOR = { mass: 75, height: 1.83 };
+/** Default boom height above the deck as a fraction of body height: between chest and shoulder. */
+export const BOOM_RATIO = 0.74;
 
 export const findBoard = (id) => BOARDS.find((b) => b.id === id) ?? BOARDS[2];
 export const findSail = (area) =>

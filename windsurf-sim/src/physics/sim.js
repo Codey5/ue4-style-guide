@@ -11,7 +11,7 @@ import {
   dot, lerp, mulMtV, mulMV, norm, scale, smoothstep, sub, wrapAngle,
 } from './math.js';
 import { Wind, Waves } from './environment.js';
-import { BOARDS, DEFAULT_SAILOR, findBoard, findSail } from './gear.js';
+import { BOARDS, BOOM_RATIO, DEFAULT_SAILOR, findBoard, findSail } from './gear.js';
 import { buildSailGeometry, sailForces } from './sail.js';
 import { foilPolar, planingSolve } from './hull.js';
 
@@ -56,13 +56,13 @@ export class Sim {
     this.reset(opts.start ?? 'secure');
   }
 
-  /** boomHeight: above the deck; defaults to just under shoulder height (0.8 × body height). */
+  /** boomHeight: above the deck; defaults to between chest and shoulder height (BOOM_RATIO × body height). */
   setGear(boardId, sailArea, sailorMass, sailorHeight = DEFAULT_SAILOR.height, boomHeight) {
     this.board = findBoard(boardId);
     this.sail = findSail(sailArea);
     this.sailorMass = sailorMass;
     this.sailorHeight = clamp(sailorHeight, 1.5, 2.05);
-    this.boomHeight = clamp(boomHeight ?? 0.8 * this.sailorHeight, 1.1, 1.75);
+    this.boomHeight = clamp(boomHeight ?? BOOM_RATIO * this.sailorHeight, 1.0, 1.75);
     this.sailGeo = buildSailGeometry(this.sail, this.boomHeight);
     this.daggerDown = !!this.board.dagger;
     this.prevPoints = null;

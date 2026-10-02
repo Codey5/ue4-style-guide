@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { Sim, S, BEACH_Z } from './physics/sim.js';
 import { clamp } from './physics/math.js';
+import { BOOM_RATIO } from './physics/gear.js';
 import { createEnvironment, createRenderer, createScene, World } from './render/scene.js';
 import { Water } from './render/water.js';
 import { buildBoard, Rig, Sailor } from './render/models.js';
@@ -16,11 +17,11 @@ import { LessonUi } from './ui/lessonui.js';
 import { LESSONS, findLesson, LessonRunner } from './coach/lessons.js';
 
 const DT = 1 / 240;
-const STORE_KEY = 'beam-reach-settings-v1';
+const STORE_KEY = 'beam-reach-settings-v2';
 
 const defaults = {
   windKn: 15, gustiness: 0.45, shifts: 0.5, chop: 1,
-  boardId: 'free135', sailArea: 7.0, mass: 75, height: 178, boomRel: 0,
+  boardId: 'free135', sailArea: 7.0, mass: 75, height: 183, boomRel: 0,
   autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
   windParticles: true, cameraShake: true,
 };
@@ -28,6 +29,16 @@ function loadSettings() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) return { ...defaults, ...JSON.parse(raw) };
+    // v1 put the default boom at 0.8 × height: keep a boom someone set by hand
+    // at the same height, otherwise take the new defaults.
+    const v1 = localStorage.getItem('beam-reach-settings-v1');
+    if (v1) {
+      const old = JSON.parse(v1);
+      const s = { ...defaults, ...old };
+      if ((old.height ?? 178) === 178 && !old.boomRel) Object.assign(s, { height: defaults.height, boomRel: 0 });
+      else s.boomRel = clamp(Math.round(s.height * 0.8 + (old.boomRel ?? 0) - s.height * BOOM_RATIO), -12, 16);
+      return s;
+    }
   } catch { /* storage unavailable */ }
   return { ...defaults };
 }
@@ -36,8 +47,8 @@ function saveSettings(s) {
 }
 
 const settings = loadSettings();
-/** Boom height above the deck in cm: just under shoulder height, plus the rider's adjustment. */
-export const boomHeightFor = (st) => Math.round(st.height * 0.8 + st.boomRel);
+/** Boom height above the deck in cm: between chest and shoulder, plus the rider's adjustment. */
+export const boomHeightFor = (st) => Math.round(st.height * BOOM_RATIO + st.boomRel);
 const canvas = document.getElementById('view');
 const renderer = createRenderer(canvas);
 const env = createEnvironment();

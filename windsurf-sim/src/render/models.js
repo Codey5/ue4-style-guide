@@ -393,7 +393,7 @@ export class Sailor {
       if (s.straps === 2) {
         feetF = new THREE.Vector3(b.frontStrapX, 0, side * strapZF);
         feetB = new THREE.Vector3(b.backStrapX, 0, side * strapZB);
-        sit = s.hooked ? 0.18 : 0.1;
+        sit = s.hooked ? 0.1 : 0.08;
       } else if (s.straps === 1) {
         feetF = new THREE.Vector3(b.frontStrapX, 0, side * strapZF);
         feetB = new THREE.Vector3(s.x - 0.32, 0, side * 0.04);
@@ -411,7 +411,6 @@ export class Sailor {
 
     const leanDir = new THREE.Vector3(-0.22 - s.leanX * 0.8, 0, side).normalize();
     const facing = leanDir.clone().negate(); // toward the sail
-    const across = new THREE.Vector3(1, 0, 0); // shoulder line roughly along the board
     const base = feetF.clone().add(feetB).multiplyScalar(0.5);
     const reach = 0.37 * H;
 
@@ -427,43 +426,91 @@ export class Sailor {
       haB = toBoard(rig.boomPoint(rig.boomLength * (s.hooked ? 0.5 : 0.44), side));
     }
 
-    // Body: legs lean out by the physics lean (drawn a little compressed), the
-    // torso stays more upright when sitting in the harness, and if the boom is
-    // out of reach the sailor comes in until the hands are on it.
+    // Shoulder line: along the board, turning square to it as the boom is let
+    // out (sailing deep, the sailor faces the nose with the boom across the board).
+    const across = new THREE.Vector3(1, 0, 0);
+    if (onBoom) {
+      const d = haF.clone().sub(haB).setY(0);
+      if (d.lengthSq() > 0.01) across.copy(d.normalize());
+    }
+
+    // Body: legs lean out by the physics lean (drawn a little compressed) and
+    // the torso stays more upright when sitting in the harness.
+    const half = across.clone().multiplyScalar(0.11 * H); // shoulder joint half-width
+    const handsX = (haF.x + haB.x) / 2;
     const build = (bLeg) => {
       const bTorso = bLeg * (s.hooked ? 0.7 : 0.85);
       const legAxis = new THREE.Vector3().addScaledVector(UP, Math.cos(bLeg)).addScaledVector(leanDir, Math.sin(bLeg));
       const torsoAxis = new THREE.Vector3().addScaledVector(UP, Math.cos(bTorso)).addScaledVector(leanDir, Math.sin(bTorso));
       const pelvis = base.clone().addScaledVector(legAxis, leg * (1 - sit)).addScaledVector(facing, sit * 0.3);
-      const neck = pelvis.clone().addScaledVector(torsoAxis, torsoLen);
-      const shL = neck.clone().addScaledVector(across, 0.13 * H).addScaledVector(torsoAxis, -0.028 * H);
-      const shR = neck.clone().addScaledVector(across, -0.13 * H).addScaledVector(torsoAxis, -0.028 * H);
-      return { pelvis, neck, shL, shR, torsoAxis };
+      let neck = pelvis.clone().addScaledVector(torsoAxis, torsoLen);
+      if (onBoom) {
+        // Hang under the boom: shoulders centred fore and aft between the hands.
+        const dx = clamp(handsX - neck.x, -0.3, 0.3);
+        pelvis.x += dx * 0.5;
+        neck.x += dx;
+      }
+      const axis = neck.clone().sub(pelvis).normalize();
+      return { pelvis, neck, mid: neck.clone().addScaledVector(axis, -0.028 * H), torsoAxis: axis };
     };
-    const fits = (bd) => bd.shL.distanceTo(haF) <= reach * 0.97 && bd.shR.distanceTo(haB) <= reach * 0.97;
-    let bVis = clamp(beta * 0.85, -20 * DEG, 62 * DEG);
+    // How far the hands are beyond arm's reach for a body.
+    const r = reach * 0.95;
+    const excess = (bd) => Math.max(bd.mid.clone().add(half).distanceTo(haF), bd.mid.clone().sub(half).distanceTo(haB)) - r;
+    const bVis = clamp(beta * 0.85, -20 * DEG, 62 * DEG);
     let body = build(bVis);
-    if (onBoom && !fits(body)) {
-      let lo = -20 * DEG, hi = bVis;
-      if (fits(build(lo))) {
-        for (let i = 0; i < 14; i++) {
-          const mid = (lo + hi) / 2;
-          if (fits(build(mid))) lo = mid; else hi = mid;
+    if (onBoom && excess(body) > 0) {
+      // The hands stay on the boom: lean out only as far as the arms reach.
+      // Scan down from the physics lean for the largest lean that fits.
+      let fit = null, miss = bVis, best = body, bestEx = excess(body);
+      for (let b = bVis - 4 * DEG; b >= -20 * DEG; b -= 4 * DEG) {
+        const bd = build(b), ex = excess(bd);
+        if (ex <= 0) { fit = b; break; }
+        miss = b;
+        if (ex < bestEx) { best = bd; bestEx = ex; }
+      }
+      if (fit !== null) {
+        for (let i = 0; i < 10; i++) {
+          const m = (fit + miss) / 2;
+          if (excess(build(m)) <= 0) fit = m; else miss = m;
         }
-        bVis = lo;
-        body = build(bVis);
+        body = build(fit);
+      } else {
+        // Rig out of reach at any lean (raked far forward, let right out):
+        // move the shoulder line the least distance that brings both hands
+        // within reach (alternating projections onto the two reach spheres),
+        // then hang the body from the feet to the new neck.
+        body = best;
+        const mid = body.mid.clone();
+        const pull = (o, ha) => {
+          const sh = mid.clone().add(o);
+          const d = sh.distanceTo(ha);
+          if (d > r) mid.addScaledVector(ha.clone().sub(sh), (d - r) / d);
+        };
+        for (let i = 0; i < 10; i++) { pull(half, haF); pull(half.clone().negate(), haB); }
+        let neck = mid.clone().addScaledVector(body.torsoAxis, 0.028 * H);
+        const l1 = body.pelvis.distanceTo(base), l2 = torsoLen;
+        const span = neck.distanceTo(base);
+        const l1Max = Math.max(l1, leg);
+        if (span > l1Max + l2) neck = base.clone().addScaledVector(neck.clone().sub(base).normalize(), (l1Max + l2) * 0.999);
+        const legLen = clamp(span - l2 * 0.999, l1, l1Max);
+        const pelvis = ik(base, neck, legLen, l2, body.pelvis.clone().sub(base).addScaledVector(leanDir, 0.05));
+        const torsoAxis = neck.clone().sub(pelvis).normalize();
+        body = { pelvis, neck, mid: neck.clone().addScaledVector(torsoAxis, -0.028 * H), torsoAxis };
       }
     }
+    body.shL = body.mid.clone().add(half);
+    body.shR = body.mid.clone().sub(half);
     const { pelvis, neck, shL, shR, torsoAxis } = body;
     const chest = pelvis.clone().lerp(neck, 0.72).addScaledVector(facing, 0.03);
     const head = neck.clone().addScaledVector(torsoAxis, 0.09 * H).addScaledVector(facing, 0.02);
 
-    // If the boom still can't be reached (mid-fall, odd transitions) let go.
+    // If the boom still can't be reached (legs fully stretched) let go.
     const clampReach = (sh, ha) => {
       const d = ha.clone().sub(sh);
       return d.length() > reach ? sh.clone().addScaledVector(d.normalize(), reach) : ha;
     };
-    const gripF = haF.distanceTo(shL) <= reach, gripB = haB.distanceTo(shR) <= reach;
+    const gripF = haF.distanceTo(shL) <= reach * 1.001, gripB = haB.distanceTo(shR) <= reach * 1.001;
+    this.lastHands = onBoom ? { F: haF.clone(), B: haB.clone() } : null; // grip points, for tools/pose-check
     haF = clampReach(shL, haF);
     haB = clampReach(shR, haB);
 
@@ -575,9 +622,11 @@ export class Sailor {
     for (const j of JOINTS) this.pose[j].lerp(target[j], k);
     const p = this.pose;
     if (target.grip) {
-      const H = this.h, reach = 0.37 * H;
+      // Gripping hands go exactly on the boom; the elbow straightens if the
+      // smoothed shoulder lags a little behind.
+      const H = this.h;
       const snap = (sh, el, ha, tHa, on) => {
-        if (!on || p[sh].distanceTo(target[tHa]) > reach) return;
+        if (!on) return;
         p[ha].copy(target[tHa]);
         p[el].copy(ik(p[sh], p[ha], 0.19 * H, 0.19 * H, target.grip.pole));
       };

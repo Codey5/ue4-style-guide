@@ -1,6 +1,6 @@
 // Start / pause menu: conditions, gear, controls and a technique primer.
 // Navigable with a gamepad (D-pad + A/B) as well as mouse and keyboard.
-import { BOARDS, SAILS } from '../physics/gear.js';
+import { BOARDS, BOOM_RATIO, SAILS } from '../physics/gear.js';
 import { CONTROL_MAP } from './input.js';
 import { LESSONS } from '../coach/lessons.js';
 
@@ -12,8 +12,9 @@ const beaufort = (kn) => {
   return 'Bft 8 · Gale';
 };
 const boomLabel = (s) => {
-  const cm = Math.round(s.height * 0.8 + s.boomRel);
-  const where = s.boomRel <= -8 ? 'chest' : s.boomRel <= 2 ? 'chest–shoulder' : s.boomRel <= 6 ? 'shoulder' : 'chin';
+  const cm = Math.round(s.height * BOOM_RATIO + s.boomRel);
+  const r = cm / s.height;
+  const where = r < 0.715 ? 'chest' : r < 0.79 ? 'chest–shoulder' : r < 0.835 ? 'shoulder' : 'chin';
   return `${cm} cm · ${where}`;
 };
 export const recommendedSail = (massKg, windKn) => (massKg * 1.34) / Math.max(windKn, 5);
@@ -175,7 +176,7 @@ export class Menu {
         <p class="rec">Rule of thumb for ${s.mass} kg in ${s.windKn} kn: about ${rec.toFixed(1)} m².</p>
         ${slider('mass', 'Your weight', 50, 110, 1, s.mass, `${s.mass} kg`)}
         ${slider('height', 'Your height', 155, 200, 1, s.height, `${s.height} cm`)}
-        ${slider('boom', 'Boom height', -14, 10, 1, s.boomRel, boomLabel(s))}
+        ${slider('boom', 'Boom height', -12, 16, 1, s.boomRel, boomLabel(s))}
         <p class="muted">Set the boom between chest and shoulder height. Higher gives more leverage and puts more weight through the harness; lower gives more control.</p>
         <h3>Assists</h3>
         ${toggle('autohike', 'Auto-hike: the game balances your body against the pull (LT is ignored)', s.autoHike)}
