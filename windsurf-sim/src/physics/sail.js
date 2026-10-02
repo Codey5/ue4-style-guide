@@ -1,0 +1,185 @@
+// Sail geometry and aerodynamics. The sail is split into horizontal strips;
+// each strip sees its own apparent wind (wind gradient, sail twist, rig motion
+// while pumping) and produces lift/drag from a soft-sail polar.
+import { DEG, RHO_AIR, add, clamp, cross, dot, lerp, norm, scale, smoothstep, sub } from './math.js';
+
+export const TACK_HEIGHT = 0.14; // tack (bottom of luff) above the mast foot, along the mast
+export const BOOM_HEIGHT = 1.42; // boom on the mast above the mast foot
+export const CE_CHORD = 0.4; // centre of pressure of a cambered strip, fraction of chord
+
+/** Build the sail outline and aero strips for a sail definition. */
+export function buildSailGeometry(def) {
+  const tack = TACK_HEIGHT;
+  const hb = BOOM_HEIGHT;
+  const head = def.luff + 0.02;
+  const B = def.boom;
+  const raw = (h) => {
+    if (h <= tack || h >= head) return 0;
+    if (h <= hb) return B * Math.pow((h - tack) / (hb - tack), 0.55);
+    const t = (h - hb) / (head - hb);
+    return B * (1 - Math.pow(t, 1.6)) * (1 - 0.05 * t) + 0.1 * t;
+  };
+  // Scale the chord so the outline has exactly the nominal sail area.
+  const N = 400;
+  let a = 0;
+  for (let i = 0; i < N; i++) a += raw(tack + ((i + 0.5) / N) * (head - tack)) * ((head - tack) / N);
+  const k = def.area / a;
+  const chordAt = (h) => raw(h) * k;
+
+  const edges = [tack, hb, hb + 0.3 * (head - hb), hb + 0.62 * (head - hb), head];
+  const strips = [];
+  for (let s = 0; s < edges.length - 1; s++) {
+    const h0 = edges[s], h1 = edges[s + 1];
+    let area = 0, mh = 0, mc = 0;
+    const n = 60;
+    for (let i = 0; i < n; i++) {
+      const h = h0 + ((i + 0.5) / n) * (h1 - h0);
+      const c = chordAt(h);
+      const dA = c * ((h1 - h0) / n);
+      area += dA; mh += h * dA; mc += c * CE_CHORD * dA;
+    }
+    strips.push({
+      h: mh / area, // centroid height along the mast
+      x: mc / area, // centre of pressure distance from the mast, along the chord
+      area,
+      twist: clamp((mh / area - hb) / (head - hb), 0, 1),
+    });
+  }
+  let ceH = 0, ceX = 0;
+  for (const s of strips) { ceH += s.h * s.area; ceX += s.x * s.area; }
+  return {
+    def, tack, boomHeight: hb, head, boomLength: chordAt(hb - 1e-4), chordAt, strips,
+    ceHeight: ceH / def.area, ceChord: ceX / def.area,
+    aspect: (def.luff * def.luff) / def.area,
+  };
+}
+
+/**
+ * Rig axes in the board frame.
+ * rake: mast top toward the bow (+) or tail (-). lean: mast top toward
+ * starboard (+) or port (-). boom: boom angle from the tail, + to port.
+ */
+export function rigAxes(rake, lean, boom) {
+  const m = [Math.sin(rake) * Math.cos(lean), Math.cos(rake) * Math.cos(lean), Math.sin(lean)];
+  const a0 = [-1, 0, 0];
+  const ap = norm(sub(a0, scale(m, dot(a0, m))));
+  const qp = cross(ap, m); // port, perpendicular to the mast
+  const c = add(scale(ap, Math.cos(boom)), scale(qp, Math.sin(boom)));
+  return { m, ap, qp, c };
+}
+
+/** Chord direction for a given boom angle using precomputed mast axes. */
+export const chordDir = (ax, boom) => add(scale(ax.ap, Math.cos(boom)), scale(ax.qp, Math.sin(boom)));
+
+/**
+ * Soft-sail lift/drag polar. alpha in radians; positive alpha = wind on the
+ * intended windward side. Returns {cl, cd}.
+ */
+export function sailPolar(alpha, clMax, aspect) {
+  const aDeg = alpha / DEG;
+  const a = Math.abs(aDeg);
+  const ALUFF = 5, ASTALL = 23;
+  const flatPlate = (k) => {
+    const cn = k * Math.sin(alpha);
+    return { cl: cn * Math.cos(alpha), cd: cn * Math.sin(alpha) + 0.03 };
+  };
+  if (aDeg < 0) {
+    // Backwinded: the wind hits the convex side and the camber inverts.
+    const fp = flatPlate(1.1);
+    return { cl: fp.cl, cd: Math.max(fp.cd, 0.05) };
+  }
+  const induced = (cl) => (cl * cl) / (Math.PI * aspect * 0.85);
+  if (a <= ASTALL) {
+    let cl;
+    if (a < ALUFF) cl = 0.3 * (a / ALUFF); // luffing: the front of the sail collapses
+    else cl = 0.3 + (clMax - 0.3) * Math.sin(((a - ALUFF) / (ASTALL - ALUFF)) * Math.PI * 0.5);
+    const flap = a < ALUFF ? 0.05 * (1 - a / ALUFF) : 0;
+    return { cl, cd: 0.03 + induced(cl) + flap };
+  }
+  // Gentle soft-sail stall blending into flat-plate behaviour.
+  const s = smoothstep(ASTALL, ASTALL + 32, a);
+  const fp = flatPlate(1.32);
+  const clAtt = clMax * (1 - 0.15 * smoothstep(ASTALL, ASTALL + 15, a));
+  const cdAtt = 0.03 + induced(clMax) + 0.25 * smoothstep(ASTALL, ASTALL + 25, a);
+  return { cl: lerp(clAtt, fp.cl, s), cd: lerp(cdAtt, fp.cd, s) };
+}
+
+/**
+ * Aerodynamic force on the sail.
+ * ctx: { R (board->world), pos (board origin, world), vel, yawRate, mastFoot
+ * (board frame), rake, lean, boom, side (+1 clew to port), windAt(p) -> vec,
+ * waterLevel, prevPoints (array of board-frame strip points or null), dt }
+ */
+export function sailForces(geo, ctx) {
+  const { R, pos, vel, yawRate, rake, lean, boom, side, dt } = ctx;
+  const ax = rigAxes(rake, lean, boom);
+  const mw = mulR(R, ax.m);
+  // Leech twist opens the top of the sail as the load builds (automatic gust depower).
+  const qRef = ctx.qEstimate ?? 30;
+  const twistTop = (4 + 10 * clamp(qRef / 90, 0, 1.4)) * DEG;
+  // Closing the gap between foot and deck raises the effective aspect ratio.
+  const gap = clamp(1 - Math.abs(lean) / (22 * DEG), 0, 1) * clamp((-rake + 6 * DEG) / (16 * DEG), 0, 1);
+  const aspect = geo.aspect * (1 + 0.6 * gap);
+
+  const out = { force: [0, 0, 0], strips: [], alphaMid: 0, awMid: [0, 0, 0], qMean: 0, points: [] };
+  let wAlpha = 0, wq = 0;
+  for (let i = 0; i < geo.strips.length; i++) {
+    const s = geo.strips[i];
+    const b = boom + side * s.twist * twistTop;
+    const c = chordDir(ax, b);
+    const nLee = scale(cross(c, ax.m), side);
+    const pB = add(add(ctx.mastFoot, scale(ax.m, s.h)), scale(c, s.x));
+    // Rig-motion reference point without leech twist (twist is aeroelastic,
+    // not something the sailor moves through the air).
+    const pRig = add(add(ctx.mastFoot, scale(ax.m, s.h)), scale(chordDir(ax, boom), s.x));
+    out.points.push(pRig);
+    const pW = add(pos, mulR(R, pB));
+    // Velocity of this point through the air.
+    const rW = mulR(R, pB);
+    let v = add(vel, [yawRate * rW[2], 0, -yawRate * rW[0]]);
+    if (ctx.prevPoints && dt > 0) {
+      // Rig motion (sheeting, pumping) through the air. Clamped so a state
+      // change that teleports the rig doesn't produce a phantom gust.
+      let rv = scale(sub(pRig, ctx.prevPoints[i]), 1 / dt);
+      const rs = Math.hypot(rv[0], rv[1], rv[2]);
+      if (rs > 5) rv = scale(rv, 5 / rs);
+      v = add(v, mulR(R, rv));
+    }
+    const wind = ctx.windAt(pW, Math.max(0.3, pW[1] - ctx.waterLevel));
+    const aw = sub(wind, v);
+    const vPerp = sub(aw, scale(mw, dot(aw, mw)));
+    const sp = Math.hypot(vPerp[0], vPerp[1], vPerp[2]);
+    if (sp < 1e-4) {
+      out.strips.push({ p: pW, f: [0, 0, 0], alpha: 0, q: 0 });
+      continue;
+    }
+    const u = scale(vPerp, 1 / sp);
+    const cW = mulR(R, c), nW = mulR(R, nLee);
+    const alpha = Math.atan2(dot(u, nW), dot(u, cW));
+    const q = 0.5 * RHO_AIR * sp * sp;
+    const { cl, cd } = sailPolar(alpha, geo.def.clMax, aspect);
+    const cn = cl * Math.cos(alpha) + cd * Math.sin(alpha);
+    const ct = cd * Math.cos(alpha) - cl * Math.sin(alpha);
+    const f = scale(add(scale(nW, cn), scale(cW, ct)), q * s.area);
+    out.force = add(out.force, f);
+    out.strips.push({ p: pW, f, alpha, q, cl });
+    if (i === 1 || i === 2) {
+      wAlpha += alpha * s.area; wq += s.area;
+      out.awMid = add(out.awMid, scale(aw, s.area));
+    }
+    out.qMean += q * s.area / geo.def.area;
+  }
+  out.alphaMid = wq > 0 ? wAlpha / wq : 0;
+  out.awMid = wq > 0 ? scale(out.awMid, 1 / wq) : out.awMid;
+  out.aspect = aspect;
+  out.mastWorld = mw;
+  return out;
+}
+
+function mulR(m, v) {
+  return [
+    m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+    m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+    m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+  ];
+}

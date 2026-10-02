@@ -1,0 +1,17 @@
+{
+  "name": "windsurf-sim",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A realistic windsurfing simulator for the browser, built for gamepads.",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "dev": "node tools/build.mjs --serve",
+    "test": "node tools/physics-check.mjs && node tools/maneuver-check.mjs",
+    "drag": "node tools/drag-curve.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "three": "^0.186.1"
+  }
+}
