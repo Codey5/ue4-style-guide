@@ -35,7 +35,7 @@ The GPS panel (under the wind dial) shows this session beside your personal best
 
 ## Lessons
 
-Eleven lessons, each with two modes:
+Twelve lessons, each with two modes:
 
 - **Watch:** a coach sails the technique step by step, with a caption for each step. An on-screen controller shows exactly what the coach does with the sticks, triggers and buttons, in Xbox or PlayStation layout.
 - **Try it:** you sail the same lesson. The steps tick off as you complete them, and the same controller overlay shows your own inputs.
@@ -55,12 +55,15 @@ Press Y (△, or G on the keyboard) while watching to take over.
 | 9 | Tuning the rig (harness line position, downhaul) | Freeride 115 L, 6.3 m², 16 → 22 kn |
 | 10 | Sailing through chop | Freeride 115 L, 6.3 m², 20 kn, rough chop |
 | 11 | Jumping off the chop (crouch, pop, fly, land tail first) | Freeride 115 L, 6.3 m², 20 kn, rough chop |
+| 12 | Freestyle (duck gybe, carving 360, spock, helitack) | Freeride 115 L, 6.3 m², 18 kn |
 
 In **Tuning the rig** the lesson retunes your rig while you sail: it starts with the harness lines 10 cm too far forward (watch the back hand do the harness's work), moves them back over the sail's draft, then builds the wind to a gusty 22 kn and pulls on maximum downhaul.
 
+In **Freestyle** the coach plays all four moves in turn off the plane, powering up again between them, and comes out of each the way it's sailed: carving on out of the duck gybe, sheeting in after the 360 and the spock, and sailing away on the new tack after the helitack. If a move goes wrong, it powers up and has another go.
+
 In **Gusts and catapults** the coach first gets it wrong on purpose: hooked in, weight forward and the sail locked in, a gust catapults it over the boom (the coach takes the controls for that step even in Try it). Then it's your turn to ride a gust out: weight back and ease the sheet as it hits. If it catapults you, you're put straight back on the board for another go.
 
-The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; leans the rig to windward when it needs to hang further out (and comes in to hook in); sits back on the tail at speed; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls or doesn't finish (except the catapult it means to show, which has to be a catapult); it also lists any slip along the way, a lost grip or a spin-out. It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom or the body is drawn at a different lean from the one the physics balances.
+The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; leans the rig to windward when it needs to hang further out (and comes in to hook in); sits back on the tail at speed; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls or doesn't finish (except the catapult it means to show, which has to be a catapult); it also lists any slip along the way, a lost grip or a spin-out. It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom (short of the last moment before a fall, when the sailor is losing the rig) or the body is drawn at a different lean from the one the physics balances.
 
 ## Controls
 
@@ -79,6 +82,7 @@ Sticks are relative to the board. Push the left stick where you want the mast ti
 | B / ○ | T | Tack: step round the front of the mast |
 | Y / △ | G | Flip the sail (gybe) · swap sides in secure position |
 | LB / L1 (hold) | U or J | Uphaul on the board · waterstart in the water · sailing: hold to crouch, let go to pop off the chop (jump) |
+| LB + Y / X / A / B | U + G / F / H / T | Freestyle, from the crouch: duck gybe · carving 360 · spock · helitack |
 | RB / R1 (hold) | P | Pump |
 | L3 | X | Drop the rig |
 | D-pad ← / → | V | Camera: chase, windward, leeward, overhead, free orbit (mouse drag) |
@@ -86,9 +90,9 @@ Sticks are relative to the board. Push the left stick where you want the mast ti
 | View / Share | Tab | Telemetry panel |
 | Menu / Options | Esc | Pause: conditions, gear, controls, technique |
 
-The in-game **Technique** tab walks through uphauling, steering, getting planing, harness and straps, hanging off the rig, leaning back against the pull, gusts and catapults, tuning the rig, what the rumble tells you, sailing through chop, jumping off it, the broad reach, tacking, the carve gybe and the waterstart, with a glossary.
+The in-game **Technique** tab walks through uphauling, steering, getting planing, harness and straps, hanging off the rig, leaning back against the pull, gusts and catapults, tuning the rig, what the rumble tells you, sailing through chop, jumping off it, freestyle, the living sail, the broad reach, tacking, the carve gybe and the waterstart, with a glossary.
 
-**Rumble** (Chrome and Edge): the low motor carries the sail's load, thumps as a gust fills the sail, knocks as you pop and thumps as the board lands off a chop, and pulses harder and harder as the pull tips you toward your toes before a catapult (about half a second of warning). The high motor carries the chatter of the chop (silent while the board flies) and a fluttering luff, buzzes as the fin nears a spin-out, and pulses when a hand is about to lose its grip.
+**Rumble** (Chrome and Edge): the low motor carries the sail's load, thumps as a gust fills the sail, knocks as you pop and thumps as the board lands off a chop, and pulses harder and harder as the pull tips you toward your toes before a catapult (about half a second of warning). The high motor carries the chatter of the chop (silent while the board flies), a fluttering luff and the tick of a batten popping through, buzzes as the fin nears a spin-out, and pulses when a hand is about to lose its grip.
 
 ## What's simulated
 
@@ -107,7 +111,9 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 - Each strip has its own apparent wind: true wind at its height, minus board velocity, minus yaw rotation, minus the rig's own motion. Pumping and fast sheeting therefore really change the airflow.
 - Soft-sail lift/drag polar with luffing below about 5°, a gentle stall past 23°, flat-plate behaviour beyond, and a weaker inverted-camber response when backwinded.
-- The leech twists open as dynamic pressure rises, which is the sail's own gust depower.
+- The leech twists open as dynamic pressure rises, which is the sail's own gust depower. The twist is aeroelastic: the leech only opens until that strip is close to luffing, never past it, so a gust depowers the sail without turning the head inside out.
+- **Battens.** Each strip's camber sits on one side of the sail, held there by its batten. When the wind presses on the other side hard enough (a tack, a gybe, a sail flagged out and caught again, a backwinding lull) the batten pops through to the new side with a clack and a tick through the controller, one strip at a time, often the loaded foot first. Until it does, that strip flies with its camber the wrong way round: a weak, draggy shape.
+- **What you see** is the shape the physics computes: each strip's camber on its batten's side, filled to its load, twisted off to its own angle (the head visibly opening in a gust), and a batten snapping through with a little overshoot. Sheeted out until it luffs, the luff pocket shivers and a ripple runs back across the cloth; at high apparent wind the leech flutters.
 - Raking the rig back and keeping it upright closes the foot gap and raises the effective aspect ratio.
 - Rig tuning (Gear menu). **Outhaul** sets the depth: loose is fuller (more lift for planing early, but more camber drag and the draft further back), tight is flatter. **Downhaul** sets how the leech twists open under load: more twist off for a windy day, a tight leech for grunt in light wind, and with too little the draft blows back in gusts (more drag, a heavier back hand).
 - The force acts at each strip's centre of pressure. Steering comes from the centre of effort moving relative to the fin and daggerboard (rake forward = bear away, sheet in = head up). Leaning the rig to windward gives vertical lift that unweights the board. With the boom eased on a broad reach, the same lean mostly tips the force upward and costs drive.
@@ -132,6 +138,16 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 - In the air, the sail keeps pulling and nothing in the water holds the board back, so you speed up a little and drift downwind. Lean the rig to windward and its lift holds you up longer; the bottom of the board, nose or windward rail lifted into the apparent wind, carries a little too. Weight back keeps the nose up. Your knees come up under you, lifting the board higher, and your feet keep it pointing where you're going (and turn it on its rail).
 - Landing: tail first or flat with soft knees is clean. Nose first, it digs in and stops dead and the lurch throws you over the front; a hard flat landing can too, if you're sheeted in hard. Coming down sideways, steeply on the tail or from high up drags air down the fin. Every landing scrubs off some speed, so jumping roughly breaks even with sailing through the chop at best.
 - In 20 knots and a short chop, a well-timed pop gets about half a metre and two thirds of a second in the air, up to a metre off the best ramps. The HUD shows your height while you fly and the last and best jump; the telemetry panel has the details.
+
+**Freestyle**
+
+All four moves start the same way: hold LB to crouch, then press a button. Each has its own physics, and each can go wrong in its own way.
+
+- **Duck gybe** (LB + Y): carving downwind on the plane (unhooked, heading 105–172° off the wind), you throw the rig across clew first and duck under it instead of flipping it round the front. The board carves on its own physics; only the rig's path is the move. Duck before the board is past about 125° off the wind and the wind fills the sail from the wrong side; leave it until the board has carved back up past 140° on the new tack and it's backwinded too.
+- **Carving 360** (LB + X): flat out on a reach (planing, about 12 knots or more, unhooked). Sink the rail toward the sail: the harder you press, the tighter the circle (5 to 12 m) and the more the board banks (12–28°). The sail pulls you through the first quarter, flags out like a weathervane as the board goes downwind and through the wind, and you catch it again for the last 60°. The turn bleeds speed (the carve's sideways load is drag); run out of speed before you're round and you stall and fall in.
+- **Spock** (LB + A): on the plane with your weight on the front foot (right stick up), unhooked. The nose bites and the board pivots right round on it, tail out of the water, while you hold the rig still above it. It spins fast at first and slows as it goes; you come out at about a fifth of your entry speed. Weight back in the first half of the spin and the nose lets go: you fall in. Hooked in, the rig just catapults you.
+- **Helitack** (LB + B): on a close reach, feet out of the straps and unhooked, with a little speed. The rig goes back and the board luffs up through the wind, faster the more speed you carry; once it's through, the board drifts backwards while the sail spins right round the mast, and you sail out on the new tack without stepping round the front. Too slow to get through the wind, or too long in the spin, and you're in the water.
+- The HUD lists the moves while you're crouched, coaches each one as you do it, and tells you your speed coming out.
 
 **Fin and daggerboard**
 
@@ -172,24 +188,24 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 ### Validation
 
-`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers, and fails if bearing away from a beam reach to 130° costs more than 10% of the speed, or if a gust doesn't catapult a sailor with weight forward and the sail locked in (or does catapult one who sinks back and eases the sheet), or if the controller doesn't warn before the catapult, or if a rig-tuning setting doesn't have the effect below, or if chop doesn't cost speed, make the board skip at speed (not on flat water) and punish weight forward in rough water, or if a pop timed onto a chop face doesn't fly about half a metre (and beat a pop made blind), a pop on flat water is more than a little hop, or weight forward in the air doesn't land you nose first and over the front. Typical results (75 kg, 183 cm sailor):
+`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers, and fails if bearing away from a beam reach to 130° costs more than 10% of the speed, or if a gust doesn't catapult a sailor with weight forward and the sail locked in (or does catapult one who sinks back and eases the sheet), or if the controller doesn't warn before the catapult, or if a rig-tuning setting doesn't have the effect below, or if chop doesn't cost speed, make the board skip at speed (not on flat water) and punish weight forward in rough water, or if a pop timed onto a chop face doesn't fly about half a metre (and beat a pop made blind), a pop on flat water is more than a little hop, or weight forward in the air doesn't land you nose first and over the front, or a freestyle move doesn't come off from its entry conditions (or doesn't go wrong the way it should: a duck gybe ducked too early backwinds, a spock hooked in catapults, weight back in a spock drops you in), or a batten pops in steady sailing or is left on the wrong side after a turn, or the head of the sail twists past luffing. Typical results (75 kg, 183 cm sailor):
 
 | Setup | Result | Real-world reference |
 | --- | --- | --- |
-| 135 L, 7.0 m², 6–10 kn, beam reach | 4–6 kn, displacement | Slogging speeds |
+| 135 L, 7.0 m², 6–10 kn, beam reach | 3.5–5.5 kn, displacement | Slogging speeds |
 | 135 L, 7.0 m², 11 / 12 kn | 6.8 kn slogging / just planes (10.4 kn) | Planing threshold ~12 kn for this combination |
-| 135 L, 7.0 m², 14 / 16 / 20 kn | 17.4 / 18.6 / 19.6 kn board speed | Typical freeride GPS speeds |
-| 135 L, 7.0 m², 24 kn | 19.8 kn, sailor at the limit | 7.0 m² is too big here |
+| 135 L, 7.0 m², 14 / 16 / 20 kn | 17.4 / 18.6 / 19.5 kn board speed | Typical freeride GPS speeds |
+| 135 L, 7.0 m², 24 kn | 20.0 kn, sailor at the limit | 7.0 m² is too big here |
 | 135 L, 16 kn, close-hauled planing | holds 55° to the true wind at 9.9 kn | 50–55° typical for freeride |
-| 135 L, 16 kn, 90° / 130° | 18.0 / 17.3 kn | A broad reach holds its speed once planing |
-| 135 L, 22 kn, 100° / 130° / 145° | 20.1 / 20.7 / 14.3 kn | Fastest on a broad reach; deep angles need more wind |
+| 135 L, 16 kn, 90° / 130° | 18.0 / 17.0 kn | A broad reach holds its speed once planing |
+| 135 L, 22 kn, 100° / 130° / 145° | 19.9 / 20.5 / 17.0 kn | Fastest on a broad reach; deep angles need more wind |
 | 135 L, 16 kn, 140° and deeper | drops off the plane | The apparent wind gets too light to carry the board |
-| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 21.3 / 23.5 kn | Smaller, faster boards |
-| 135 L, 16 kn, flat water / standard chop (0.34 m) | 21.4 / 18.6 kn, skipping off the chop 10% of the time | Flat water is fast; chop costs speed |
-| 135 L, 22 kn, rough chop (0.74 m), weight forward / back | 14.8 / 18.2 kn | Keep the nose up in rough water |
+| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 21.4 / 23.6 kn | Smaller, faster boards |
+| 135 L, 16 kn, flat water / standard chop (0.34 m) | 21.3 / 18.6 kn, skipping off the chop 9% of the time | Flat water is fast; chop costs speed |
+| 135 L, 22 kn, rough chop (0.74 m), weight forward / back | 10.0 kn and three falls / 18.3 kn | Keep the nose up in rough water |
 | 183 cm, 32" lines, hooked in, rig leaned ~16°, fully powered | hangs out ~25–30°, leans back ~30°, centre of mass ~35 cm behind where the feet press | A typical hooked-in freeride stance |
 | 115 L, 6.3 m², 16 kn, planing hooked in, gust to 24 kn | weight forward, sail locked in: catapulted. Weight back, sheet eased: rides it out | Why you sheet out and sink back in a gust |
-| 210 L beginner, 5.3 m², 8 kn | 4.5 kn, can sail 55° upwind | Daggerboard boards point in light wind |
+| 210 L beginner, 5.3 m², 8 kn | 4.1 kn, can sail 55° upwind | Daggerboard boards point in light wind |
 | 95 L board, 85 kg sailor | refuses to float you standing still | A sinker |
 
 Rig tuning, same board and sail (`node tools/physics-check.mjs tune`):
@@ -198,9 +214,9 @@ Rig tuning, same board and sail (`node tools/physics-check.mjs tune`):
 | --- | --- |
 | Outhaul loose / tight, 12 kn | 15.4 kn planing / 7.1 kn, not planing |
 | Outhaul loose, 16 kn | back hand about twice as loaded (the draft further back) |
-| Downhaul maximum / light, gusty 22 kn | 20.3 / 18.2 kn |
-| Downhaul light / maximum, 12 kn | 9.0 / 7.5 kn |
-| Mast foot 10 cm back / forward, 22 kn, flat water | 23.7 / 23.0 kn (forward rides nose-down; in rough chop forward is the faster, steadier ride) |
+| Downhaul maximum / light, gusty 22 kn | 20.3 / 18.3 kn |
+| Downhaul light / maximum, 12 kn | 9.1 / 7.5 kn |
+| Mast foot 10 cm back / forward, 22 kn, flat water | 23.6 / 21.7 kn (forward rides nose-down; in rough chop forward is the faster, steadier ride) |
 | Harness lines 10 cm forward / back, 16 kn | back hand loaded / front hand loaded, and the sail sheets in on you |
 
 `npm run drag` prints the hull resistance curve, which shows the hump and the effect of stance.
@@ -210,8 +226,8 @@ Rig tuning, same board and sail (`node tools/physics-check.mjs tune`):
 ```bash
 npm install        # three.js and esbuild
 npm run dev        # http://localhost:8000 serves index.html with live ES modules
-npm run build      # writes dist/beam-reach.html (single file, ~790 KB)
-npm test           # physics speed polar, maneuver checks, GPS & speed strip, every lesson sailed by the coach, hands-on-boom pose check
+npm run build      # writes dist/beam-reach.html (single file, ~800 KB)
+npm test           # physics speed polar, maneuver checks, GPS & speed strip, freestyle & battens, every lesson sailed by the coach, hands-on-boom pose check
 npm run quiver     # recalibrate the gear advisor's wind ranges (src/physics/quiver.js) from the physics
 ```
 
@@ -221,7 +237,7 @@ src/coach/     the coach (an expert sailor driving the controls) and the lesson 
 src/game/      the GPS speed logger and the session log (personal bests, gear verdict)
 src/render/    three.js: water shader, sky & spot, board/rig/sailor models, spray & wake, cameras
 src/ui/        gamepad & keyboard input, HUD, menu, procedural audio
-tools/         build script, physics, maneuver, GPS, lesson and pose checks, gear-advisor calibration
+tools/         build script, physics, maneuver, GPS, freestyle, lesson and pose checks, gear-advisor calibration
 ```
 
 The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the frame rate; rendering interpolates between the last two physics states so motion stays smooth at any refresh rate. The water has no textures: waves and ripples are evaluated per pixel and filtered by their size on screen (the procedural equivalent of mipmapping), so distant water doesn't shimmer.
@@ -229,6 +245,7 @@ The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the fra
 ## Not in this version
 
 - Wave sailing (big jumps and rides on real swell) and foiling.
+- Aerial freestyle (forwards, vulcans, flakas): the moves here all stay on the water.
 - Real swell and breaking waves.
 - Race courses (a slalom course against a ghost of your best lap would build on the GPS).
 - Remappable controls.

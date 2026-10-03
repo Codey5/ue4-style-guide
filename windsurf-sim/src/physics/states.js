@@ -2,4 +2,5 @@
 export const S = {
   SAILING: 'sailing', SECURE: 'secure', TACK: 'tack', FLIP: 'flip', FALLING: 'falling',
   WATER: 'water', CLIMB: 'climb', UPHAUL: 'uphaul', WATERSTART: 'waterstart', RISING: 'rising',
+  TRICK: 'trick', // freestyle: stateData.kind is 'duck', 'heli', 'c360' or 'spock'
 };

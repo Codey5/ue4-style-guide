@@ -199,7 +199,6 @@ export class Rig {
     }
     this.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(up), new THREE.LineBasicMaterial({ color: 0xd9d9d9 })));
     this.flutterPhase = 0;
-    this.camber = 0;
   }
 
   /** Point on the windward boom tube, rig-local. */
@@ -219,38 +218,87 @@ export class Rig {
     this.group.position.set(sim.board.mastFootX, deckY(sim.board, sim.board.mastFootX), 0);
     this.group.updateMatrix();
 
-    // Sail shape: camber toward leeward when drawing, flat and fluttering when luffing.
-    const alpha = sim.aero ? sim.aero.alphaMid : 0;
-    const q = sim.aero ? sim.aero.qMean : 0;
-    const aDeg = alpha / DEG;
-    const power = smoothstep(2, 10, Math.abs(aDeg)) * (aDeg >= 0 ? 1 : -0.8);
-    this.camber = lerp(this.camber, power, Math.min(1, dt * 8));
-    const luff = (1 - smoothstep(1, 7, Math.abs(aDeg))) * clamp(q / 15, 0, 1) * (sim.rig.up > 0.6 ? 1 : 0);
-    this.flutterPhase += dt * (6 + Math.sqrt(Math.max(q, 0)) * 1.4) * Math.PI * 2;
-    const side = r.side;
-    const twistTop = (4 + 10 * clamp(q / 90, 0, 1.4)) * DEG;
+    // The sail, from the aerodynamics it's actually producing. Each band of
+    // the sail bulges the way its battens are popped (snapping through, with
+    // a little overshoot, when they pop), as deep as it's loaded and the
+    // outhaul allows; the leech twists open as far as the physics twisted it;
+    // and where a band is luffing it flutters, from a pocket behind the mast
+    // to a flapping leech, harder the more wind there is.
+    const aero = sim.aero && sim.rig.up > 0.6 ? sim.aero : null;
+    const strips = geo.strips;
     const inWater = sim.rig.up < 0.4;
+    const nS = strips.length;
+    this.camVis ??= r.cam.slice();
+    this.popAge ??= new Array(nS).fill(9);
+    this.load ??= new Array(nS).fill(0);
+    this.luffAmt ??= new Array(nS).fill(0);
+    const tw = new Array(nS).fill(0);
+    for (let i = 0; i < nS; i++) {
+      const before = this.camVis[i];
+      this.camVis[i] = r.cam[i];
+      if ((before >= 0) !== (r.cam[i] >= 0) || Math.abs(r.cam[i]) < 0.98) this.popAge[i] = 0;
+      else this.popAge[i] += dt;
+      const st = aero?.strips[i];
+      const aDeg = st ? st.alpha / DEG : 0, q = st ? st.q : 0;
+      // How full the band is: loaded on its concave side; flat when luffing.
+      const loadT = st ? smoothstep(2, 10, aDeg) : 0;
+      this.load[i] = lerp(this.load[i], loadT, Math.min(1, dt * 8));
+      const luffT = st ? (1 - smoothstep(1.5, 7, Math.abs(aDeg))) * clamp(q / 12, 0, 1.3) : 0;
+      this.luffAmt[i] = lerp(this.luffAmt[i], luffT, Math.min(1, dt * 6));
+      tw[i] = (st?.tw ?? 0) * (inWater ? 0 : 1);
+    }
+    const q = aero ? aero.qMean : 0;
+    this.flutterPhase += dt * (5 + Math.sqrt(Math.max(q, 0)) * 1.5) * Math.PI * 2;
+    this.leechPhase = (this.leechPhase ?? 0) + dt * (22 + Math.sqrt(Math.max(q, 0)) * 3) * Math.PI * 2;
+    const leechFlutter = smoothstep(45, 140, q);
+    // (a fuller sail with the outhaul eased; flatter pulled tight)
+    const fullness = 1 - 0.25 * clamp(sim.tune?.outhaul ?? 0, -1, 1);
+    // Interpolate a per-band value to a height on the luff.
+    const at = (arr, h) => {
+      if (h <= strips[0].h) return arr[0];
+      for (let i = 0; i < nS - 1; i++) {
+        if (h <= strips[i + 1].h) return lerp(arr[i], arr[i + 1], (h - strips[i].h) / (strips[i + 1].h - strips[i].h));
+      }
+      return arr[nS - 1];
+    };
+    // (the band a batten belongs to: battens snap with their own band)
+    const bandOf = (h) => { let k = 0; for (let i = 1; i < nS; i++) if (Math.abs(h - strips[i].h) < Math.abs(h - strips[k].h)) k = i; return k; };
+    const camRow = new Array(SAIL_NV + 1);
     const pos = this.sailPos;
     for (let v = 0; v <= SAIL_NV; v++) {
       const fv = v / SAIL_NV;
       const h = geo.tack + fv * (geo.head - geo.tack);
       const chord = Math.max(geo.chordAt(Math.min(h, geo.head - 0.01)), 0.02);
-      const tw = clamp((h - geo.boomHeight) / (geo.head - geo.boomHeight), 0, 1) * twistTop * (inWater ? 0 : 1);
-      const ca = Math.cos(-side * tw), sa = Math.sin(-side * tw);
-      const depth = 0.1 * chord * this.camber * (inWater ? 0.2 : 1);
+      // Battens snap the band to one side; between them the cloth follows.
+      const k = bandOf(h);
+      const overshoot = Math.exp(-this.popAge[k] * 18) * Math.sin(this.popAge[k] * 60) * 0.35;
+      const cam = lerp(at(this.camVis, h), this.camVis[k], 0.6) * (1 + overshoot);
+      camRow[v] = cam;
+      const sideRow = cam >= 0 ? 1 : -1;
+      const twist = at(tw, h);
+      const ca = Math.cos(-sideRow * twist), sa = Math.sin(-sideRow * twist);
+      const load = at(this.load, h), luff = at(this.luffAmt, h);
+      const depth = chord * (0.035 + 0.075 * load) * fullness * (inWater ? 0.25 : 1);
       for (let u = 0; u <= SAIL_NU; u++) {
         const fu = u / SAIL_NU;
         const x = fu * chord;
-        let z = side * depth * Math.sin(Math.PI * Math.pow(fu, 0.75));
-        z += luff * 0.06 * chord * Math.sin(fu * 9 - this.flutterPhase + fv * 5) * fu * (1 - fu * 0.4);
-        const k = (v * (SAIL_NU + 1) + u) * 3;
-        pos[k] = x * ca + z * sa;
-        pos[k + 1] = h;
-        pos[k + 2] = -x * sa + z * ca;
+        let z = cam * depth * Math.sin(Math.PI * Math.pow(fu, 0.75));
+        // Luffing: the pocket behind the mast backs and shivers, and a
+        // ripple runs back to a flapping leech.
+        const pocket = Math.exp(-((fu - 0.22) ** 2) / 0.02);
+        z -= sideRow * luff * chord * 0.05 * pocket * (0.6 + 0.4 * Math.sin(this.flutterPhase * 1.7 + fv * 3));
+        z += luff * chord * 0.055 * Math.pow(fu, 1.3) * Math.sin(fu * 10 - this.flutterPhase + fv * 6);
+        // The twisted-off leech flutters fast in a big breeze.
+        if (fu > 0.82 && fv > 0.55) z += leechFlutter * 0.012 * ((fu - 0.82) / 0.18) * Math.sin(this.leechPhase + fv * 9);
+        const kk = (v * (SAIL_NU + 1) + u) * 3;
+        pos[kk] = x * ca + z * sa;
+        pos[kk + 1] = h;
+        pos[kk + 2] = -x * sa + z * ca;
       }
     }
     this.sailGeo.attributes.position.needsUpdate = true;
     this.sailGeo.computeVertexNormals();
+    const side = r.side;
 
     // Battens follow the membrane rows.
     const bp = this.battens.geometry.attributes.position.array;

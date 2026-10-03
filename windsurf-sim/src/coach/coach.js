@@ -67,6 +67,13 @@ export class Coach {
     return c;
   }
 
+  /** Start a freestyle move: LB held (crouched) and its button pressed. */
+  trick(c, kind) {
+    c.pop = true;
+    this.press(c, { duck: 'flip', heli: 'tack', c360: 'straps', spock: 'hook' }[kind], 3);
+    return c;
+  }
+
   /** LT value that balances the current pull (what a good sailor does by feel). */
   hikeFor(dt) {
     const sim = this.sim;

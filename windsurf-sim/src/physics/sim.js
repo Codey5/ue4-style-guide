@@ -28,8 +28,15 @@ export { S };
 /** Smooth proportional servo with a rate cap — how hands move a rig. */
 const servo = (x, target, gain, maxRate, dt) => x + clamp((target - x) * gain * dt, -maxRate * dt, maxRate * dt);
 
-const ON_BOARD = new Set([S.SAILING, S.SECURE, S.TACK, S.FLIP, S.UPHAUL]);
-const HOLDS_BOOM = new Set([S.SAILING, S.TACK, S.FLIP]);
+const ON_BOARD = new Set([S.SAILING, S.SECURE, S.TACK, S.FLIP, S.UPHAUL, S.TRICK]);
+const HOLDS_BOOM = new Set([S.SAILING, S.TACK, S.FLIP, S.TRICK]);
+/** Freestyle moves: names, and the button you press with LB held (crouched) to start each. */
+export const TRICKS = {
+  duck: { name: 'Duck gybe', button: 'Y' },
+  heli: { name: 'Helitack', button: 'B' },
+  c360: { name: 'Carving 360', button: 'X' },
+  spock: { name: 'Spock', button: 'A' },
+};
 
 export const BEACH_Z = -260; // the shoreline runs east-west, north of the start
 
@@ -43,6 +50,11 @@ const LEGS = 0.4;
 const POP_T = 0.15, POP_ACC = 10;
 /** How long holding the pop button takes to crouch fully (s). */
 const CROUCH_T = 0.3;
+/**
+ * Battens: the pressure (Pa) on the convex side of a strip's camber that
+ * pops its battens through to the other side, and how long the snap takes.
+ */
+const BATTEN_PRESS = 4, BATTEN_T = 0.06;
 /** Standard harness line centre, as a fraction of the boom from the mast (see body.js). */
 const LINES_AT = 0.38;
 /** Typical ratio of the loaded sail's centre of pressure to its area centroid (calibrates handLoads). */
@@ -142,7 +154,7 @@ export class Sim {
     this.airborne = false; this.airTime = 0; this.airHeight = 0; this.contact = 1; this.noseDrag = 0; this.slamDrag = 0;
     this.impact = 0; this.finAir = 0; this.landing = null; this.aLong = 0;
     this.popT = undefined; this.popK = 0; this.jump = null; this.takeoff = null;
-    this.rig = { rake: 0, lean: 0, boom: side * 80 * DEG, side, up: 1 };
+    this.rig = { rake: 0, lean: 0, boom: side * 80 * DEG, side, up: 1, cam: [side, side, side, side], camTo: [side, side, side, side] };
     this.sailor = {
       side, x: this.board.mastFootX - 0.35, leanX: 0, beta: 4 * DEG, betaRate: 0, hang: 0, hangTime: 0, phi: 0, phiRate: 0,
       hooked: false, straps: 0, stamina: 1, gripLost: 0, hookTimer: 0, strapsHoldTime: 0,
@@ -174,7 +186,8 @@ export class Sim {
 
   setState(s, data = {}) {
     // Coming up onto the board (or out of a turn) you're already set against the pull.
-    if (s === S.SAILING && this.state !== S.SAILING) this.pitchSettle = true;
+    // (against the pull there is now, not the one you last felt before it)
+    if (s === S.SAILING && this.state !== S.SAILING) { this.pitchSettle = true; this.pullFelt = undefined; }
     this.state = s;
     this.stateTime = 0;
     this.stateData = data;
@@ -226,7 +239,7 @@ export class Sim {
       aero = sailForces(this.sailGeo, {
         R, pos: this.pos, vel: this.vel, yawRate: this.yawRate, mastFoot,
         rake: rig.rake, lean: rig.lean, boom: rig.boom, side: rig.side, dt,
-        prevPoints: this.prevPoints, waterLevel: waterY, qEstimate: this.lastQ ?? 30, tune: this.tune,
+        prevPoints: this.prevPoints, waterLevel: waterY, qEstimate: this.lastQ ?? 30, tune: this.tune, cam: rig.cam,
         windAt: (pt, h) => this.wind.sample(pt[0], h, pt[2], this.t),
       });
       this.prevPoints = aero.points;
@@ -235,6 +248,7 @@ export class Sim {
       this.prevPoints = null;
     }
     this.aero = aero;
+    this.updateBattens(dt, aero);
 
     const sailorOnBoard = ON_BOARD.has(this.state) || this.state === S.RISING;
     const mS = this.sailorMass, mB = b.mass, mR = this.sail.rigMass;
@@ -253,7 +267,8 @@ export class Sim {
       aeroUp = aero.force[1];
       aeroFwd = aeroBoard[0];
     }
-    const transmit = this.state === S.SAILING ? 1 : this.state === S.FLIP ? 0.35 : this.state === S.TACK ? 0.3 : 0;
+    const transmit = this.state === S.SAILING ? 1 : this.state === S.FLIP ? 0.35 : this.state === S.TACK ? 0.3 :
+      this.state === S.TRICK ? this.trickTransmit() : 0;
     const tauPull = -sailor.side * tauAero * transmit; // + pulls the sailor toward the rig
     this.tipAero = tipAero * transmit;
     const handForce = Math.max(0, tauPull) / (this.boomHeight + deckY);
@@ -405,13 +420,18 @@ export class Sim {
       // (only once properly flying: skipping over the tops, the fin still has it)
       N += Iz * smoothstep(0.08, 0.25, this.airTime ?? 0) * (30 * wrapAngle(travel - this.yaw) + 8 * (travelRate - this.yawRate) - 4 * this.roll);
     }
+    // Freestyle: the feet and the rig turning the board through the move.
+    if (this.state === S.TRICK) N += this.trickTorque(Iz, speed);
 
     const acc = scale(F, 1 / (m * (1 + 0.08 * (1 - p))));
     this.vel = add(this.vel, scale(acc, dt));
     this.vel[1] = 0;
     this.pos = add(this.pos, scale(this.vel, dt));
-    this.yawRate += (N / Iz) * dt;
+    // (in a helitack, a carving 360 or a spock your feet and the rail turn the board, not the fin)
+    const carved = this.state === S.TRICK && this.stateData.kind !== 'duck';
+    if (!carved) this.yawRate += (N / Iz) * dt;
     this.yaw = wrapAngle(this.yaw + this.yawRate * dt);
+    if (this.state === S.TRICK) this.trickMotion(dt);
     this.accel = acc;
     // (felt through the legs over a moment, not at every physics step)
     this.aLong = damp(this.aLong ?? 0, dot(acc, fwd), 15, dt);
@@ -569,7 +589,9 @@ export class Sim {
         // (air dragged down the fin by a tail-first or high landing)
         0.35 * clamp((this.finAir ?? 0) / 0.45, 0, 1);
       this.finMargin = demand / Math.max(0.2, vent);
-      if (!this.finVentilated && sp > 5 && demand > vent && HOLDS_BOOM.has(this.state)) {
+      // (spinning or carving a freestyle move the fin isn't what's gripping)
+      const freestyle = this.state === S.TRICK && this.stateData.kind !== 'duck';
+      if (!this.finVentilated && sp > 5 && demand > vent && HOLDS_BOOM.has(this.state) && !freestyle) {
         this.finVentilated = true;
         this.spinoutTime = 0;
         this.emit('spinout', 'Spin-out! The fin ventilated — sheet out and push on the front foot.', 2);
@@ -598,6 +620,11 @@ export class Sim {
     const pr = ctl.pressed;
     const s = this.sailor;
     const st = this.state;
+    // Crouched (LB held) a face button starts a freestyle move instead.
+    if (st === S.SAILING && ctl.pop && !this.popBlock && (pr.flip || pr.tack || pr.straps || pr.hook)) {
+      this.startTrick(pr.flip ? 'duck' : pr.tack ? 'heli' : pr.straps ? 'c360' : 'spock', twa, speed);
+      return;
+    }
     if (st === S.SAILING) {
       if (pr.hook) {
         if (s.hooked) { s.hooked = false; this.emit('hook', 'Unhooked'); }
@@ -836,6 +863,9 @@ export class Sim {
         }
         break;
       }
+      case S.TRICK:
+        this.updateTrick(dt, ctl, twa, speed);
+        break;
       case S.RISING:
         if (this.stateTime > 0.7) {
           this.setState(S.SAILING);
@@ -952,6 +982,8 @@ export class Sim {
       }
     } else if (st === S.RISING) {
       r.lean = approach(r.lean, s.side * 10 * DEG, 80 * DEG * dt);
+    } else if (st === S.TRICK) {
+      this.trickRig(dt, ctl, flagAngle, boomOpen);
     }
     void twa;
   }
@@ -960,7 +992,9 @@ export class Sim {
     const s = this.sailor, b = this.board;
     this.updateKnees(dt, ctl);
     if (this.state !== S.SAILING) {
-      s.leanX = damp(s.leanX, 0, 6, dt);
+      // (in the middle of a freestyle move you can still shift your weight, not step)
+      const shift = this.state === S.TRICK ? ctl.weight * (s.straps === 2 ? 0.2 : 0.14) : 0;
+      s.leanX = damp(s.leanX, shift, this.state === S.TRICK ? 8 : 6, dt);
       return;
     }
     // Small stick deflection = shift weight; past ~55% = step along the board.
@@ -976,6 +1010,242 @@ export class Sim {
         this.emit('straps', 'Feet out of the straps');
       }
     } else s.strapsHoldTime = 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Freestyle
+
+  /**
+   * Start a freestyle move (LB held, plus a face button). Each needs the
+   * right speed, course and stance; without them you're told why instead.
+   *   duck  — duck gybe: carving downwind, the rig is thrown across over your
+   *           head (the clew passes behind you) instead of round the front.
+   *   heli  — helitack: luff up through the wind, the board sails backwards
+   *           while the sail spins round the mast, and you sail off on the
+   *           new tack without stepping round the front of the mast.
+   *   c360  — carving 360: a full carved circle on the rail, through
+   *           downwind and back up through the wind, with the sail let go.
+   *   spock — the board spins a full turn on its nose, the rig held still
+   *           above it.
+   */
+  startTrick(kind, twa, speed) {
+    const s = this.sailor, p = this.hull?.planing ?? 0, at = Math.abs(twa) / DEG;
+    const no = (msg) => { this.emit('hint', msg); };
+    let data;
+    if (kind === 'duck') {
+      if (s.hooked) return this.fall('leeward', 'you tried to duck the sail while hooked in. Unhook first (A).');
+      if (p < 0.7 || speed < 5) return no('Duck gybes are done on the plane: carve in at full speed, then duck.');
+      if (at < 105) return no("Carve away from the wind first: duck the sail once you're heading well downwind.");
+      if (at > 172) return no('Too late to duck: flip the sail instead (Y).');
+      data = { kind, d0: this.rig.boom, fromSide: s.side, switched: false };
+    } else if (kind === 'heli') {
+      if (s.hooked) return no('Unhook first (A): a helitack is sailed with your hands on the boom.');
+      if (s.straps > 0) return no('Feet out of the straps first (hold X).');
+      if (at > 80) return no('Head up to a close reach first (rig back): a helitack starts by luffing up through the wind.');
+      if (speed < 2.5) return no('A helitack needs some speed to carry the board through the wind.');
+      data = { kind, phase: 'luff', fromSide: s.side, switched: false, turn: -s.side };
+    } else if (kind === 'c360') {
+      if (s.hooked) return no('Unhook first (A): you need to let the sail go in the turn.');
+      if (p < 0.85 || speed < 6) return no('Carving 360s need full speed on the plane going in.');
+      if (at < 70 || at > 140) return no('Start a carving 360 from a reach.');
+      data = { kind, dir: s.side, turned: 0, bank: 18 * DEG, v0: speed };
+    } else {
+      if (s.hooked) return this.fall('catapult', 'a spock while hooked in: the rig yanked you over the front. Unhook first (A).');
+      if (p < 0.8 || speed < 5.5) return no('A spock needs speed: plane in, then spin.');
+      if (at > 120) return no('Start a spock from a beam or close reach.');
+      if (s.leanX < 0.02) return no('Weight on your front foot (right stick up): the nose has to bite for the board to spin on it.');
+      const nx = this.board.length * 0.5 - 0.3;
+      const fwd = [Math.cos(this.yaw), 0, -Math.sin(this.yaw)];
+      data = {
+        kind, turn: -s.side, turned: 0, nx, v0: speed, boom0: this.rig.boom, yaw0: this.yaw,
+        nose: [this.pos[0] + fwd[0] * nx, this.pos[2] + fwd[2] * nx], omega0: clamp(speed / 1.6, 3.2, 6.5),
+      };
+    }
+    s.crouch = 0;
+    if (kind !== 'c360') s.straps = 0;
+    this.setState(S.TRICK, data);
+    this.emit('trick', `${TRICKS[kind].name}…`, 1);
+  }
+
+  /** How much of the sail's pull reaches you during a move. */
+  trickTransmit() {
+    const d = this.stateData;
+    if (d.kind === 'duck') return 0.3;
+    if (d.kind === 'heli') return d.phase === 'luff' ? 0.3 : 0.1;
+    if (d.kind === 'c360') return d.turned < 75 * DEG || d.turned > 300 * DEG ? 0.6 : 0.1;
+    return 0;
+  }
+
+  /** The yaw moment (N·m) your feet and the rig put on the board through a move. */
+  trickTorque(Iz, speed) {
+    const d = this.stateData, ctl = this.lastControls ?? {};
+    void Iz;
+    if (d.kind === 'c360') {
+      // Carving: the sunk rail holds a radius; the harder it's sunk, the tighter.
+      const rail = clamp(-(ctl.rail ?? 0) * d.dir, 0, 1);
+      d.bank = (12 + 16 * rail) * DEG;
+      d.radius = 5 + 7 * (1 - rail);
+    }
+    return 0;
+  }
+
+  /** Motion a move takes over from the forces: a carve's grip, a spin on the nose. */
+  trickMotion(dt) {
+    const d = this.stateData;
+    const fwd = [Math.cos(this.yaw), 0, -Math.sin(this.yaw)];
+    if (d.kind === 'heli') {
+      // Luffing up, carving on the windward rail with the rig right back and
+      // sheeted in; then, sailing backwards, the rig pushed round and your
+      // feet keep the board spinning.
+      const sp = Math.hypot(this.vel[0], this.vel[2]);
+      const rate = d.phase === 'luff' ? Math.max(0.8, Math.min(1.4, sp / 6)) : 1.3;
+      this.yawRate = damp(this.yawRate, d.turn * rate, 6, dt);
+    } else if (d.kind === 'c360') {
+      // The rail grips: the board goes where it points, and the turn costs speed.
+      const sp = Math.hypot(this.vel[0], this.vel[2]);
+      if (sp < 0.1) return;
+      // The rail holds the board on its radius: it turns at its speed over
+      // the radius (the water, not the fin, steering it now).
+      this.yawRate = damp(this.yawRate, d.dir * sp / (d.radius ?? 8), 20, dt);
+      const k = 1 - Math.exp(-dt / 0.08);
+      const vx = lerp(this.vel[0] / sp, fwd[0], k), vz = lerp(this.vel[2] / sp, fwd[2], k);
+      const n = Math.hypot(vx, vz) || 1;
+      const sp2 = Math.max(0, sp - 0.07 * sp * sp / (d.radius ?? 8) * dt);
+      this.vel = [vx / n * sp2, 0, vz / n * sp2];
+      d.turned += Math.max(0, this.yawRate * d.dir) * dt;
+    } else if (d.kind === 'spock') {
+      // Pivoting on the nose: it bites and holds; the tail swings round it,
+      // slowing as the spin bleeds off the speed it started with.
+      const om = d.omega0 * Math.sqrt(Math.max(0.08, 1 - d.turned / (2 * Math.PI * 1.15)));
+      d.turned = Math.min(2 * Math.PI, d.turned + om * dt);
+      this.yaw = wrapAngle(d.yaw0 + d.turn * d.turned);
+      this.yawRate = d.turn * om;
+      const f = [Math.cos(this.yaw), 0, -Math.sin(this.yaw)];
+      this.pos[0] = d.nose[0] - f[0] * d.nx;
+      this.pos[2] = d.nose[1] - f[2] * d.nx;
+      // (the middle of the board swinging round the nose)
+      this.vel = [-this.yawRate * f[2] * d.nx, 0, this.yawRate * f[0] * d.nx];
+    }
+  }
+
+  /** The rig through a move. */
+  trickRig(dt, ctl, flagAngle, boomOpen) {
+    const d = this.stateData, r = this.rig, t = this.stateTime;
+    if (d.kind === 'duck') {
+      // Thrown forward and across: the boom sweeps through the middle,
+      // over your head, to the new side; then you catch it and sheet in.
+      if (t < 0.85) {
+        const e = smoothstep(0.08, 0.8, t);
+        r.boom = lerp(d.d0, -0.85 * d.d0, e);
+      } else r.boom = servo(r.boom, r.side * boomOpen(ctl.sheet), 6, 160 * DEG, dt);
+      r.rake = servo(r.rake, 10 * DEG, 6, 140 * DEG, dt);
+      r.lean = servo(r.lean, ctl.lean * 20 * DEG, 5, 115 * DEG, dt);
+    } else if (d.kind === 'heli') {
+      if (d.phase === 'luff') {
+        // Rig back and sheeted in: the sail drives the nose up through the wind.
+        r.rake = servo(r.rake, (-26 + ctl.rake * 8) * DEG, 5, 115 * DEG, dt);
+        r.boom = servo(r.boom, r.side * 8 * DEG, 6, 200 * DEG, dt);
+      } else {
+        // The helicopter: the sail spins round the mast, clew round the front.
+        const e = smoothstep(0, 1, (t - d.spinT) / 1.1);
+        r.boom = lerp(d.boom0, d.fromSide * (2 * Math.PI - 60 * DEG), e);
+        if (e >= 1) r.boom = wrapAngle(r.boom);
+        r.rake = servo(r.rake, 12 * DEG, 4, 115 * DEG, dt);
+      }
+      r.lean = servo(r.lean, 0, 5, 115 * DEG, dt);
+    } else if (d.kind === 'c360') {
+      // Powered into the turn; the back hand lets go through downwind and up
+      // through the wind (the sail streams like a flag); then you catch it again.
+      const free = d.turned > 75 * DEG && d.turned < 300 * DEG;
+      const fa = flagAngle();
+      const target = free ? r.boom + wrapAngle(fa - r.boom) : r.side * boomOpen(ctl.sheet);
+      r.boom = servo(r.boom, target, free ? 10 : 6, (free ? 300 : 160) * DEG, dt);
+      if (!free) r.boom = wrapAngle(r.boom);
+      r.rake = servo(r.rake, (free ? 0 : 15) * DEG, 4, 115 * DEG, dt);
+      r.lean = servo(r.lean, r.side * 12 * DEG, 4, 115 * DEG, dt);
+    } else {
+      // Held still above the spinning board.
+      r.boom = d.boom0 - d.turn * d.turned;
+      r.rake = servo(r.rake, 12 * DEG, 5, 115 * DEG, dt);
+      r.lean = servo(r.lean, 0, 5, 115 * DEG, dt);
+    }
+    r.up = 1;
+  }
+
+  /** Phases, the way out, and what goes wrong. */
+  updateTrick(dt, ctl, twa, speed) {
+    const d = this.stateData, s = this.sailor, r = this.rig, t = this.stateTime, at = Math.abs(twa) / DEG;
+    const b = this.board;
+    const done = (msg) => {
+      r.boom = wrapAngle(r.boom);
+      if (d.kind === 'spock') {
+        const f = [Math.cos(this.yaw), 0, -Math.sin(this.yaw)];
+        const v = Math.max(1.2, 0.2 * d.v0);
+        this.vel = [f[0] * v, 0, f[2] * v];
+        this.yawRate = 0;
+      }
+      if (d.kind === 'heli' || d.kind === 'spock') s.x = b.mastFootX - 0.42;
+      else s.x = Math.min(s.x, b.frontStrapX + 0.1);
+      this.setState(S.SAILING);
+      this.lastTrick = { kind: d.kind, t: this.t, kn: Math.hypot(this.vel[0], this.vel[2]) * MS_TO_KN };
+      this.emit('trickdone', msg, 2);
+    };
+    const flipSides = () => {
+      d.switched = true;
+      s.side *= -1;
+      r.side *= -1;
+      s.beta = clamp(-0.4 * s.beta, -10 * DEG, 10 * DEG);
+      s.betaRate = 0;
+    };
+    if (d.kind === 'duck') {
+      if (!d.switched && Math.sign(r.boom) !== Math.sign(d.d0)) {
+        // The clew passes over your head. Downwind, the wind's behind the
+        // sail as it comes over; too early, it fills from the wrong side.
+        const still = Math.sign(twa) === d.fromSide;
+        if (still && at < 125) return this.fall('backwind', 'you ducked too early: the board wasn\'t far enough downwind, so the wind filled the sail from the wrong side as it came over. Carve deeper before you duck.');
+        if (!still && at < 140) return this.fall('backwind', 'you ducked too late: already heading up on the new tack, the sail was backwinded before you got under it. Duck as the board goes through downwind.');
+        flipSides();
+      }
+      if (t > 1.05) done(`Duck gybe! Out at ${(speed * MS_TO_KN).toFixed(1)} knots`);
+    } else if (d.kind === 'heli') {
+      if (d.phase === 'luff') {
+        const crossed = Math.sign(twa) !== d.fromSide || at < 8;
+        if (crossed && t > 0.3) { d.phase = 'spin'; d.spinT = t; d.boom0 = r.boom; }
+        else if (t > 3) return this.fall('windward', 'you stalled head to wind: a helitack needs speed and a quick luff up, rig right back, to carry the board through.');
+      } else {
+        const e = (t - d.spinT) / 1.1;
+        if (!d.switched && e >= 0.5) flipSides();
+        if (e >= 1 && Math.sign(twa) === -d.fromSide && at > 55) done('Helitack!');
+        else if (t - d.spinT > 4.5) return this.fall('windward', 'the board stopped turning: keep the rig pushed forward and round while it sails backwards.');
+      }
+    } else if (d.kind === 'c360') {
+      if (d.turned >= 350 * DEG) done(`Carving 360! Out at ${(speed * MS_TO_KN).toFixed(1)} knots`);
+      else if (speed < 1.8 && d.turned < 300 * DEG) return this.fall('windward', 'you ran out of speed in the turn and stalled head to wind. Go in at full speed and sink the rail hard (right stick) for a tight carve.');
+    } else if (d.kind === 'spock') {
+      if (d.turned >= 2 * Math.PI - 1e-6) done('Spock!');
+      else if (s.leanX < -0.03 && d.turned < Math.PI) return this.fall('windward', 'your weight went back and the tail bit: the spin stalled and you fell in. Keep pressing the nose down.');
+    }
+  }
+
+  /**
+   * Battens. Each strip's camber stays popped to one side until the wind
+   * presses on its convex side hard enough to push the battens through:
+   * then it snaps across (a clack you can hear), and the strip pulls the
+   * other way. After a tack or a sail flip they pop as the sail fills on
+   * the new side; backwinded hard, they pop and the sail drives you in.
+   */
+  updateBattens(dt, aero) {
+    const r = this.rig;
+    if (!aero) return;
+    for (let i = 0; i < r.cam.length; i++) {
+      const st = aero.strips[i];
+      if (!st) continue;
+      const on = r.cam[i] >= 0 ? 1 : -1;
+      if (st.press > BATTEN_PRESS && r.camTo[i] === on) r.camTo[i] = -on;
+      const before = r.cam[i];
+      r.cam[i] = approach(r.cam[i], r.camTo[i], (2 / BATTEN_T) * dt);
+      if ((before >= 0) !== (r.cam[i] >= 0)) this.battenPop = { t: this.t, i, to: r.camTo[i] };
+    }
   }
 
   /**
@@ -1203,14 +1473,18 @@ export class Sim {
     }
     // Popping, you kick the tail down as your legs drive: the nose comes up.
     if (popping) pitchAcc += 7 * this.popK;
+    // Spinning on its nose, the nose is pressed down and the tail lifts.
+    if (this.state === S.TRICK && this.stateData.kind === 'spock') pitchAcc += 60 * (-7 * DEG - this.pitch);
     this.pitchRate += pitchAcc * dt;
     this.pitch += this.pitchRate * dt;
 
     let rollCmd = 0;
-    if (this.state === S.SAILING || this.state === S.FLIP) {
+    if (this.state === S.SAILING || this.state === S.FLIP || (this.state === S.TRICK && this.stateData.kind === 'duck')) {
       const maxRoll = lerp(8 * (0.75 / b.width), 30, p) * DEG;
       rollCmd = ctl.rail * maxRoll;
     }
+    // (a carving 360 is ridden right over on its inside rail)
+    if (this.state === S.TRICK && this.stateData.kind === 'c360') rollCmd = -this.stateData.dir * this.stateData.bank;
     // (in the air the water no longer rolls it; your feet do, more freely)
     const inAir = this.airborne ? 1 : 0;
     const rollTarget = rollCmd * (1 + 0.4 * inAir) + waveRoll * (sailorOnBoard ? 0.6 : 1) * (1 - 0.7 * p) * (1 - inAir);
@@ -1399,7 +1673,7 @@ export class Sim {
     const kRoll = RHO_WATER * G * (b.width ** 3) * b.length / 12 * 0.12;
     // Core and leg strength scale roughly with body mass. Holding the mast
     // (tacks, sail flips) steadies you: the rig is pinned at the mast foot.
-    const holdingMast = this.state === S.TACK || this.state === S.FLIP;
+    const holdingMast = this.state === S.TACK || this.state === S.FLIP || this.state === S.TRICK;
     const tauMax = (260 + 80 * p) * (mS / 75) * (holdingMast ? 1.6 : 1) + kRoll * (1 - 0.5 * p);
     // Balanced: the lean whose weight lever (centre of mass out from the
     // board's centreline) matches the sail's pull.

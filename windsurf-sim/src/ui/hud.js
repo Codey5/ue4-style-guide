@@ -2,7 +2,7 @@
 // diagram, context hints with the right button glyphs, event toasts and the
 // telemetry panel for those who want the numbers.
 import { DEG, MS_TO_KN, RAD, clamp } from '../physics/math.js';
-import { S } from '../physics/sim.js';
+import { S, TRICKS } from '../physics/sim.js';
 import { stance } from '../physics/body.js';
 import { CONTROL_MAP } from './input.js';
 import { CATEGORIES } from '../game/gps.js';
@@ -230,7 +230,7 @@ export class Hud {
     const sideX = s.side; // starboard = right on the diagram
     let feet = '', pitchText = '';
     const fx = (x, z) => `<ellipse cx="${(z * k * 0.9).toFixed(1)}" cy="${y(x)}" rx="5" ry="9" fill="#ffc531"/>`;
-    if (sim.state === S.SAILING || sim.state === S.FLIP) {
+    if (sim.state === S.SAILING || sim.state === S.FLIP || sim.state === S.TRICK) {
       const st = stance(b, s, sim.state, sim.stateData, sim.stateTime);
       feet = fx(st.feetF[0], st.feetF[2]) + fx(st.feetB[0], st.feetB[2]);
       const lx = sim.feetLoadX();
@@ -297,7 +297,24 @@ export class Hud {
       case S.FLIP:
         add(g.RS, 'Keep carving on the inside rail');
         break;
+      case S.TRICK: {
+        const k = sim.stateData.kind;
+        if (k === 'duck') { add(g.RS, 'Keep carving on the inside rail'); add(g.RT, 'Catch the boom on the new side'); }
+        else if (k === 'heli') { add(g.LS, 'Rig back: the board luffs through the wind'); add(g.RT, 'Then the sail spins round the mast'); }
+        else if (k === 'c360') { add(g.RS, 'Sink the rail toward the sail'); add(g.RT, 'Let the sail flag, catch it coming round'); }
+        else { add(`${g.RS} ↑`, 'Weight on the nose: it pivots on it'); add(g.RT, 'Sheet in once round'); }
+        break;
+      }
       case S.SAILING:
+        // Crouched: the freestyle moves (and the pop, letting go).
+        if (sim.lastControls?.pop && !sim.airborne) {
+          add(`${g.LB}+${g.Y}`, 'Duck gybe: carving downwind');
+          add(`${g.LB}+${g.X}`, 'Carving 360: flat out');
+          add(`${g.LB}+${g.A}`, 'Spock: unhooked, weight forward');
+          add(`${g.LB}+${g.B}`, 'Helitack: close reach, feet out');
+          add(`${g.LB} let go`, s.straps === 2 ? 'Pop off a chop face' : 'Stand up');
+          break;
+        }
         if (!planing) {
           add(g.RT, 'Sheet in: angle of attack 15–20°');
           add(`${g.LS} ↑`, 'Bear away to a beam / broad reach');
@@ -313,7 +330,7 @@ export class Hud {
           else add(g.A, 'Unhook (before a gybe)');
           if (s.straps < 2) add(g.X, s.straps === 0 ? 'Front foot into the strap' : 'Back foot into the strap');
           else add(`${g.X} hold`, 'Feet out for a gybe');
-          if (s.straps === 2) add(`${g.LB} hold, let go`, 'Crouch, then pop off a chop face');
+          add(`${g.LB} hold`, s.straps === 2 ? 'Crouch: pop off a chop, or a trick' : 'Crouch for a trick');
           add(g.LT, 'Hike out against the pull');
           add(g.RS, 'Rail: carve with toes / heels');
           add(g.Y, 'Flip the sail at dead downwind');
@@ -322,8 +339,9 @@ export class Hud {
       default:
         break;
     }
-    $('hint-title').textContent = sim.state === S.SAILING ? (planing ? 'Planing' : 'Sailing') : stateTitle(sim.state);
-    $('hints').innerHTML = list.slice(0, 5).join('');
+    $('hint-title').textContent = sim.state === S.SAILING ? (sim.lastControls?.pop && !sim.airborne ? 'Crouched' : planing ? 'Planing' : 'Sailing')
+      : sim.state === S.TRICK ? TRICKS[sim.stateData.kind]?.name ?? 'Freestyle' : stateTitle(sim.state);
+    $('hints').innerHTML = list.slice(0, 6).join('');
   }
 
   drawTelemetry(sim) {

@@ -97,6 +97,11 @@ export function stance(board, sailor, state, stateData = {}, stateTime = 0) {
     feetF = [board.mastFootX + 0.12 * k, 0, side * (0.16 - 0.1 * k)];
     feetB = [board.mastFootX - 0.25 + 0.2 * k, 0, side * 0.12];
     sit = 0.08;
+  } else if (state === S.TRICK && (stateData.kind === 'heli' || stateData.kind === 'spock')) {
+    // Up by the mast, low, while the board pivots under you.
+    feetF = [board.mastFootX - 0.2, 0, side * 0.06];
+    feetB = [board.mastFootX - 0.6, 0, side * 0.08];
+    sit = stateData.kind === 'heli' ? 0.12 : 0.22;
   } else {
     const strapZF = 0.29 * board.width, strapZB = 0.2 * board.width;
     if (sailor.straps === 2) {
@@ -113,6 +118,9 @@ export function stance(board, sailor, state, stateData = {}, stateTime = 0) {
       sit = sailor.hooked ? 0.08 : 0.07;
     }
     if (state === S.FLIP) sit = 0.16;
+    // Ducking right down under the rig as it goes over your head; low and
+    // sunk into the carve for a 360.
+    if (state === S.TRICK) sit = stateData.kind === 'duck' ? 0.08 + 0.24 * (1 - smoothstep(0.7, 1.05, stateTime)) : 0.18;
     // (crouched for a jump, tucked up in the air, soaking up a landing)
     sit += sailor.knees ?? 0;
   }

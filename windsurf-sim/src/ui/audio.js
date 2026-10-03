@@ -1,6 +1,6 @@
 // Procedural sound, all synthesised from noise: wind past your ears (apparent
 // wind), water rushing under the hull, the planing hiss, a luffing sail
-// fluttering, chop slaps and wipeout splashes.
+// fluttering, battens clacking through, chop slaps and wipeout splashes.
 import { clamp } from '../physics/math.js';
 
 export class Audio {
@@ -78,6 +78,8 @@ export class Audio {
   splash() { this.burst(0.9, 900, 1.2); this.burst(0.4, 3000, 0.6, 'highpass'); }
   slap(strength) { this.burst(clamp(strength, 0, 1) * 0.35, 500, 0.12); }
   click() { this.burst(0.08, 4000, 0.05, 'highpass'); }
+  /** A batten popping through: a sharp clack with a little body to it. */
+  batten() { this.burst(0.16, 2600, 0.035, 'highpass'); this.burst(0.07, 420, 0.07); }
 
   update(sim) {
     if (!this.ctx || !sim.telemetry) return;

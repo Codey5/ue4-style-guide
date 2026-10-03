@@ -134,7 +134,11 @@ export function sailTune(t = {}, q = 30) {
  * ctx: { R (board->world), pos (board origin, world), vel, yawRate, mastFoot
  * (board frame), rake, lean, boom, side (+1 clew to port), windAt(p) -> vec,
  * waterLevel, prevPoints (array of board-frame strip points or null), dt,
- * tune ({outhaul, downhaul}, see sailTune) }
+ * tune ({outhaul, downhaul}, see sailTune), cam (each strip's camber
+ * direction, ±1: which way its battens are popped; default side) }
+ * Each strip also reports press: the pressure (Pa) pushing on the convex
+ * side of its camber once it's backwinded by more than a luff (4°), which
+ * pops its battens through to the other side.
  */
 export function sailForces(geo, ctx) {
   const { R, pos, vel, yawRate, rake, lean, boom, side, dt } = ctx;
@@ -147,19 +151,22 @@ export function sailForces(geo, ctx) {
   const gap = clamp(1 - Math.abs(lean) / (22 * DEG), 0, 1) * clamp((-rake + 6 * DEG) / (16 * DEG), 0, 1);
   const aspect = geo.aspect * (1 + 0.6 * gap);
 
-  const out = { force: [0, 0, 0], strips: [], alphaMid: 0, awMid: [0, 0, 0], qMean: 0, points: [], ceChord: 0, draft };
+  const out = { force: [0, 0, 0], strips: [], alphaMid: 0, awMid: [0, 0, 0], qMean: 0, points: [], ceChord: 0, draft, twistTop };
   let wAlpha = 0, wq = 0, wCe = 0, wF = 0;
   for (let i = 0; i < geo.strips.length; i++) {
     const s = geo.strips[i];
-    const b = boom + side * s.twist * twistTop;
-    const c = chordDir(ax, b);
-    const nLee = scale(cross(c, ax.m), side);
+    // The camber bulges (and the leech twists off) the way the battens are
+    // popped: to leeward normally, the other way once the wind's got on the
+    // wrong side hard enough to pop them through.
+    const cs = ctx.cam ? (ctx.cam[i] >= 0 ? 1 : -1) : side;
+    const c0 = chordDir(ax, boom);
     // The draft (and with it the centre of pressure) sits where the tuning puts it.
     const sx = s.x * (draft / CE_CHORD);
-    const pB = add(add(ctx.mastFoot, scale(ax.m, s.h)), scale(c, sx));
-    // Rig-motion reference point without leech twist (twist is aeroelastic,
-    // not something the sailor moves through the air).
-    const pRig = add(add(ctx.mastFoot, scale(ax.m, s.h)), scale(chordDir(ax, boom), sx));
+    // (where the strip's load acts: on the untwisted chord, which is also
+    // the rig-motion reference point; twist is aeroelastic, not something
+    // the sailor moves through the air)
+    const pB = add(add(ctx.mastFoot, scale(ax.m, s.h)), scale(c0, sx));
+    const pRig = pB;
     out.points.push(pRig);
     const pW = add(pos, mulR(R, pB));
     // Velocity of this point through the air.
@@ -178,10 +185,17 @@ export function sailForces(geo, ctx) {
     const vPerp = sub(aw, scale(mw, dot(aw, mw)));
     const sp = Math.hypot(vPerp[0], vPerp[1], vPerp[2]);
     if (sp < 1e-4) {
-      out.strips.push({ p: pW, f: [0, 0, 0], alpha: 0, q: 0 });
+      out.strips.push({ p: pW, f: [0, 0, 0], alpha: 0, q: 0, tw: 0, press: 0 });
       continue;
     }
     const u = scale(vPerp, 1 / sp);
+    // The leech twists open with the load, but aeroelastically: only until
+    // the strip stops carrying load (a couple of degrees of attack), never
+    // past it into backwinding itself.
+    const alpha0 = Math.atan2(dot(u, mulR(R, scale(cross(c0, ax.m), cs))), dot(u, mulR(R, c0)));
+    const tw = clamp(s.twist * twistTop, 0, Math.max(0, alpha0 - 2 * DEG));
+    const c = chordDir(ax, boom + cs * tw);
+    const nLee = scale(cross(c, ax.m), cs);
     const cW = mulR(R, c), nW = mulR(R, nLee);
     const alpha = Math.atan2(dot(u, nW), dot(u, cW));
     const q = 0.5 * RHO_AIR * sp * sp;
@@ -193,7 +207,7 @@ export function sailForces(geo, ctx) {
     // Where along the chord the sail's load sits, weighted by its normal force.
     const fn = Math.abs(cn) * q * s.area;
     wCe += sx * fn; wF += fn;
-    out.strips.push({ p: pW, f, alpha, q, cl });
+    out.strips.push({ p: pW, f, alpha, q, cl, tw, press: q * Math.max(0, Math.sin(-alpha) - Math.sin(4 * DEG)) });
     if (i === 1 || i === 2) {
       wAlpha += alpha * s.area; wq += s.area;
       out.awMid = add(out.awMid, scale(aw, s.area));

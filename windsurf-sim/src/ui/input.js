@@ -26,6 +26,7 @@ export const CONTROL_MAP = [
   ['B (○)', 'T', 'Tack: step round the front of the mast'],
   ['Y (△)', 'G', 'Flip the sail (gybe) · swap sides in secure position'],
   ['LB (L1) hold', 'U / J hold', 'Uphaul when on the board · waterstart when in the water · sailing: crouch, let go to pop (jump)'],
+  ['LB + Y / X / A / B', 'U + G / F / H / T', 'Freestyle, from a crouch: duck gybe · carving 360 · spock · helitack'],
   ['RB (R1) hold', 'P hold', 'Pump the sail to get onto the plane'],
   ['L3 click', 'X', 'Drop the rig'],
   ['D-pad ← / →', 'V', 'Change camera'],

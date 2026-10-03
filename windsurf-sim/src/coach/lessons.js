@@ -515,6 +515,134 @@ export const LESSONS = [
       },
     ],
   },
+  {
+    id: 'freestyle',
+    title: 'Freestyle',
+    summary: 'Four moves off the plane: the duck gybe, the carving 360, the spock and the helitack.',
+    setup: { boardId: 'free115', sailArea: 6.3, wind: { speedKn: 18, gustiness: 0.05, shifts: 0.05, chop: 0.5 }, start: 'sailing' },
+    steps: [
+      {
+        say: 'Freestyle: tricks are all started the same way. Hold {LB} to crouch, then press a button. First get planing on a broad reach, unhooked, front foot in the strap.',
+        run: (x) => x.coach.sail(x.dt, { twa: 110, pump: true, straps: true, hook: false, hike: 'auto' }),
+        done: (sim, x) => x.t > 4 && planing(sim) && kn(sim) > 15 && !sim.sailor.hooked,
+      },
+      {
+        say: 'Duck gybe. Carve downwind on the leeward rail ({RS} toward the sail). As the board heads downwind, {LB} + {Y}: you throw the rig across and duck under it, and the clew goes over your head instead of round the front. Catch the boom on the new side and keep carving.',
+        retryOnFall: 'Wiped out! Duck as the board goes through downwind: too early and the wind fills the sail from the wrong side. Again.',
+        run: (x) => {
+          const sim = x.sim, m = x.m;
+          if (m.turnSide === undefined) { m.turnSide = sim.sailor.side; m.since = sim.t; }
+          const ts = m.turnSide;
+          if (sim.state === S.TRICK) {
+            const c = emptyControls();
+            c.rail = -ts; c.rake = 0.4; c.sheet = 0.55; c.weight = 0.3; c.hike = x.coach.hikeFor(x.dt);
+            x.coach.cur = undefined;
+            x.coach.sheet = 0.5;
+            return c;
+          }
+          if (sim.lastTrick && sim.lastTrick.t > m.since) {
+            // Out of it on the new side: keep carving onto the new reach,
+            // holding the sail in close (let right out this deep, the boom
+            // goes out over the water beyond your reach).
+            const c = x.coach.sail(x.dt, { twa: 118, turnRate: 30, hook: false, hike: 'auto', rail: -ts * (absTwa(sim) > 135 ? 1 : 0.5) });
+            if (absTwa(sim) > 140) { x.coach.sheet = 0.5; c.sheet = 0.5; }
+            return c;
+          }
+          // Off the plane (back from a wipeout, or slowed in the carve): get
+          // going again on a broad reach first.
+          if (!m.carving && !(planing(sim) && kn(sim) > 15)) {
+            m.turnSide = sim.sailor.side;
+            return x.coach.sail(x.dt, { twa: 110, pump: true, straps: true, hook: false, hike: 'auto' });
+          }
+          if (!m.carving) { m.carving = sim.t; m.turnSide = sim.sailor.side; }
+          if (sim.telemetry.planing < 0.75 && absTwa(sim) < 140) { m.carving = 0; return x.coach.sail(x.dt, { twa: 110, hook: false, hike: 'auto' }); }
+          // The carve in, as for a carve gybe, and the duck through downwind.
+          const c = emptyControls();
+          const k = smoothstep(0, 0.8, sim.t - m.carving);
+          c.rail = -ts; c.rake = 0.7 * k; c.lean = ts * (0.2 + 0.35 * k); c.weight = 0.35;
+          x.coach.sheet = clamp(x.coach.sheet + (0.6 - x.coach.sheet) * x.dt * 2, 0, 1);
+          c.sheet = x.coach.sheet; c.hike = x.coach.hikeFor(x.dt);
+          if (absTwa(sim) > 145) x.coach.trick(c, 'duck');
+          return c;
+        },
+        done: (sim, x) => !!sim.lastTrick && sim.lastTrick.kind === 'duck' && sim.lastTrick.t > (x.m.since ?? 0) && sim.state === S.SAILING && absTwa(sim) < 128,
+      },
+      {
+        say: 'Power up again on a beam reach.',
+        run: (x) => x.coach.sail(x.dt, { twa: 100, pump: true, straps: true, hook: false, hike: 'auto' }),
+        done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > 16,
+      },
+      {
+        say: 'Carving 360. At full speed, {LB} + {X} and sink the rail hard ({RS} toward the sail): the board carves right round, downwind and back up through the wind. Let the sail go as it streams out like a flag, and catch it again as you come round.',
+        retryOnFall: 'Stalled in the turn! Go in faster and keep that rail down. Again.',
+        run: (x) => {
+          const sim = x.sim, m = x.m;
+          if (m.since === undefined) m.since = sim.t;
+          if (sim.state === S.TRICK) {
+            const c = emptyControls();
+            // (easing a touch coming out of it, so the new pull doesn't drag you forward)
+            const out = smoothstep(290, 340, (sim.stateData.turned ?? 0) / DEG);
+            c.rail = -sim.sailor.side; c.sheet = 0.6 - 0.15 * out; c.hike = x.coach.hikeFor(x.dt);
+            x.coach.cur = undefined; x.coach.sheet = c.sheet;
+            return c;
+          }
+          const c = x.coach.sail(x.dt, { twa: 100, straps: true, hook: false, hike: 'auto' });
+          if (!(sim.lastTrick?.t > m.since) && planing(sim) && kn(sim) > 17) x.coach.trick(c, 'c360');
+          return c;
+        },
+        done: (sim, x) => !!sim.lastTrick && sim.lastTrick.kind === 'c360' && sim.lastTrick.t > (x.m.since ?? 0) && x.t > 2,
+      },
+      {
+        say: 'Power up again.',
+        run: (x) => x.coach.sail(x.dt, { twa: 100, pump: true, straps: true, hook: false, hike: 'auto' }),
+        done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > 15,
+      },
+      {
+        say: 'Spock. Weight on your front foot ({RS} up) so the nose bites, then {LB} + {A}: the board spins a full turn on its nose, the rig held still above it. Sheet in and go.',
+        retryOnFall: 'Fell in! Keep the weight on the nose through the spin. Again.',
+        run: (x) => {
+          const sim = x.sim, m = x.m;
+          if (m.since === undefined) m.since = sim.t;
+          if (sim.state === S.TRICK) {
+            const c = emptyControls();
+            c.weight = 0.8; c.sheet = 0.3;
+            x.coach.cur = undefined; x.coach.sheet = 0.3;
+            return c;
+          }
+          const c = x.coach.sail(x.dt, { twa: 100, straps: true, hook: false, hike: 'auto', weight: 0.8 });
+          if (sim.sailor.straps === 2) c.weight = 0.8;
+          if (!(sim.lastTrick?.t > m.since) && planing(sim) && kn(sim) > 14 && sim.sailor.leanX > 0.04) x.coach.trick(c, 'spock');
+          return c;
+        },
+        done: (sim, x) => !!sim.lastTrick && sim.lastTrick.kind === 'spock' && sim.lastTrick.t > (x.m.since ?? 0) && x.t > 2,
+      },
+      {
+        say: 'Helitack. Off the plane on a close reach, feet out of the straps, then {LB} + {B}: the rig goes right back and the board luffs up through the wind, then sails backwards while the sail spins round the mast, and you come out on the new tack without stepping round the front.',
+        retryOnFall: 'In the water! Go in with a bit more speed and keep the rig moving round. Again.',
+        run: (x) => {
+          const sim = x.sim, m = x.m;
+          if (m.since === undefined) m.since = sim.t;
+          if (sim.state === S.TRICK) {
+            const c = emptyControls();
+            c.rake = -0.6; c.sheet = 0.9;
+            x.coach.cur = undefined; x.coach.sheet = 0.25;
+            return c;
+          }
+          if (sim.lastTrick?.t > m.since) return x.coach.sail(x.dt, { twa: 75, turnRate: 6, hook: false, hike: 'auto' });
+          const c = x.coach.sail(x.dt, { twa: 72, turnRate: 12, hook: false, hike: 'auto' });
+          if (sim.sailor.straps > 0) c.strapsHeld = true;
+          if (sim.sailor.straps === 0 && absTwa(sim) < 78 && kn(sim) > 7) x.coach.trick(c, 'heli');
+          return c;
+        },
+        done: (sim, x) => !!sim.lastTrick && sim.lastTrick.kind === 'heli' && sim.lastTrick.t > (x.m.since ?? 0) && sim.state === S.SAILING && sim.t - sim.lastTrick.t > 2,
+      },
+      {
+        say: 'That\'s freestyle. Every move starts from {LB} held: {Y} duck gybe, {X} carving 360, {A} spock, {B} helitack. Let go of {LB} without a button and you pop instead.',
+        run: (x) => x.coach.sail(x.dt, { twa: 100, hook: false, hike: 'auto' }),
+        done: (sim, x) => x.t > 5 && sim.state === S.SAILING,
+      },
+    ],
+  },
 ];
 
 export const findLesson = (id) => LESSONS.find((l) => l.id === id);

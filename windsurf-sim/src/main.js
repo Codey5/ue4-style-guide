@@ -272,7 +272,7 @@ let last = performance.now();
 let acc = 0;
 let rumbleTimer = 0;
 let rumbleKick = 0;
-let lastPop;
+let lastPop, lastBatten, battenKick = 0;
 let lastLanding = null;
 let lastControls = null;
 // Physics runs at a fixed 240 Hz; rendering interpolates between the last two
@@ -359,7 +359,7 @@ function frame(now) {
         audio.splash();
         rumbleKick = 1;
       } else if (e.type === 'spinout' || e.type === 'grip' || e.type === 'nosedive') rumbleKick = Math.max(rumbleKick, 0.7);
-      else if (e.type === 'planing') rumbleKick = Math.max(rumbleKick, 0.25);
+      else if (e.type === 'planing' || e.type === 'trickdone') rumbleKick = Math.max(rumbleKick, 0.25);
     }
     // The pop: the tail kicks water as it leaves, and a sharp knock through the controller.
     if (sim.popStart !== undefined && sim.popStart !== lastPop) {
@@ -367,6 +367,12 @@ function frame(now) {
       effects.slap(sim, boardGroup, clamp(0.4 * sim.popK, 0.2, 0.4));
       audio.slap(0.4);
       rumbleKick = Math.max(rumbleKick, 0.55);
+    }
+    // A batten popping through: a clack, and a tick through the controller.
+    if (sim.battenPop && sim.battenPop !== lastBatten) {
+      lastBatten = sim.battenPop;
+      audio.batten();
+      battenKick = 0.45;
     }
     // Touching down off a chop: spray, a slap and a thump through the controller.
     if (sim.landing && sim.landing !== lastLanding) {
@@ -431,6 +437,7 @@ function frame(now) {
   // hand is close to losing its grip.
   rumbleTimer -= dt;
   rumbleKick = Math.max(0, rumbleKick - dt * 2.5);
+  battenKick = Math.max(0, battenKick - dt * 6);
   if (rumbleTimer <= 0 && !paused) {
     rumbleTimer = 0.06;
     const tel = sim.telemetry;
@@ -442,7 +449,7 @@ function frame(now) {
     const strong = Math.max(load * 0.45, rumbleKick, tip, (f.lateral ?? 0) * 0.45, (f.gust ?? 0) * 0.6);
     // (and goes quiet while the board flies)
     const weak = clamp((sim.airborne ? 0 : tel.planing * clamp(tel.speed / 14, 0, 1) * 0.18) + (sim.chopHit ?? 0) * 0.9 + luff * 0.25 +
-      (sim.finVentilated ? 0.7 : (f.fin ?? 0) * 0.45) + (f.hand ?? 0) * 0.5 * pulse, 0, 1);
+      (sim.finVentilated ? 0.7 : (f.fin ?? 0) * 0.45) + (f.hand ?? 0) * 0.5 * pulse + battenKick, 0, 1);
     input.rumble(strong, weak, 90);
   }
 

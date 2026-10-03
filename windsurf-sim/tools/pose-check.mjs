@@ -1,7 +1,8 @@
 // Poses the 3D sailor every frame while the coach sails, and checks the hands
 // stay on the boom whenever the sailor is sailing on it, and that the body is
 // drawn at the lean the physics balances (not bent to fit): every lesson, plus
-// sandbox runs at the extremes of body height, boom height and wind.
+// sandbox runs at the extremes of body height, boom height and wind. (The
+// last moment before a fall doesn't count: that's the sailor losing the rig.)
 // Run: node tools/pose-check.mjs [lessonId]
 import { Sim, S } from '../src/physics/sim.js';
 import { BOOM_RATIO } from '../src/physics/gear.js';
@@ -17,10 +18,19 @@ function check(label, sim, controls, update = () => null, duration = 240) {
   const rig = new Rig(sim.sailGeo);
   const sailor = new Sailor(sim.sailorHeight);
   let t = 0, frame = 0, worst = 0, worstAt = null, off = 0, frames = 0, bent = 0, outOfReach = 0;
+  // Gaps wait a quarter of a second before they count, and a fall drops them.
+  let pending = [];
+  const commit = (g) => {
+    if (g.gap > 0.03) off++;
+    if (g.gap > worst) { worst = g.gap; worstAt = g.at; }
+  };
   while (t < duration) {
+    const was = sim.state;
     sim.step(DT, controls());
     t += DT;
     const r = update();
+    if (sim.state === S.FALLING && was !== S.FALLING) pending = [];
+    while (pending.length && pending[0].t < t - 0.25) commit(pending.shift());
     if (++frame % 4 === 0) {
       rig.update(sim, 4 * DT, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);
       rig.group.updateMatrix();
@@ -37,15 +47,12 @@ function check(label, sim, controls, update = () => null, duration = 240) {
           if (sailor.offReach || Math.abs(sailor.leanDrawn - sim.sailor.beta) > Math.max(2 * 0.01745, outside + 0.01745)) bent++;
         }
         const gap = Math.max(sailor.pose.haL.distanceTo(hands.F), sailor.pose.haR.distanceTo(hands.B));
-        if (gap > 0.03) off++;
-        if (gap > worst) {
-          worst = gap;
-          worstAt = { t: +t.toFixed(1), kn: +sim.telemetry.kn.toFixed(1), lean: Math.round(sim.sailor.beta / 0.01745), hooked: sim.sailor.hooked, straps: sim.sailor.straps, rigRake: Math.round(sim.rig.rake / 0.01745), rigLean: Math.round(sim.rig.lean / 0.01745) };
-        }
+        pending.push({ t, gap, at: gap > 0.03 && { t: +t.toFixed(1), kn: +sim.telemetry.kn.toFixed(1), lean: Math.round(sim.sailor.beta / 0.01745), hooked: sim.sailor.hooked, straps: sim.sailor.straps, rigRake: Math.round(sim.rig.rake / 0.01745), rigLean: Math.round(sim.rig.lean / 0.01745) } });
       }
     }
     if (r === 'complete' || r === 'fell') break;
   }
+  pending.forEach(commit);
   const bentPct = (100 * bent) / Math.max(frames, 1);
   const ok = worst < 0.03 && bentPct < 5;
   if (!ok) failures++;
