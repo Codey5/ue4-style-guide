@@ -1,7 +1,7 @@
 // The coach: an expert sailor that produces the same controls a player would
 // (sticks, triggers, button presses). Used by the in-game lessons and by the
 // headless physics checks.
-import { DEG, clamp, damp, smoothstep } from '../physics/math.js';
+import { DEG, clamp, damp, smoothstep, wrapAngle } from '../physics/math.js';
 import { emptyControls, S } from '../physics/sim.js';
 
 export class Coach {
@@ -92,7 +92,8 @@ export class Coach {
     const side = sim.sailor.side;
     const goal = twaDeg * DEG;
     this.cur = this.cur === undefined ? Math.abs(sim.twa) : this.cur + clamp(goal - this.cur, -turnRate * DEG * dt, turnRate * DEG * dt);
-    const e = sim.twa - side * this.cur;
+    // (wrapped: sailing by the lee just after a gybe, the turn carries on the same way)
+    const e = wrapAngle(sim.twa - side * this.cur);
     // (no integral wind-up while still heading up onto an upwind course:
     // it overshoots, and you stall off the plane)
     const turning = Math.abs(goal - this.cur) > 1e-3 && goal < 75 * DEG;

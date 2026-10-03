@@ -5,6 +5,8 @@ import { CONTROL_MAP } from './input.js';
 import { LESSONS } from '../coach/lessons.js';
 import { adviseSail, windRange } from '../physics/quiver.js';
 import { CATEGORIES } from '../game/gps.js';
+import { CHAPTERS, chapterSetup } from '../game/career.js';
+import { LessonUi } from './lessonui.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -162,9 +164,9 @@ export class Menu {
 
   get open() { return !this.el.hidden; }
 
-  show() {
+  show(tab = 'sail') {
     this.el.hidden = false;
-    this.select('sail');
+    this.select(tab);
   }
 
   hide() {
@@ -194,7 +196,24 @@ export class Menu {
     const slider = (id, label, min, max, step, value, out) =>
       `<div class="field"><label for="${id}">${label}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}"><output id="${id}-out">${out}</output></div>`;
     const toggle = (id, label, checked) => `<label class="toggle"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''}> ${label}</label>`;
-    if (this.tab === 'sail' && this.activeLesson) {
+    if (this.tab === 'sail' && this.activeStory) {
+      const run = this.activeStory, ch = run.chapter, cur = run.current;
+      const lesson = cur?.goal.lesson ? LESSONS.find((l) => l.id === cur.goal.lesson) : null;
+      c.innerHTML = `
+        <h2>Paused</h2>
+        <p>Story, chapter ${CHAPTERS.indexOf(ch) + 1}: <b>${ch.title}</b>${run.complete ? ' · complete' : ''}.</p>
+        <ul class="steps">${run.goals.map((g) => `<li>${g.done ? '✓ ' : ''}${g.goal.text}${!g.done && g.tracker.label ? ` <span class="muted">(${g.tracker.label})</span>` : ''}</li>`).join('')}</ul>
+        ${cur ? `<p class="muted">${this.caption(cur.goal.hint)}</p>` : ''}
+        <div class="actions">
+          <button class="btn primary" id="act-resume">Resume</button>
+          <button class="btn" id="act-chapter-restart">Restart chapter</button>
+          ${lesson ? `<button class="btn" id="act-chapter-lesson" data-lesson-id="${lesson.id}">Watch Kai: ${lesson.title}</button>` : ''}
+          <button class="btn" id="act-story-exit">Exit to free sailing</button>
+        </div>
+        <p class="muted">Goals you've done stay done, so you can restart or come back to a chapter any time. The Story tab has every chapter.</p>`;
+    } else if (this.tab === 'story') {
+      c.innerHTML = this.storyPage();
+    } else if (this.tab === 'sail' && this.activeLesson) {
       const l = this.activeLesson;
       c.innerHTML = `
         <h2>Paused</h2>
@@ -232,6 +251,7 @@ export class Menu {
           <button class="btn" id="act-restart-strip">${this.started ? 'Restart' : 'Start'}: at the speed strip</button>
         </div>
         <p class="muted">Free sailing is logged by your GPS: the Speed tab has your records. The speed strip is the flat water in the lee of the sandbar, a few hundred metres downwind.</p>
+        <p class="muted">New to windsurfing? The <b>Story</b> takes you from your first day on a board to speed week, a chapter at a time.</p>
         <h3>Quick controls</h3>
         <div class="maptable"><table><tbody>
           ${CONTROL_MAP.slice(0, 8).map(([pad, kb, what]) => `<tr><td>${pad}</td><td>${kb}</td><td>${what}</td></tr>`).join('')}
@@ -320,6 +340,14 @@ export class Menu {
       row.addEventListener('click', () => { s.sailArea = SAILS[+row.dataset.sail].area; h.gear(); this.render(); });
     }
     on('act-lesson-restart', 'click', () => h.lesson(this.activeLesson.lesson.id, this.activeLesson.mode));
+    on('act-chapter-restart', 'click', () => h.chapter(this.activeStory.chapter.id));
+    on('act-chapter-lesson', 'click', (e) => h.lesson(e.target.dataset.lessonId, 'watch'));
+    on('act-story-exit', 'click', () => h.exitStory());
+    for (const b of this.content.querySelectorAll('[data-chapter]')) b.addEventListener('click', () => h.chapter(b.dataset.chapter));
+    on('act-story-reset', 'click', (e) => {
+      if (e.target.dataset.armed) { h.resetStory(); this.storyBanner = null; this.render(); }
+      else { e.target.dataset.armed = '1'; e.target.textContent = 'Click again to start the story over'; }
+    });
     on('act-lesson-switch', 'click', () => h.lesson(this.activeLesson.lesson.id, this.activeLesson.mode === 'watch' ? 'try' : 'watch'));
     on('act-lesson-exit', 'click', () => h.exitLesson());
     for (const b of this.content.querySelectorAll('[data-lesson]')) {
@@ -362,6 +390,42 @@ export class Menu {
     on('gpspanel', 'change', (e) => { s.gpsPanel = e.target.checked; h.options(); });
     // Re-render the rule-of-thumb line when the weight changes.
     on('mass', 'change', () => this.render());
+  }
+
+  /** Caption tokens ({A}…) in the player's own buttons. */
+  caption(text) {
+    return LessonUi.caption(text, this.h.glyphs?.() ?? {});
+  }
+
+  /** The Story tab: the chapters, what's done, and what's next. */
+  storyPage() {
+    const career = this.career, s = this.settings;
+    if (!career) return '';
+    const next = career.next;
+    const done = CHAPTERS.filter((c) => career.finished(c.id)).length;
+    const banner = this.storyBanner ? CHAPTERS.find((c) => c.id === this.storyBanner) : null;
+    const after = banner ? CHAPTERS[CHAPTERS.indexOf(banner) + 1] : null;
+    const rows = CHAPTERS.map((ch, i) => {
+      const open = career.unlocked(i), fin = career.finished(ch.id), isNext = i === next && !fin;
+      const g = chapterSetup(ch, s.mass);
+      const spec = `${boardName(g.boardId)} · ${g.sailArea.toFixed(1)} m² · ${ch.wind.speedKn} kn`;
+      const goals = ch.goals.map((x) => `<li class="${career.goalDone(ch.id, x.id) ? 'done' : ''}">${x.text}</li>`).join('');
+      const label = fin ? 'Sail again' : career.data.goals[ch.id]?.length ? 'Continue' : 'Start';
+      return `<div class="story-row ${fin ? 'done' : ''} ${isNext ? 'next' : ''} ${open ? '' : 'locked'}">
+        <span class="n">${i + 1}</span>
+        <div><b>${ch.title}</b><div class="spec">${spec}${fin ? ' · done ✓' : ''}</div>
+          ${open ? `<p>${this.caption(ch.intro)}</p><ul>${goals}</ul>` : `<p>Finish chapter ${i} to unlock.</p>`}</div>
+        <div class="acts">${open ? `<button class="btn${isNext ? ' primary' : ''}" data-chapter="${ch.id}">${label}</button>` : ''}</div>
+      </div>`;
+    }).join('');
+    return `
+      <h2>Story</h2>
+      ${banner ? `<div class="story-banner"><b>Chapter ${CHAPTERS.indexOf(banner) + 1} complete</b><p>${this.caption(banner.outro)}</p>
+        <div class="actions" style="margin-top:0">${after ? `<button class="btn primary" data-chapter="${after.id}">Chapter ${CHAPTERS.indexOf(after) + 1}: ${after.title}</button>` : ''}<button class="btn" id="act-resume">Keep sailing</button></div></div>` : ''}
+      <p class="muted">A summer at the spot, from your first day on a board to speed week on the sandbar. Kai, who runs the school on the beach, picks the gear and the day for each chapter (the sails are sized for your ${s.mass} kg). Finish a chapter's goals to unlock the next; goals you've done stay done.</p>
+      <p class="story-progress">${done} of ${CHAPTERS.length} chapters done</p>
+      <div class="story-list">${rows}</div>
+      <div class="actions"><button class="btn" id="act-story-reset">Start the story over</button></div>`;
   }
 
   /** The Speed tab: personal bests, this session and the session log. */

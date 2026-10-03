@@ -304,7 +304,57 @@ export class World {
     }
   }
 
-  update(t, waves) {
+  /**
+   * The story's marks on the water: the school buoy (white) and the turning
+   * marks (orange, with a flag), the one to head for ringed in yellow.
+   */
+  setMarks(marks) {
+    for (const m of this.marks ?? []) this.group.remove(m.group);
+    this.marks = marks.map((mk) => {
+      const school = mk.name.includes('school');
+      const g = new THREE.Group();
+      const body = new THREE.MeshStandardMaterial({ color: school ? 0xf2f4f5 : 0xff6a1a, roughness: 0.45 });
+      const band = new THREE.MeshStandardMaterial({ color: school ? 0x1f5fa8 : 0xf2f4f5, roughness: 0.5 });
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.9, 1.6, 20), body);
+      b.position.y = 0.4;
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.77, 0.77, 0.3, 20), band);
+      ring.position.y = 0.75;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3.2, 6), new THREE.MeshStandardMaterial({ color: 0x2a2a2a }));
+      pole.position.y = 2.6;
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.7, 6, 1), new THREE.MeshStandardMaterial({ color: school ? 0x1f5fa8 : 0xff6a1a, side: THREE.DoubleSide, roughness: 0.6 }));
+      flag.geometry.translate(0.55, 0, 0);
+      const pivot = new THREE.Group();
+      pivot.position.y = 3.8;
+      pivot.add(flag);
+      g.add(b, ring, pole, pivot);
+      g.traverse((o) => { o.castShadow = true; });
+      // (the one to head for: a ring on the water around it)
+      const halo = new THREE.Mesh(new THREE.TorusGeometry(4, 0.12, 6, 48), new THREE.MeshBasicMaterial({ color: 0xffc531, transparent: true, opacity: 0.8 }));
+      halo.rotation.x = -Math.PI / 2;
+      halo.position.y = 0.05;
+      halo.visible = false;
+      g.add(halo);
+      g.position.set(mk.at[0], 0, mk.at[1]);
+      this.group.add(g);
+      const f = { group: g, pivot, flag, x: mk.at[0], z: mk.at[1], phase: Math.random() * 6, mark: mk, halo };
+      return f;
+    });
+  }
+
+  update(t, waves, target = null) {
+    for (const m of this.marks ?? []) {
+      m.group.position.y = waves.height(m.x, m.z, t) - 0.25;
+      m.group.rotation.z = Math.sin(t * 1.3 + m.phase) * 0.05;
+      const wv = this.wind.sample(m.x, 3, m.z, t);
+      m.pivot.rotation.y = Math.atan2(-wv[2], wv[0]) - m.group.rotation.y;
+      m.flag.rotation.x = Math.sin(t * (4 + Math.hypot(wv[0], wv[2])) + m.phase) * 0.25;
+      m.halo.visible = m.mark === target;
+      if (m.halo.visible) {
+        const k = 1 + 0.12 * Math.sin(t * 3);
+        m.halo.scale.set(k, k, k);
+        m.halo.position.y = 0.3;
+      }
+    }
     const w = this.wind;
     // Windsock: points downwind, droops in light air.
     const ws = w.sample(this.windsock.position.x, 9, this.windsock.position.z, t);

@@ -2,17 +2,36 @@
 
 A windsurfing simulator for the browser, built around a game controller and real physics. The sail is a soft wing in an apparent-wind field. The board is a planing hull with a fin that can spin out. You are a body that has to balance the pull of the rig with its own weight. Nothing is scripted to "feel right": if the board planes, it's because hydrodynamic lift carried the load and the drag dropped.
 
-Focus of this first version: **freeride / blasting** and **learning the basics**, in a **pure sandbox** where you pick the wind, the gear and your weight.
+Focus of this version: **freeride / blasting** and **learning the basics**: a **story** that takes you from your first day on a board to speed week, and a **sandbox** where you pick the wind, the gear and your weight.
 
 ## Play
 
 1. Open `dist/beam-reach.html` in a recent Chrome, Edge or Firefox. It is a single self-contained file, so it works offline and from disk.
 2. Plug in an Xbox or PlayStation controller and press any button (Chrome/Edge support rumble).
-3. Pick **Go sailing**. You start in the secure position with the rig up.
+3. Pick **Story** to start from scratch, or **Go sailing** to sail free (you start in the secure position with the rig up).
 
 No controller? The keyboard works too (see below), though analog triggers make it far more natural.
 
-New to it, or to windsurfing? Open **Lessons** in the menu.
+New to it, or to windsurfing? Start the **Story**. The **Lessons** in the menu show each technique, sailed by a coach.
+
+## Story
+
+A summer at the spot, in ten chapters: from never having stood on a windsurf board to speed week on the sandbar. Kai, who runs the school on the beach, picks the board, the sail and the day for each one, starting on the biggest, steadiest board in barely any wind and building up a little at a time. Each chapter has four goals; finish them all to unlock the next. Goals you've done stay done (they're kept in your browser), so you can stop, restart a chapter or come back any time. The sails are sized for your weight (the Gear tab's weight setting): a school rigs a heavier sailor a bigger sail.
+
+| # | Chapter | Gear and wind | Goals |
+| --- | --- | --- | --- |
+| 1 | Day one | Beginner 210 L, 4.2 m², 7 kn | Climb onto the board · Pull the rig out of the water · Sheet in and get moving · Sail 100 m without falling in |
+| 2 | There and back | Beginner 210 L, 4.7 m², 8 kn | Bear away · Head up · Tack · Sail out to the orange buoy and back to the school buoy |
+| 3 | Upwind | Beginner 210 L, 5.3 m², 10 kn | Sail close-hauled for 15 seconds · Reach the upwind buoy · Gybe · Back downwind to the school buoy |
+| 4 | A proper breeze | Freeride 155 L, 5.8 / 6.3 / 7.8 m² (65 / 75 / 90 kg), 13 kn, gusty | Lean right out against the pull · Sail 300 m through the gusts without falling in · Get planing · Hit 10 knots |
+| 5 | Harness and straps | Freeride 155 L, 8.6 / 8.6 / 9.5 m², 15 kn | 15 seconds hooked in · Front foot in the strap · Both feet in the straps · Plane for 20 seconds without dropping off |
+| 6 | Hooked in | Freeride 135 L, 7.0 / 7.8 / 7.8 m², 17 kn | Plane 30 s hooked in and in the straps · Hit 18 knots · Plane upwind for 10 s · Carve gybe |
+| 7 | Small board | Freeride 115 L, 6.3 / 6.3 / 7.0 m², 18 kn | Waterstart · Plane 30 s without stopping · Hit 20 knots · Carve gybe and plane out of it |
+| 8 | Chop hop | Freeride 115 L, 5.8 / 6.3 / 7.0 m², 20 kn, rough chop | Plane 60 s through the chop without falling in · A 30 cm jump · Half a metre of air · Land three jumps cleanly |
+| 9 | Freestyle | Freeride 115 L, 5.8 / 5.8 / 6.3 m², 18 kn, flat | Duck gybe · Carving 360 · Spock · Helitack |
+| 10 | Speed week | Freemove 95 L, 4.7 / 4.7 / 5.3 m², 24 kn, on the speed strip | Hit 25 knots · 500 m over 22 knots · 5 × 10 s over 22 knots · Hit 27 knots |
+
+While you sail a chapter, a card at the top of the screen lists its goals, ticks each one off as you do it (with a chime and a nudge through the controller), shows your progress on the one you're working on and Kai's hint for it in your controller's own buttons, and points the way to the buoy to head for, which has a yellow ring on the water round it. Pause for a link to the lesson that shows the technique. The goals are spotted the way the game sees everything else: the sailor's state, the events the physics reports (a tack, a waterstart, a jump, a trick) and the GPS. Story sessions are logged by the GPS like free sailing (records count from 10 knots), so a personal best set in speed week counts.
 
 ## Speed sessions
 
@@ -63,7 +82,7 @@ In **Freestyle** the coach plays all four moves in turn off the plane, powering 
 
 In **Gusts and catapults** the coach first gets it wrong on purpose: hooked in, weight forward and the sail locked in, a gust catapults it over the boom (the coach takes the controls for that step even in Try it). Then it's your turn to ride a gust out: weight back and ease the sheet as it hits. If it catapults you, you're put straight back on the board for another go.
 
-The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; leans the rig to windward when it needs to hang further out (and comes in to hook in); sits back on the tail at speed; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls or doesn't finish (except the catapult it means to show, which has to be a catapult); it also lists any slip along the way, a lost grip or a spin-out. It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom (short of the last moment before a fall, when the sailor is losing the rig) or the body is drawn at a different lean from the one the physics balances.
+The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; leans the rig to windward when it needs to hang further out (and comes in to hook in); sits back on the tail at speed; and eases off before its grip goes. `npm test` also has the coach play every chapter of the story, as 65, 75 and 90 kg sailors on the gear Kai picks for each, and fails unless it completes every goal (getting back on after falls, beating up to the buoys, and borrowing the lessons' own demonstrations for carve gybes and tricks). It runs every lesson for the same three sailors and fails if the coach falls or doesn't finish (except the catapult it means to show, which has to be a catapult); it also lists any slip along the way, a lost grip or a spin-out. It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom (short of the last moment before a fall, when the sailor is losing the rig) or the body is drawn at a different lean from the one the physics balances.
 
 ## Controls
 
@@ -227,17 +246,17 @@ Rig tuning, same board and sail (`node tools/physics-check.mjs tune`):
 npm install        # three.js and esbuild
 npm run dev        # http://localhost:8000 serves index.html with live ES modules
 npm run build      # writes dist/beam-reach.html (single file, ~800 KB)
-npm test           # physics speed polar, maneuver checks, GPS & speed strip, freestyle & battens, every lesson sailed by the coach, hands-on-boom pose check
+npm test           # physics speed polar, maneuver checks, GPS & speed strip, freestyle & battens, every lesson and story chapter sailed by the coach, hands-on-boom pose check
 npm run quiver     # recalibrate the gear advisor's wind ranges (src/physics/quiver.js) from the physics
 ```
 
 ```
 src/physics/   wind & chop, sail aero, planing hull & foils, the sailor's body geometry, balance + state machine (no rendering deps)
 src/coach/     the coach (an expert sailor driving the controls) and the lesson scripts
-src/game/      the GPS speed logger and the session log (personal bests, gear verdict)
+src/game/      the GPS speed logger, the session log (personal bests, gear verdict) and the story (chapters, goals, progress)
 src/render/    three.js: water shader, sky & spot, board/rig/sailor models, spray & wake, cameras
 src/ui/        gamepad & keyboard input, HUD, menu, procedural audio
-tools/         build script, physics, maneuver, GPS, freestyle, lesson and pose checks, gear-advisor calibration
+tools/         build script, physics, maneuver, GPS, freestyle, lesson, story and pose checks, the story autopilot, gear-advisor calibration
 ```
 
 The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the frame rate; rendering interpolates between the last two physics states so motion stays smooth at any refresh rate. The water has no textures: waves and ripples are evaluated per pixel and filtered by their size on screen (the procedural equivalent of mipmapping), so distant water doesn't shimmer.

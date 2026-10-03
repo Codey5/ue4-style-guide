@@ -16,10 +16,12 @@ import { Audio } from './ui/audio.js';
 import { LessonUi } from './ui/lessonui.js';
 import { LESSONS, findLesson, LessonRunner } from './coach/lessons.js';
 import { Coach } from './coach/coach.js';
-import { SANDBAR, barPoint } from './physics/spot.js';
+import { SANDBAR, placeAtStrip } from './physics/spot.js';
 import { adviseSail } from './physics/quiver.js';
 import { CATEGORIES, GpsLogger } from './game/gps.js';
 import { GearVerdict, SessionBook } from './game/sessions.js';
+import { Career, ChapterRun, MARKS, chapterSetup, findChapter } from './game/career.js';
+import { StoryUi } from './ui/storyui.js';
 
 const DT = 1 / 240;
 const STORE_KEY = 'beam-reach-settings-v2';
@@ -74,6 +76,10 @@ const hud = new Hud();
 const audio = new Audio();
 const lessonUi = new LessonUi();
 let lesson = null; // active LessonRunner
+const storyUi = new StoryUi();
+const career = new Career();
+let story = null; // the chapter being sailed (a ChapterRun)
+let storyStart = 0, storyDoneAt = null;
 
 const boardGroup = new THREE.Group();
 scene.add(boardGroup);
@@ -114,20 +120,19 @@ function syncWorld() {
   skyUniforms.uWindSpeed.value = sim.wind.speed;
 }
 
-function restart(mode, setup = null, watch = false) {
+/**
+ * A fresh sim: free sailing (setup null), a lesson's setup, or a story
+ * chapter's (logged by the GPS like free sailing, on the chapter's gear).
+ */
+function restart(mode, setup = null, watch = false, logged = false) {
   const at = sim ? [sim.pos[0], 0, sim.pos[2]] : null;
   const nearShore = at && at[2] < BEACH_Z + 40;
   sim = makeSim(mode, setup, watch);
-  if (mode === 'strip') {
-    // At the top of the speed strip, in the sandbar's lee, already heading down it.
-    const wd = sim.wind.dir;
-    const [x, z] = barPoint(SANDBAR, wd[0], wd[2], 40, SANDBAR.halfWidth + SANDBAR.laneD);
-    sim.reset('sailing', [x, 0, z]);
-    sim.yaw = Math.atan2(-SANDBAR.lz, SANDBAR.lx);
-    sim.vel = [SANDBAR.lx * 5, 0, SANDBAR.lz * 5];
-  } else if (!setup && at && !nearShore && Math.hypot(at[0], at[2]) < 2500) sim.reset(mode, at);
-  // Free sailing is logged by the GPS as a session; lessons aren't.
-  if (setup) endSession(); else startSession();
+  if (mode === 'strip') placeAtStrip(sim);
+  else if (!setup && at && !nearShore && Math.hypot(at[0], at[2]) < 2500) sim.reset(mode, at);
+  // Free sailing and the story are logged by the GPS as a session; lessons aren't.
+  sessionGear = logged ? setup : null;
+  if (setup && !logged) endSession(); else startSession();
   buildModels();
   syncWorld();
   effects.clearTrail();
@@ -157,13 +162,17 @@ let gearTimer = 0;
 // ---- GPS speed sessions: logged while free sailing, with your personal bests.
 const book = new SessionBook();
 let gps = null, verdict = null, lastState = null, recordCheck = 0, sessionSave = 0, five10Check = 0;
-const advice = () => adviseSail(settings.boardId, settings.mass, settings.windKn);
+let sessionGear = null; // a story chapter's gear and wind (null: the settings)
+const advice = () => (sessionGear ? adviseSail(sessionGear.boardId, settings.mass, sessionGear.wind.speedKn) : adviseSail(settings.boardId, settings.mass, settings.windKn));
+const sessionSail = () => sessionGear?.sailArea ?? settings.sailArea;
 function sessionMeta() {
+  const g = sessionGear;
+  if (g) return { board: g.boardId, sail: g.sailArea, mass: settings.mass, wind: g.wind.speedKn, gust: g.wind.gustiness, chop: g.wind.chop, story: true };
   return { board: settings.boardId, sail: settings.sailArea, mass: settings.mass, wind: settings.windKn, gust: settings.gustiness, chop: settings.chop };
 }
 function saveSession() {
   if (!gps) return;
-  book.update(gps.results(), verdict.result(advice(), settings.sailArea));
+  book.update(gps.results(), verdict.result(advice(), sessionSail()));
   book.save();
 }
 function startSession() {
@@ -203,6 +212,7 @@ function startLesson(id, mode) {
   const def = findLesson(id);
   if (!def) return;
   audio.start();
+  exitStory();
   restart(def.setup.start, def.setup, mode === 'watch');
   lesson = new LessonRunner(def, mode, sim);
   menu.activeLesson = lesson;
@@ -217,13 +227,45 @@ function exitLesson() {
   lessonUi.show(false);
 }
 
+/** Sail a chapter of the story: Kai's gear and conditions for it, its marks on the water. */
+function startChapter(id) {
+  const ch = findChapter(id);
+  if (!ch) return;
+  audio.start();
+  exitLesson();
+  exitStory();
+  const setup = chapterSetup(ch, settings.mass);
+  restart(ch.start === 'strip' ? 'strip' : setup.start, setup, false, true);
+  story = new ChapterRun(ch, career, sim);
+  storyStart = sim.t;
+  storyDoneAt = null;
+  world.setMarks((ch.marks ?? []).map((k) => MARKS[k]));
+  menu.activeStory = story;
+  menu.storyBanner = null;
+  menu.started = true;
+  storyUi.show(true);
+  camRig.mode = 0;
+  resume();
+}
+function exitStory() {
+  if (!story) return;
+  story = null;
+  menu.activeStory = null;
+  storyUi.show(false);
+  world.setMarks([]);
+}
+
 const menu = new Menu(settings, {
-  start: (mode) => { audio.start(); exitLesson(); restart(mode); menu.started = true; resume(); },
+  start: (mode) => { audio.start(); exitLesson(); exitStory(); restart(mode); menu.started = true; resume(); },
   lesson: (id, mode) => startLesson(id, mode),
   exitLesson: () => { exitLesson(); restart('secure'); resume(); },
+  chapter: (id) => startChapter(id),
+  exitStory: () => { exitStory(); restart('secure'); resume(); },
+  resetStory: () => career.reset(),
+  glyphs: () => hud.glyphs(input),
   resume: () => resume(),
   conditions: () => {
-    if (lesson) { exitLesson(); restart('secure'); }
+    if (lesson || story) { exitLesson(); exitStory(); restart('secure'); }
     sim.setWind({ speedKn: settings.windKn, gustiness: settings.gustiness, shifts: settings.shifts, chop: settings.chop });
     syncWorld();
     saveSettings(settings);
@@ -232,14 +274,18 @@ const menu = new Menu(settings, {
   gear: () => {
     saveSettings(settings);
     if (lesson) exitLesson();
+    exitStory();
     clearTimeout(gearTimer); // sliders fire continuously; rebuild once they settle
     gearTimer = setTimeout(() => restart('secure'), 200);
   },
   options: () => applyOptions(),
-  sessions: () => ({ book, gps, verdict: gps ? verdict.result(advice(), settings.sailArea) : null }),
+  sessions: () => ({ book, gps, verdict: gps ? verdict.result(advice(), sessionSail()) : null }),
   clearRecords: () => { book.clear(); if (gps) book.begin(sessionMeta()); },
 });
 menu.completed = new Set(settings.lessonsDone);
+menu.career = career;
+// (a first visit opens on the story)
+if (!career.started) menu.select('story');
 
 function resume() {
   paused = false;
@@ -247,9 +293,9 @@ function resume() {
   hud.show(true);
   canvas.focus?.();
 }
-function pause() {
+function pause(tab) {
   paused = true;
-  menu.show();
+  menu.show(tab);
 }
 
 buildModels();
@@ -316,6 +362,7 @@ function frame(now) {
     let steps = 0;
     framePressed = {};
     let restartLesson = null;
+    let goalDone = false;
     while (acc >= DT && steps < 24) {
       const coachDriving = lesson && lesson.coachDriving;
       const c = coachDriving ? lesson.controls(DT) : first ? controls : { ...controls, pressed: {} };
@@ -342,11 +389,30 @@ function frame(now) {
         }
         if (r === 'fell') restartLesson = lesson;
       }
+      if (story) {
+        for (const g of story.step(DT)) {
+          sim.emit(`goal-${g.id}`, `✓ ${g.text}`, 2);
+          goalDone = true;
+        }
+        if (story.finished && storyDoneAt === null) {
+          storyDoneAt = sim.t;
+          sim.emit('chapter', `Chapter complete: ${story.chapter.title}!`, 3);
+        }
+      }
       first = false;
       acc -= DT;
       steps++;
     }
     if (steps >= 24) acc = 0;
+    if (goalDone) {
+      audio.chime(storyDoneAt !== null && sim.t - storyDoneAt < 0.1);
+      rumbleKick = Math.max(rumbleKick, 0.4);
+    }
+    // A chapter done: a moment to enjoy it, then the story page with what's next.
+    if (story && storyDoneAt !== null && sim.t - storyDoneAt > 3.5 && menu.storyBanner !== story.chapter.id) {
+      menu.storyBanner = story.chapter.id;
+      pause('story');
+    }
     if (restartLesson) {
       startLesson(restartLesson.lesson.id, restartLesson.mode);
       sim.emit('lesson', 'The coach fell in. It happens to everyone! Starting the lesson again.', 2);
@@ -406,7 +472,7 @@ function frame(now) {
   water.update(view.t, camera);
   effects.update(paused ? 0 : dt, sim, boardGroup, sim.waves, { camera, height: renderer.domElement.height, water, t: view.t });
   skyUniforms.uTime.value = view.t;
-  world.update(view.t, sim.waves);
+  world.update(view.t, sim.waves, story?.target ?? null);
   windFx.update(paused ? 0 : dt, camera, sim.wind, view.t, sim.waves.height(camera.position.x, camera.position.z, view.t));
   sun.position.set(sim.pos[0] + env.sunDir.x * 40, env.sunDir.y * 40, sim.pos[2] + env.sunDir.z * 40);
   sun.target.position.set(sim.pos[0], 0, sim.pos[2]);
@@ -414,7 +480,10 @@ function frame(now) {
 
   const shown = usedControls ?? controls;
   hud.update(dt, sim, input, shown);
-  hud.updateGps(dt, gps && !lesson && settings.gpsPanel ? gps : null, book, sim);
+  // (in the story, only once speed is what the chapter's about)
+  const gpsOn = gps && !lesson && settings.gpsPanel && (!story || story.chapter.goals.some((g) => g.kind === 'gps'));
+  hud.updateGps(dt, gpsOn ? gps : null, book, sim);
+  if (story) storyUi.update(story, sim, hud.glyphs(input), storyStart);
   if (gps && !paused) {
     recordCheck -= dt;
     if (recordCheck <= 0) { recordCheck = 0.25; checkRecords(); }
@@ -455,6 +524,6 @@ function frame(now) {
 
   renderer.render(scene, camera);
   // (handles for the headless checks and screenshots)
-  window.__beamReach = { sim, controls: lastControls, paused, lesson, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig };
+  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig };
 }
 requestAnimationFrame(frame);

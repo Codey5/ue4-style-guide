@@ -81,6 +81,24 @@ export class Audio {
   /** A batten popping through: a sharp clack with a little body to it. */
   batten() { this.burst(0.16, 2600, 0.035, 'highpass'); this.burst(0.07, 420, 0.07); }
 
+  /** A goal done: two quick rising notes (three for a chapter). */
+  chime(big = false) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    (big ? [659, 784, 988] : [784, 1047]).forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f;
+      const g = ctx.createGain(), t = t0 + i * 0.11;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.12, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      o.connect(g).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.55);
+    });
+  }
+
   update(sim) {
     if (!this.ctx || !sim.telemetry) return;
     const t = this.ctx.currentTime;

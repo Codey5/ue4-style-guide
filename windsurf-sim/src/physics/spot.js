@@ -30,6 +30,15 @@ export function barPoint(bar, wx, wz, s, d) {
   return [bar.ax + bar.lx * s + wx * d, bar.az + bar.lz * s + wz * d];
 }
 
+/** Put a sim at the top of the speed strip, in the bar's lee, already heading down it. */
+export function placeAtStrip(sim, bar = SANDBAR) {
+  const wd = sim.wind.dir;
+  const [x, z] = barPoint(bar, wd[0], wd[2], 40, bar.halfWidth + bar.laneD);
+  sim.reset('sailing', [x, 0, z]);
+  sim.yaw = Math.atan2(-bar.lz, bar.lx);
+  sim.vel = [bar.lx * 5, 0, bar.lz * 5];
+}
+
 /** How much of the bar's length shelters this point (fading out round its ends). */
 const alongMask = (bar, s) => smoothstep(-120, 60, s) * (1 - smoothstep(bar.length - 60, bar.length + 120, s));
 

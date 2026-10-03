@@ -140,7 +140,21 @@ body {
 .lesson-dots li.done { background: var(--good); }
 .lesson-dots li.now { background: var(--signal); }
 .lesson-foot { margin-top: 8px; font-size: 11px; color: var(--ink-dim); }
-#hud.lesson-on .toasts { top: 30%; }
+#hud.lesson-on .toasts, #hud.story-on .toasts { top: 32%; }
+.story-goals { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.story-goals li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; font-size: 13px; color: var(--ink-dim); }
+.story-goals li::before { content: '○'; color: var(--ink-dim); }
+.story-goals li.done { color: var(--ink-dim); text-decoration: line-through; text-decoration-color: rgba(233,242,245,.3); }
+.story-goals li.done::before { content: '✓'; color: var(--good); text-decoration: none; }
+.story-goals li.now { color: var(--ink); font-weight: 700; }
+.story-goals li.now::before { content: '●'; color: var(--signal); }
+.story-goals .p { font: 11px var(--mono); color: var(--signal); white-space: nowrap; }
+.story-goals .bar { grid-column: 2 / -1; height: 3px; border-radius: 2px; background: rgba(233,242,245,.12); overflow: hidden; }
+.story-goals .bar i { display: block; height: 100%; background: var(--signal); }
+.story-hint { font-size: 14px; }
+.story-hint .kai { color: var(--wind); font-weight: 700; }
+.story-target { margin-top: 8px; }
+.story-target .gps-arrow path { fill: var(--signal); }
 #hud.lesson-on .hints, #hud.lesson-on .cam { display: none; }
 .padviz { right: 16px; bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: 256px; }
 .padsvg { display: block; width: 100%; height: auto; margin-top: 4px; }
@@ -166,6 +180,28 @@ body {
 .lesson-row .acts { display: flex; gap: 8px; }
 .lesson-row .btn { padding: 8px 12px; }
 .lesson-row.done { border-color: rgba(95,209,143,.5); }
+
+/* ---------- Story (menu) ---------- */
+.story-list { display: grid; gap: 10px; }
+.story-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: start; border: 1px solid var(--hair); border-radius: 10px; padding: 12px 14px; }
+.story-row .n { font: 900 28px/1 var(--display); color: var(--signal); }
+.story-row b { font: 800 20px/1.1 var(--display); letter-spacing: .02em; }
+.story-row .spec { font: 11px var(--mono); color: var(--ink-dim); margin-top: 3px; }
+.story-row p { margin: 6px 0 0; font-size: 12px; color: var(--ink-dim); }
+.story-row ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; font-size: 12px; }
+.story-row li::before { content: '○ '; color: var(--ink-dim); }
+.story-row li.done { color: var(--ink-dim); }
+.story-row li.done::before { content: '✓ '; color: var(--good); }
+.story-row .acts { display: flex; flex-direction: column; gap: 6px; }
+.story-row .btn { padding: 8px 12px; text-align: center; }
+.story-row.done { border-color: rgba(95,209,143,.5); }
+.story-row.next { border-color: var(--signal); background: rgba(255,197,49,.05); }
+.story-row.locked { opacity: .55; }
+.story-row.locked .n { color: var(--ink-dim); }
+.story-banner { border: 1px solid var(--good); background: rgba(95,209,143,.08); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; }
+.story-banner b { font: 800 24px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; color: var(--good); }
+.story-banner p { margin: 0; }
+.story-progress { font: 12px var(--mono); color: var(--ink-dim); }
 
 /* ---------- Menu ---------- */
 .overlay { position: fixed; inset: 0; display: grid; place-items: safe center; padding: 24px 16px; background: radial-gradient(ellipse at 30% 20%, rgba(7,19,27,.55), rgba(7,19,27,.88)); overflow-y: auto; }
@@ -254,7 +290,8 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
   .field input[type="range"] { grid-column: 1 / -1; grid-row: 2; }
   .hints, .stance, .telemetry, .padviz { display: none; }
   .lesson { width: calc(100vw - 32px); min-width: 0; top: auto; bottom: 150px; }
-  .lesson-row { grid-template-columns: minmax(0, 1fr); }
+  .lesson-row, .story-row { grid-template-columns: minmax(0, 1fr); }
+  .story-row .n { display: none; }
   .speed .sog b { font-size: 44px; }
   .wind { width: 140px; }
   .wind svg { width: 96px; height: 96px; }
@@ -335,6 +372,14 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
     <div class="lesson-foot" id="lesson-foot"></div>
   </section>
 
+  <section class="pod lesson story" id="story" hidden aria-live="polite">
+    <div class="lesson-head"><span class="label" id="story-eyebrow">Chapter</span><span class="lesson-mode you" id="story-mode">Story</span></div>
+    <ul class="story-goals" id="story-goals"></ul>
+    <p class="lesson-step story-hint" id="story-hint"></p>
+    <div class="gps-strip story-target" id="story-target" hidden><svg viewBox="-10 -10 20 20" class="gps-arrow" aria-hidden="true"><path id="story-arrow" d="M0,-8 L5.5,5 L0,2 L-5.5,5 Z"/></svg><span id="story-target-t"></span></div>
+    <div class="lesson-foot" id="story-foot"></div>
+  </section>
+
   <section class="pod padviz" id="padviz" hidden aria-label="Controller inputs"></section>
 
   <section class="pod hints" aria-label="What you can do now">
@@ -349,6 +394,7 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
       <h1>Beam <em>Reach</em></h1>
       <p>A windsurfing simulator. Real sail aerodynamics, a planing hull and a sailor who has to balance the rig. Built for a gamepad.</p>
       <nav class="tabs" role="tablist" id="tabs">
+        <button class="tab" role="tab" data-tab="story" aria-selected="false">Story</button>
         <button class="tab" role="tab" data-tab="sail" aria-selected="true">Go sailing</button>
         <button class="tab" role="tab" data-tab="lessons" aria-selected="false">Lessons</button>
         <button class="tab" role="tab" data-tab="conditions" aria-selected="false">Conditions</button>

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "dev": "node tools/build.mjs --serve",
-    "test": "node tools/physics-check.mjs && node tools/maneuver-check.mjs && node tools/gps-check.mjs && node tools/trick-check.mjs && node tools/lesson-check.mjs && node tools/pose-check.mjs",
+    "test": "node tools/physics-check.mjs && node tools/maneuver-check.mjs && node tools/gps-check.mjs && node tools/trick-check.mjs && node tools/lesson-check.mjs && node tools/career-check.mjs && node tools/pose-check.mjs",
     "drag": "node tools/drag-curve.mjs",
     "quiver": "node tools/quiver.mjs"
   },
