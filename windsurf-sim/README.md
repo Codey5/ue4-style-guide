@@ -75,6 +75,7 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 **Wind**
 
 - You can read the wind like on a real spot: dark gust patches, wind lanes lined up with the wind, whitecaps, flags, a windsock, and air particles drifting with the local wind (gusts visibly speed them up; they can be turned off in Controls).
+- The chop is shaded by its height: troughs look down into deep water and go dark, crests are thin water the light shines through, brighter and a little greener (most of all looking toward the sun). It's the same waves the board rides, so you can read the chop coming.
 - Whitecaps are the tops of the chop breaking: they sit on the crests of the same waves the board rides, spill down the downwind face, lie across the wind along the crest and travel downwind with the waves, leaving a fainter trail of foam behind. The first white horses appear around Bft 3–4, many by Bft 5; only in a gale (Bft 7+) does the foam get blown into thin streaks along the wind.
 - Forecast wind is given at 10 m. A logarithmic boundary layer over water (z₀ = 0.2 mm) means the sail sees about 85% of it.
 - Gusts are a moving noise field advected with the wind. The water shader evaluates the same noise, so the dark patches you see coming are the gusts you will feel.

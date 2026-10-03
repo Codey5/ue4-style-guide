@@ -126,7 +126,7 @@ void main() {
   // surface height and its slope along the wind, for the whitecaps.
   vec3 n = vec3(0.0, 1.0, 0.0);
   float lost = 0.0;
-  float hp = 0.0, slopeDown = 0.0, ampSum = 0.0, kAmp = 0.0;
+  float hp = 0.0, slopeDown = 0.0, ampSum = 0.0, kAmp = 0.0, ampAll = 0.0;
   for (int i = 0; i < 8; i++) {
     vec4 a = uWaveA[i];
     float amp = uWaveB[i].x;
@@ -142,6 +142,7 @@ void main() {
     hp += amp * sin(th) * w;
     slopeDown += wa * cos(th) * dot(a.xy, wd) * w;
     ampSum += amp * w;
+    ampAll += amp;
     kAmp += wa * w;
   }
   // Capillary ripples running downwind, rougher in gusts.
@@ -164,10 +165,23 @@ void main() {
   R.y = abs(R.y);
   vec3 refl = skyColor(R);
   float shallow = smoothstep(uShoreZ + 160.0, uShoreZ + 20.0, vWorld.z);
-  vec3 body = mix(uDeep, uShallow, shallow * 0.8 + clamp(vHeight / max(uHs, 0.05), 0.0, 1.0) * 0.12);
+  vec3 body = mix(uDeep, uShallow, shallow * 0.8);
   body *= mix(1.0, 0.82, smoothstep(1.0, 1.35, g));
+  // Light and shade on the chop: how high the water is here, from -1 in a
+  // trough to +1 on a crest (only the waves big enough to see from here,
+  // and less of it in near-flat water). Troughs look down into deep water
+  // and go dark; crests are thin water the light shines through, brighter
+  // and a little greener, most of all looking toward the sun.
+  float hRel = clamp(hp / max(ampSum * 0.75, 1e-3), -1.3, 1.3);
+  float seen = clamp(ampSum / max(ampAll, 1e-3), 0.0, 1.0) * smoothstep(0.04, 0.25, uHs);
+  float lift = smoothstep(-1.0, 1.0, hRel);
+  body *= mix(1.0, mix(0.6, 1.2, lift), seen);
+  float sunward = pow(max(dot(-V, uSunDir), 0.0), 2.0);
+  vec3 glow = mix(uShallow, vec3(0.2, 0.62, 0.58), 0.4) * smoothstep(0.15, 1.1, hRel) * seen * (0.12 + 0.5 * sunward);
   float scatter = pow(max(dot(-V, uSunDir), 0.0), 3.0) * 0.15;
-  vec3 col = mix(body + uShallow * scatter, refl, fresnel);
+  vec3 col = mix(body + uShallow * scatter + glow, refl, fresnel);
+  // (and on the whole surface, reflections too, so the shape still reads at a low angle)
+  col *= mix(1.0, mix(0.84, 1.08, lift), seen);
   // Sun glitter. Slopes too small to draw widen the highlight instead of
   // sparkling on and off (keeps the far water calm).
   vec3 H = normalize(uSunDir + V);
