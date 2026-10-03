@@ -122,9 +122,11 @@ void main() {
   float lane = noise3(vec3((along - drift) / 140.0, across / 9.0, uTime * 0.01)) * keep(18.0, fp);
   rough *= 1.0 + 0.3 * lane * windy;
 
-  // Chop: the same wave trains as the physics, as per-pixel normals.
+  // Chop: the same wave trains as the physics, as per-pixel normals. Also the
+  // surface height and its slope along the wind, for the whitecaps.
   vec3 n = vec3(0.0, 1.0, 0.0);
   float lost = 0.0;
+  float hp = 0.0, slopeDown = 0.0, ampSum = 0.0, kAmp = 0.0;
   for (int i = 0; i < 8; i++) {
     vec4 a = uWaveA[i];
     float amp = uWaveB[i].x;
@@ -136,6 +138,11 @@ void main() {
     n.z -= a.y * wa * cos(th) * w;
     n.y -= q * wa * sin(th) * w;
     lost += (1.0 - w) * wa;
+    // (only the wave trains big enough to see here, or the crests sparkle)
+    hp += amp * sin(th) * w;
+    slopeDown += wa * cos(th) * dot(a.xy, wd) * w;
+    ampSum += amp * w;
+    kAmp += wa * w;
   }
   // Capillary ripples running downwind, rougher in gusts.
   vec2 d2 = normalize(wd + wp * 0.6), d3 = normalize(wd - wp * 0.7);
@@ -167,17 +174,36 @@ void main() {
   float shin = mix(2400.0, 700.0, clamp(rough, 0.0, 1.0));
   float shinEff = max(shin / (1.0 + lost * lost * shin * 0.6), 160.0);
   col += uSunColor * pow(max(dot(N, H), 0.0), shinEff) * (1.4 + rough * 0.6) * pow(shinEff / shin, 0.7);
-  // Wind streaks: thin lines of foam and bubbles stretched along the wind.
-  float streakN = noise3(vec3((along - drift) / 45.0, across / 1.2, uTime * 0.015));
-  float streak = smoothstep(0.4, 0.75, streakN) * windy * keep(3.0, fp);
-  // Whitecaps on crests once the wind gets up (Bft 4 brings the first white horses).
-  float capWind = smoothstep(7.0, 14.0, uWindSpeed * g);
-  float crest = smoothstep(0.6, 1.0, vHeight / max(uHs * 0.55, 0.05));
-  float kf = keep(1.6, fp);
-  float foamNoise = mix(0.5, noise3(vec3(xz * 1.7, uTime * 0.6)) * 0.5 + 0.5, kf);
-  float foam = capWind * crest * smoothstep(0.72 - 0.12 * capWind, 0.92, foamNoise) * (0.3 + 0.7 * kf);
+  // Whitecaps: the tops of the chop breaking. They sit on the crests where
+  // the wave trains stack up, spill down the front (downwind) face, and lie
+  // across the wind along the crest, travelling downwind with the waves.
+  // Only some crests break at a time; more of them as the wind gets up
+  // (the first white horses at Bft 3-4, many by Bft 5).
+  float capWind = smoothstep(3.5, 10.0, uWindSpeed * g);
+  float crest = smoothstep(0.2, 0.6, hp / max(ampSum, 1e-3));
+  float front = smoothstep(0.15, -0.45, slopeDown / max(kAmp, 1e-4));
+  float c0 = uWaveA[0].w / uWaveA[0].z; // the dominant chop's speed
+  float alongWave = along - c0 * uTime;
+  float breakN = noise3(vec3(alongWave / 2.2, across / 9.0, uTime / 2.5)) * 0.65 +
+    noise3(vec3(alongWave / 0.9, across / 3.5, uTime / 1.3) + 7.3) * 0.35;
+  float breaking = smoothstep(0.55 - 0.5 * capWind, 0.72 - 0.5 * capWind, breakN);
+  // Foam is bubbly, not paint; finer than a few pixels it reads as a soft white.
+  float kf = keep(1.2, fp);
+  float bubbles = mix(0.65, smoothstep(-0.35, 0.45, noise3(vec3(alongWave * 2.6, across * 1.7, uTime * 0.7))), kf);
+  // Far off, the white horses blur into a flecked, paler sea.
+  float kc = keep(2.5, fp);
+  float foam = mix(0.07 * capWind * capWind, capWind * breaking * crest * mix(0.45, 1.0, front) * bubbles, kc);
+  // The foam a breaker leaves behind as the crest runs on: fainter, on its back.
+  float trailN = noise3(vec3((alongWave + 1.4) / 2.2, across / 9.0, uTime / 2.5 - 0.35)) * 0.65 +
+    noise3(vec3((alongWave + 1.4) / 0.9, across / 3.5, uTime / 1.3 - 0.4) + 7.3) * 0.35;
+  float trail = capWind * smoothstep(0.55 - 0.5 * capWind, 0.78 - 0.5 * capWind, trailN) *
+    smoothstep(-0.25, 0.25, hp / max(ampSum, 1e-3)) * (1.0 - front) * bubbles * 0.45 * kc;
+  // In a gale (Bft 7 and up) the foam gets blown into thin streaks along the wind.
+  float gale = smoothstep(12.5, 17.0, uWindSpeed * g);
+  float streakN = noise3(vec3((along - drift) / 30.0, across / 0.45, uTime * 0.015));
+  float streak = smoothstep(0.55, 0.8, streakN) * gale * keep(1.5, fp);
   float shoreFoam = smoothstep(uShoreZ + 6.0, uShoreZ + 1.0, vWorld.z) * (0.5 + 0.5 * sin(uTime * 0.8 + xz.x * 0.05));
-  col = mix(col, vec3(0.92, 0.95, 0.97), clamp(foam * 0.7 + shoreFoam * 0.6 + streak * 0.24, 0.0, 1.0));
+  col = mix(col, vec3(0.92, 0.95, 0.97), clamp(foam * 0.9 + trail + shoreFoam * 0.6 + streak * 0.3, 0.0, 1.0));
   float fog = 1.0 - exp(-uFogDensity * uFogDensity * camDist * camDist);
   col = mix(col, uFogColor, fog);
   gl_FragColor = vec4(col, 1.0);

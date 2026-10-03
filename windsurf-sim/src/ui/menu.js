@@ -30,7 +30,7 @@ export const recommendedSail = (massKg, windKn) => (massKg * 1.34) / Math.max(wi
 
 const TECHNIQUE = `
 <h3>Reading the wind</h3>
-<p>The dark patches moving across the water are gusts: more ripples, less reflected sky. They are the same gusts your sail will feel, so watch them coming. The windsock on the beach and the flags on the buoys show the direction. The wind here is side-shore, blowing along the beach.</p>
+<p>The dark patches moving across the water are gusts: more ripples, less reflected sky. They are the same gusts your sail will feel, so watch them coming. Whitecaps are the chop breaking: they lie across the wind and run downwind with the waves, and there are more of them the harder it blows. The windsock on the beach and the flags on the buoys show the direction. The wind here is side-shore, blowing along the beach.</p>
 <h3>Uphaul and get going</h3>
 <ol class="steps">
 <li>From the water, climb on (A) and hold LB to pull the rig up by the uphaul. Keep your back straight and lift with your legs.</li>
