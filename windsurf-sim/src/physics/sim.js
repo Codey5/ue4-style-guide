@@ -32,6 +32,8 @@ const HOLDS_BOOM = new Set([S.SAILING, S.TACK, S.FLIP]);
 
 export const BEACH_Z = -260; // the shoreline runs east-west, north of the start
 
+/** Share of the chop's vertical kick that gets past your legs to the whole board-rig-sailor system. */
+const LEGS = 0.4;
 /** Standard harness line centre, as a fraction of the boom from the mast (see body.js). */
 const LINES_AT = 0.38;
 /** Typical ratio of the loaded sail's centre of pressure to its area centroid (calibrates handLoads). */
@@ -126,6 +128,8 @@ export class Sim {
     this.yawRate = 0;
     this.pitch = 0; this.roll = 0; this.rollRate = 0; this.pitchRate = 0;
     this.heave = 0; this.heaveVel = 0;
+    this.airborne = false; this.airTime = 0; this.airHeight = 0; this.contact = 1; this.noseDrag = 0; this.slamDrag = 0;
+    this.impact = 0; this.finAir = 0; this.landing = null; this.aLong = 0;
     this.rig = { rake: 0, lean: 0, boom: side * 80 * DEG, side, up: 1 };
     this.sailor = {
       side, x: this.board.mastFootX - 0.35, leanX: 0, beta: 4 * DEG, betaRate: 0, hang: 0, hangTime: 0, phi: 0, phiRate: 0,
@@ -292,24 +296,32 @@ export class Sim {
       applyAt(bodyP, scale(aw, 0.5 * RHO_AIR * awS * 0.55));
     }
 
-    // Hull drag along the direction of travel.
+    // Hull drag along the direction of travel (none while the board flies),
+    // and a nose dug into a chop.
+    const contact = this.contact ?? 1;
     if (speed > 1e-3) {
       const vdir = scale(this.vel, 1 / speed);
       const fwdShare = Math.abs(u) / speed;
-      applyAt(boardPoint(hull.cp, 0.02), scale(vdir, -hull.drag * fwdShare));
+      applyAt(boardPoint(hull.cp, 0.02), scale(vdir, -hull.drag * fwdShare * contact));
+      if (this.noseDrag) applyAt(boardPoint(b.length * 0.5 - 0.35, 0.02), scale(vdir, -this.noseDrag));
+      if (this.slamDrag) applyAt(boardPoint(hull.cp, 0.02), scale(vdir, -this.slamDrag));
     }
 
     // Hull side force: cross-flow drag on the immersed hull plus planing rail grip.
     const leeway = Math.atan2(w, Math.max(Math.abs(u), 0.3));
     const draft = clamp(hull.submerged / (0.75 * b.length * b.width), 0.02, 0.2);
     const latArea = b.length * 0.9 * (draft + 0.03);
-    const hullSide = -(0.5 * RHO_WATER * w * Math.abs(w) * latArea * 1.1 + w * 18 + p * W * 0.9 * Math.sin(leeway));
+    // (a skip of a tenth of a second barely unloads the rails: the grip goes as the board stays out)
+    this.contactLat = damp(this.contactLat ?? 1, contact, contact > (this.contactLat ?? 1) ? 30 : 5, dt);
+    const hullSide = -(0.5 * RHO_WATER * w * Math.abs(w) * latArea * 1.1 + w * 18 + p * W * 0.9 * Math.sin(leeway)) * this.contactLat;
     const hullLatX = lerp(-0.1, hull.cp, p);
     applyAt(boardPoint(hullLatX, 0), scale(stbd, hullSide));
 
     // Fin (ventilation = spin-out) and daggerboard.
     const finDepth = b.finDepth;
-    const fin = this.foilForce(dt, boardPoint(b.finX, -finDepth * 0.45), b.finArea, (finDepth * finDepth / b.finArea) * 1.4, true, fwd, stbd, hull);
+    // Flying, only the tip of the fin is still in the water.
+    const finIn = clamp(1 - (this.airborne ? Math.max(0, (this.airHeight ?? 0) - 0.05) : 0) / finDepth, 0.15, 1);
+    const fin = this.foilForce(dt, boardPoint(b.finX, -finDepth * 0.45), b.finArea * finIn, (finDepth * finDepth / b.finArea) * 1.4, true, fwd, stbd, hull);
     applyAt(fin.point, fin.f);
     this.fin = fin;
     let dagger = null;
@@ -321,7 +333,7 @@ export class Sim {
 
     // Rail carving: the tilted planing surface pushes the board toward the
     // sunk rail. In displacement mode a heeled hull turns the other way.
-    const carve = p * W * Math.tan(this.roll) * 0.85;
+    const carve = p * W * Math.tan(this.roll) * 0.85 * this.contactLat;
     applyAt(cgW, scale(stbd, carve));
     N += -carve * 0.32;
     N += this.roll * u * Math.abs(u) * 26 * (1 - p);
@@ -377,9 +389,11 @@ export class Sim {
     this.yawRate += (N / Iz) * dt;
     this.yaw = wrapAngle(this.yaw + this.yawRate * dt);
     this.accel = acc;
+    // (felt through the legs over a moment, not at every physics step)
+    this.aLong = damp(this.aLong ?? 0, dot(acc, fwd), 15, dt);
 
     // ---- Attitude: heave, trim and roll follow the water and the planing solution.
-    this.updateAttitude(dt, ctl, hull, waterY, sailorOnBoard);
+    this.updateAttitude(dt, ctl, hull, waterY, sailorOnBoard, u, aeroUp);
 
     // ---- Sailor balance.
     this.updateBalance(dt, ctl, tauPull, handForce, p, speed, sailorOnBoard);
@@ -515,7 +529,9 @@ export class Sim {
       // badly; in a carve the board turns with the rail and it doesn't.
       const carving = smoothstep(0.2, 0.5, Math.abs(this.yawRate));
       const vent = 0.92 - 0.07 * Math.max(0, tauDeg - 4.5) - Math.min(0.3, 0.015 * Math.max(0, windwardRoll - 6)) * (1 - carving) -
-        0.1 * this.waves.hs - (this.sailor.straps === 2 && this.sailor.leanX < -0.08 ? 0.08 : 0);
+        0.1 * this.waves.hs - (this.sailor.straps === 2 && this.sailor.leanX < -0.08 ? 0.08 : 0) -
+        // (air dragged down the fin by a tail-first or high landing)
+        0.35 * clamp((this.finAir ?? 0) / 0.45, 0, 1);
       this.finMargin = demand / Math.max(0.2, vent);
       if (!this.finVentilated && sp > 5 && demand > vent && HOLDS_BOOM.has(this.state)) {
         this.finVentilated = true;
@@ -815,7 +831,10 @@ export class Sim {
       // Hooked in and hanging off the harness lines in the straps, the stance
       // itself pulls the rig back toward the tail; that is the neutral position.
       const neutral = -3 - 9 * (s.hooked ? 1 : 0.35) * (s.straps / 2);
-      const rakeCmd = (neutral + ctl.rake * (ctl.rake > 0 ? 34 : 24)) * DEG + clamp((s.give ?? 0) / 250, 0, 1) * 22 * DEG;
+      // (the rig sits on a universal joint: you hold it steady while the
+      // board pitches over the waves underneath it)
+      const wavePitch = (this.pitch - (this.hull?.trim ?? this.pitch)) * smoothstep(0.6, 1, this.hull?.planing ?? 0);
+      const rakeCmd = (neutral + ctl.rake * (ctl.rake > 0 ? 34 : 24)) * DEG + clamp((s.give ?? 0) / 250, 0, 1) * 22 * DEG - 0.8 * wavePitch;
       // Hanging on the boom with more weight than the sail is pulling brings
       // the rig over toward you; a rig leaned out of reach comes back in; and
       // a rig pulling forward harder than you can hold tips forward.
@@ -922,31 +941,132 @@ export class Sim {
     } else s.strapsHoldTime = 0;
   }
 
-  updateAttitude(dt, ctl, hull, waterY, sailorOnBoard) {
+  /**
+   * Heave, pitch and roll on the chop. The water only pushes: floating, the
+   * hull rides the average surface along its length; planing, it rides on
+   * the patch of tail carrying it. A chop face rising under a fast board
+   * (its slope times your speed, plus the wave's own motion) throws it up,
+   * and if the water then drops away faster than gravity can follow, the
+   * board flies until it lands again. The nose meets the faces of the chop
+   * ahead: pointing up at them it skims over, nose-down to the water it
+   * digs in and the board stops dead (see noseDrag).
+   */
+  updateAttitude(dt, ctl, hull, waterY, sailorOnBoard, u = 0, aeroUp = 0) {
     const b = this.board;
     const p = hull.planing;
     const fx = Math.cos(this.yaw), fz = -Math.sin(this.yaw);
+    const surf = (x) => this.waves.height(this.pos[0] + fx * x, this.pos[2] + fz * x, this.t);
     const half = b.length * 0.42;
-    const hN = this.waves.height(this.pos[0] + fx * half, this.pos[2] + fz * half, this.t);
-    const hT = this.waves.height(this.pos[0] - fx * half, this.pos[2] - fz * half, this.t);
+    const hN = surf(half), hT = surf(-half);
     const sx = Math.sin(this.yaw), sz = Math.cos(this.yaw);
     const hS = this.waves.height(this.pos[0] + sx * 0.4, this.pos[2] + sz * 0.4, this.t);
     const hP = this.waves.height(this.pos[0] - sx * 0.4, this.pos[2] - sz * 0.4, this.t);
     const waveSlope = Math.atan2(hN - hT, 2 * half);
     const waveRoll = Math.atan2(hP - hS, 0.8);
 
+    // Where the water carries the board: its length when floating, the
+    // planing patch on the tail when planing. The patch rides the surface
+    // averaged over its wetted length, which smooths out ripples shorter
+    // than it, and your legs soak up much of the rest.
+    const wet = clamp(hull.lambda * hull.beam, 0.5, 0.7 * b.length);
+    const x0 = b.transomX + 0.05;
+    let sC = 0, vC = 0;
+    const NS = 5;
+    for (let i = 0; i < NS; i++) {
+      const x = x0 + wet * (i + 0.5) / NS;
+      sC += surf(x) / NS;
+      vC += this.waves.verticalVelocity(this.pos[0] + fx * x, this.pos[2] + fz * x, this.t) / NS;
+    }
+    const slopeC = (surf(x0 + wet) - surf(x0)) / wet;
+    const xc = lerp(-0.05 * b.length, x0 + wet / 2, smoothstep(0.3, 0.9, p));
+    const surfH = lerp((hN + hT) / 2, sC, p);
+    // How fast that surface rises under you: the wave's own motion plus its slope times your speed.
+    const vS = lerp(0, vC + u * slopeC, p) * LEGS;
+    const tp = Math.tan(this.pitch);
+    const zC = this.pos[1] + xc * tp;
+    const zCdot = this.heaveVel + xc * this.pitchRate;
+    const imm = surfH - zC; // how far the bottom is below the surface there
+
     // Heave: draft from displaced volume, lifting out as the board planes.
     const V = b.volume / 1000;
     const draftDisp = (hull.submerged / (0.72 * b.length * b.width)) + Math.max(0, hull.sinking) / (b.length * b.width * 0.6);
     const draft = lerp(Math.min(draftDisp, V / (b.length * b.width * 0.55) + 0.3), 0.012, p);
-    const target = (hN + hT) / 2 * (1 - 0.35 * p) + waterY * 0.35 * p - draft;
-    const k = 140, c = 20;
-    this.heaveVel += (k * (target - this.pos[1]) - c * this.heaveVel) * dt;
+    // The sail's lift (rig leaned to windward) unweights the whole system.
+    const gEff = clamp(G - aeroUp / this.totalMass, 3, 12);
+    // Floating, buoyancy over the waterplane; planing, the change in lift as
+    // the wetted length and the flow angle change (soft, and well damped).
+    const k = lerp(140, 100, p), c = lerp(20, 17, p);
+    const touching = imm > -0.004;
+    const push = touching ? Math.max(0, gEff + k * (imm - draft) + c * (vS - zCdot)) : 0;
+    // Slamming over the chop draws its energy from your speed: the power
+    // the water damps out of the bouncing, as drag.
+    this.slamDrag = touching && sailorOnBoard ? 0.7 * p * this.totalMass * c * (vS - zCdot) ** 2 / Math.max(3, Math.abs(u)) : 0;
+    this.dbgChop = { imm, draft, vS, zCdot, push, gEff, k, slopeC, sC, wet, pitch: this.pitch, xc };
+    this.heaveVel += (push - gEff) * dt;
     this.pos[1] += this.heaveVel * dt;
-    this.chopHit = Math.abs(this.heaveVel) * p;
+    // Contact with the water: 1 riding on it, 0 flying.
+    const wasAir = this.airborne;
+    this.contact = clamp((imm + 0.03) / 0.03, 0, 1);
+    // (flying: clear of the water, not just skimming its tops)
+    this.airborne = imm < -0.02 || (wasAir && !touching);
+    if (!sailorOnBoard) this.airborne = false;
+    if (this.airborne) {
+      this.airTime = (this.airTime ?? 0) + dt;
+      this.airHeight = Math.max(this.airHeight ?? 0, -imm);
+    } else {
+      if (wasAir) {
+        // Landing: how hard (descending speed onto the water) and how square.
+        const hit = Math.max(0, vS - zCdot);
+        const rel = (this.pitch - Math.atan(slopeC)) / DEG;
+        this.landing = { hit, rel, air: this.airTime ?? 0, height: this.airHeight ?? 0, t: this.t };
+        // Touching down scrubs off speed: more landing hard, most nose-first.
+        const sp = Math.hypot(this.vel[0], this.vel[2]);
+        if (sp > 1) {
+          const loss = Math.min(0.5 * sp, (0.12 + 0.4 * smoothstep(0, -6, rel)) * hit);
+          this.vel = scale(this.vel, 1 - loss / sp);
+        }
+        this.impact = Math.max(this.impact ?? 0, clamp(hit / 2.5, 0, 1));
+        if (this.landing.air >= 0.4 && this.state === S.SAILING) this.emit('hop', `Airtime ${this.landing.air.toFixed(1)} s!`, 1);
+        // A tail-first slap, or landing sideways, drags air down the fin.
+        if (rel > 8 || (this.airHeight ?? 0) > 0.12) this.finAir = 0.45;
+      }
+      this.airTime = 0;
+      this.airHeight = 0;
+    }
+    this.impact = Math.max(0, (this.impact ?? 0) - dt * 4);
+    this.finAir = Math.max(0, (this.finAir ?? 0) - dt);
+    // Chatter: the bottom slapping over the chop.
+    this.chopHit = touching ? Math.abs(vS - zCdot) * p : 0;
 
-    const pitchTarget = hull.trim + waveSlope * (1 - 0.55 * p);
-    this.pitchRate += (90 * (pitchTarget - this.pitch) - 16 * this.pitchRate) * dt;
+    // The nose: its rocker meets the faces of the chop ahead and lifts it
+    // over them (with a slap of spray drag). Pushed deeper than the rocker
+    // can deflect, with the board pitched down (weight forward, or dropping
+    // off a crest), it buries: the board stops dead.
+    const xn = 0.5 * b.length - 0.35;
+    const noseImm = surf(xn) - (this.pos[1] + xn * tp + 0.045);
+    const q = 0.5 * RHO_WATER * u * u;
+    const nose = p > 0.5 && noseImm > 0 && sailorOnBoard ? Math.min(noseImm, 0.15) : 0;
+    const dig = smoothstep(0.05, 0.12, nose) * smoothstep(2.5 * DEG, -2 * DEG, this.pitch);
+    this.noseDig = dig;
+    this.noseDrag = q * 0.6 * b.width * nose * (0.06 + 1.6 * dig);
+    if (this.noseDrag > this.totalMass * G && this.state === S.SAILING) {
+      this.emit('nosedive', 'Nose-dive! The nose buried in a chop. Weight back to keep it up through rough water.', 2);
+    }
+
+    let pitchAcc;
+    if (this.airborne) {
+      // In the air the water lets go: the board keeps turning, and your feet
+      // steer it (weight back lifts the nose).
+      const w = clamp(this.sailor.leanX / (this.sailor.straps === 2 ? 0.2 : 0.077), -1, 1);
+      // (your feet in the straps hold its attitude against your body's)
+      const airTrim = hull.trim + (3 - 7 * w) * DEG;
+      pitchAcc = 30 * (airTrim - this.pitch) - 12 * this.pitchRate;
+    } else {
+      const slopeBoard = lerp(waveSlope, Math.atan(slopeC), p);
+      const pitchTarget = hull.trim + slopeBoard * (1 - 0.55 * p);
+      pitchAcc = 90 * (pitchTarget - this.pitch) - 16 * this.pitchRate + 250 * nose * (1 - 0.7 * dig);
+    }
+    this.pitchRate += pitchAcc * dt;
     this.pitch += this.pitchRate * dt;
 
     let rollCmd = 0;
@@ -1019,9 +1139,12 @@ export class Sim {
     const hangDown = clamp((tipLeft - couple - comfy) / Math.max(0.2, -gx), 0, hangMax);
     this.hangDown = hangDown;
     const pull = (tipLeft - Math.sign(tipLeft) * Math.min(Math.abs(tipLeft), couple) - hangDown * Math.max(0, -gx)) / gy;
-    const tip = pull * geo.attachH; // tipping you forward about your feet (N·m)
     // Centre of mass ahead of the middle of your feet at your lean.
     const pt = geo.pitch;
+    // Tipping you forward about your feet (N·m): the pull, and the board
+    // braking under you (a nose dug into a chop) as your body carries on.
+    const braking = -this.sailorMass * (this.aLong ?? 0) * 0.9 * comDistPhi(pt, s.phi);
+    const tip = pull * geo.attachH + braking;
     let comX = comFwdAt(pt, s.phi);
     // Where your feet can press: back heel to front toes, plus a little from the straps.
     const base = ctx.base;

@@ -95,7 +95,7 @@ export class Audio {
     const inWater = sim.state === 'water' || sim.state === 'waterstart';
     set(this.water.g.gain, clamp(sp / 9, 0, 1) * 0.35 + (inWater ? 0.06 : 0));
     set(this.water.f.frequency, 180 + sp * 70);
-    set(this.hiss.g.gain, clamp((sp - 4) / 10, 0, 1) * tel.planing * 0.12);
+    set(this.hiss.g.gain, clamp((sp - 4) / 10, 0, 1) * tel.planing * 0.12 * (sim.airborne ? 0.15 : 1));
     // Luffing flutter.
     const a = Math.abs(tel.alpha) * 57.3;
     const q = sim.aero ? sim.aero.qMean : 0;

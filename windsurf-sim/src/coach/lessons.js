@@ -427,6 +427,48 @@ export const LESSONS = [
       },
     ],
   },
+  {
+    id: 'chop',
+    title: 'Sailing through chop',
+    summary: 'Rough water at speed: keep the nose up, let your legs soak up the slaps, and pick your angle to the waves.',
+    setup: { boardId: 'free115', sailArea: 6.3, wind: { speedKn: 20, gustiness: 0.1, shifts: 0.1, chop: 1.5 }, start: 'sailing' },
+    steps: [
+      {
+        say: 'Rough water today. Get planing on a beam reach, hooked in and in both straps.',
+        run: (x) => x.coach.sail(x.dt, { twa: 105, pump: true, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => strapsReady(sim, x, 15),
+      },
+      {
+        say: 'At speed every chop throws the board up and slaps it down. Your legs soak up most of it, but the board skips off the tops and flies off the steeper ones. Feel the slaps through the controller; in the air it goes quiet.',
+        minTime: 7,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 7,
+      },
+      {
+        say: 'Weight forward ({RS} up) and the nose sits low: it rides into the backs of the waves and digs in, and the board slows. Bury it properly and it stops dead and throws you over the front.',
+        minTime: 6,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto', weight: 0.5 }),
+        done: (sim, x) => held(x, 'fwd', sim.state === S.SAILING && sim.sailor.leanX > 0.05) > 4,
+      },
+      {
+        say: 'Weight back ({RS} down) and a touch less sheet. The nose stays up over the chop: the board skims and hops off the tops instead of digging in. Keep it there in the air and land flat or tail first.',
+        minTime: 6,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto', weight: -1 }),
+        done: (sim, x) => held(x, 'back', sim.state === S.SAILING && sim.sailor.leanX < -0.1) > 4,
+      },
+      {
+        say: 'Bear away to a broad reach (rig forward, {LS} up). Sailing with the waves you meet them less often and the ride smooths out; heading up into them is the roughest.',
+        minTime: 5,
+        run: (x) => x.coach.sail(x.dt, { twa: 128, turnRate: 8, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => held(x, 'broad', sim.state === S.SAILING && absTwa(sim) > 118) > 3,
+      },
+      {
+        say: 'Back to a beam reach. In chop: weight back, knees soft, a little less sheet, and keep the nose up.',
+        run: (x) => x.coach.sail(x.dt, { twa: 100, turnRate: 8, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 5 && sim.state === S.SAILING,
+      },
+    ],
+  },
 ];
 
 export const findLesson = (id) => LESSONS.find((l) => l.id === id);

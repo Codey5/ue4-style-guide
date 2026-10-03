@@ -209,6 +209,7 @@ let last = performance.now();
 let acc = 0;
 let rumbleTimer = 0;
 let rumbleKick = 0;
+let lastLanding = null;
 let lastControls = null;
 // Physics runs at a fixed 240 Hz; rendering interpolates between the last two
 // physics states so motion is smooth whatever the display refresh rate.
@@ -287,8 +288,19 @@ function frame(now) {
         effects.splash(p, 1.2);
         audio.splash();
         rumbleKick = 1;
-      } else if (e.type === 'spinout' || e.type === 'grip') rumbleKick = Math.max(rumbleKick, 0.7);
+      } else if (e.type === 'spinout' || e.type === 'grip' || e.type === 'nosedive') rumbleKick = Math.max(rumbleKick, 0.7);
       else if (e.type === 'planing') rumbleKick = Math.max(rumbleKick, 0.25);
+    }
+    // Touching down off a chop: spray, a slap and a thump through the controller.
+    if (sim.landing && sim.landing !== lastLanding) {
+      lastLanding = sim.landing;
+      const hit = sim.landing.hit;
+      if (hit > 0.5) {
+        const fx = Math.cos(sim.yaw), fz = -Math.sin(sim.yaw);
+        effects.splash(new THREE.Vector3(sim.pos[0] - fx * 0.6, sim.pos[1] + 0.05, sim.pos[2] - fz * 0.6), clamp(0.25 + hit * 0.3, 0.3, 0.9));
+        audio.slap(clamp(hit / 2, 0.3, 1));
+        rumbleKick = Math.max(rumbleKick, clamp(hit / 2.5, 0.25, 0.85));
+      }
     }
   }
   renderTime += paused ? dt * 0.25 : 0;
@@ -345,7 +357,8 @@ function frame(now) {
     const luff = sim.aero ? clamp(1 - Math.abs(tel.alpha) * 57.3 / 7, 0, 1) * clamp(sim.aero.qMean / 25, 0, 1) : 0;
     const tip = f.pitch > 0 ? (0.25 + 0.65 * Math.min(1, f.pitch)) * pulse : 0;
     const strong = Math.max(load * 0.45, rumbleKick, tip, (f.lateral ?? 0) * 0.45, (f.gust ?? 0) * 0.6);
-    const weak = clamp(tel.planing * clamp(tel.speed / 14, 0, 1) * 0.18 + (sim.chopHit ?? 0) * 0.9 + luff * 0.25 +
+    // (and goes quiet while the board flies)
+    const weak = clamp((sim.airborne ? 0 : tel.planing * clamp(tel.speed / 14, 0, 1) * 0.18) + (sim.chopHit ?? 0) * 0.9 + luff * 0.25 +
       (sim.finVentilated ? 0.7 : (f.fin ?? 0) * 0.45) + (f.hand ?? 0) * 0.5 * pulse, 0, 1);
     input.rumble(strong, weak, 90);
   }

@@ -41,7 +41,10 @@ export class Coach {
     const goal = twaDeg * DEG;
     this.cur = this.cur === undefined ? Math.abs(sim.twa) : this.cur + clamp(goal - this.cur, -turnRate * DEG * dt, turnRate * DEG * dt);
     const e = sim.twa - side * this.cur;
-    this.integ = clamp(this.integ + e * dt, -2, 2);
+    // (no integral wind-up while still heading up onto an upwind course:
+    // it overshoots, and you stall off the plane)
+    const turning = Math.abs(goal - this.cur) > 1e-3 && goal < 75 * DEG;
+    this.integ = turning ? this.integ * (1 - Math.min(1, 2 * dt)) : clamp(this.integ + e * dt, -2, 2);
     return clamp(-side * (2.2 * e + 0.8 * sim.yawRate + 0.4 * this.integ), -1.5, 1.5);
   }
 
@@ -58,7 +61,15 @@ export class Coach {
     if (!t) { c.sheet = 0.5; return c; }
     if (sim.state === S.SECURE) { c.sheet = 0.6; return c; }
     if (sim.state !== S.SAILING) return c;
-    const steer = this.steer(dt, o.twa ?? 100, o.turnRate ?? 6);
+    // Knocked off the plane sailing upwind (a lull, a big chop): bear away
+    // to get going again, then head back up.
+    const wantTwa = o.twa ?? 100;
+    if (t.planing > 0.97 && t.speed > 5) this.planed = (this.planed ?? 0) + dt;
+    if (this.planed > 3 && t.planing < 0.85 && wantTwa < 75) this.replane = true;
+    if (this.replane && t.planing > 0.97 && t.speed > 6) this.replane = false;
+    if (this.replane && this.cur !== undefined) this.cur = Math.max(this.cur, Math.abs(sim.twa) - 2 * DEG);
+    // (gently: not throwing the rig forward and over to windward out of reach)
+    const steer = clamp(this.steer(dt, this.replane ? 85 : wantTwa, this.replane ? 8 : o.turnRate ?? 6), this.replane ? -0.8 : -1.5, this.replane ? 0.8 : 1.5);
     c.rake = clamp(steer, -1, 1);
     // Broad reaches: the apparent wind is light and the sail no longer
     // overpowers you, so sheet in toward maximum lift and sit back on the tail.
@@ -104,7 +115,9 @@ export class Coach {
     // gains, so beyond that you sheet out instead.
     this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22, 0.8, dt);
     c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp, -0.2, 1);
-    const aTarget = (o.alpha ?? 20 + 4 * deep) * DEG - clamp(over, 0, 1) * 14 * DEG;
+    // Rough water: a touch less power, so the board stays under control over the chop.
+    const rough = smoothstep(0.35, 0.8, sim.waves.hs) * (p > 0.9 ? 1 : 0);
+    const aTarget = (o.alpha ?? 20 + 4 * deep) * DEG - clamp(over, 0, 1) * 14 * DEG - rough * 3 * DEG;
     // Don't sheet in faster than you can get your body out and back against
     // it (a few degrees short of full stretch is just your legs and core
     // holding you; leaning back, only short of what holds the pull at all).
@@ -135,11 +148,17 @@ export class Coach {
     if (wantBack && s.straps === 0 && s.x > b.frontStrapX - 0.1) c.weight = -1;
     else if (o.straps && going && s.straps < 2) this.press(c, 'straps', 0.6);
     else if (s.straps === 0) c.weight = o.weight ?? 0.2;
-    else if (s.straps === 2 && going) c.weight = o.weight ?? -(0.35 + 0.55 * deep) * smoothstep(6, 9, t.speed);
+    // (and further back still in rough water, keeping the nose up over the chop)
+    else if (s.straps === 2 && going) c.weight = o.weight ?? -Math.min(1, (0.35 + 0.55 * deep) * smoothstep(6, 9, t.speed) + 0.4 * rough);
+    // Slowed right down in the straps (off the plane): feet out, and come
+    // forward to get going again.
+    if ((s.straps > 0 || s.hooked) && t.speed < 3.2) this.slowT = (this.slowT ?? 0) + dt; else this.slowT = 0;
+    if (this.slowT > 1) { c.strapsHeld = true; c.weight = 0.2; if (s.hooked) this.press(c, 'hook', 1.5); }
     // Hook in once sheeted in enough that the lines reach where you need to hang.
     const lines = sim.hookReach;
     if ((o.hook ?? o.straps) && going && !s.hooked && this.sheet > 0.45 && lines?.fits &&
-      (sim.assists.autoHike || lines.betaMax >= s.beta - 4 * DEG)) this.press(c, 'hook', 1.2);
+      // (with auto-hike holding you out at the balance, within a few degrees of it)
+      lines.betaMax >= s.beta - (sim.assists.autoHike ? 12 : 4) * DEG) this.press(c, 'hook', 1.2);
     return c;
   }
 }
@@ -160,6 +179,9 @@ export class Autopilot {
   controls(dt) {
     const o = this.opts;
     const twa = this.sim.t < this.warmup ? 100 : this.twa;
-    return this.coach.sail(dt, { twa, alpha: o.alpha, pump: o.pump, straps: o.straps ?? true, lean: o.lean ?? undefined, rail: o.rail });
+    const c = this.coach.sail(dt, { twa, alpha: o.alpha, pump: o.pump, straps: o.straps ?? true, lean: o.lean ?? undefined, rail: o.rail });
+    // (a fixed weight setting, once in both straps: for the checks)
+    if (o.weight !== undefined && this.sim.sailor.straps === 2) c.weight = o.weight;
+    return c;
   }
 }
