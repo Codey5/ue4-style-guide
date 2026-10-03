@@ -113,6 +113,8 @@ export function stance(board, sailor, state, stateData = {}, stateTime = 0) {
       sit = sailor.hooked ? 0.08 : 0.07;
     }
     if (state === S.FLIP) sit = 0.16;
+    // (crouched for a jump, tucked up in the air, soaking up a landing)
+    sit += sailor.knees ?? 0;
   }
   feetF[1] = deckY(board, feetF[0]) + ANKLE;
   feetB[1] = deckY(board, feetB[0]) + ANKLE;

@@ -30,6 +30,16 @@ function gust(x, size, { at = 3, hold = 3.5 } = {}) {
   m.gustOn = g < 0.6;
   m.gustPassed = g > 2.1 + hold;
 }
+/** Jumps you popped and landed (at least 0.3 s in the air) during this step, passing `ok`. */
+function jumps(sim, x, ok = () => true) {
+  const m = x.m;
+  m.since ??= sim.t - x.t;
+  if (sim.jump && sim.jump !== m.lastJump) {
+    m.lastJump = sim.jump;
+    if (sim.jump.t > m.since && sim.jump.popped && sim.jump.air >= 0.3 && sim.state === S.SAILING && ok(sim.jump)) m.jumps = (m.jumps ?? 0) + 1;
+  }
+  return m.jumps ?? 0;
+}
 const strapsReady = (sim, x, minKn) => x.t > 4 && planing(sim) && sim.sailor.hooked && sim.sailor.straps === 2 && kn(sim) > minKn;
 
 /** Hold the board on a true wind angle with the rig while in secure position or the water. */
@@ -465,6 +475,42 @@ export const LESSONS = [
       {
         say: 'Back to a beam reach. In chop: weight back, knees soft, a little less sheet, and keep the nose up.',
         run: (x) => x.coach.sail(x.dt, { twa: 100, turnRate: 8, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 5 && sim.state === S.SAILING,
+      },
+    ],
+  },
+  {
+    id: 'jump',
+    title: 'Jumping off the chop',
+    summary: 'Use a chop face as a ramp: crouch, pop as the tail climbs it, fly with the nose up and land tail first.',
+    setup: { boardId: 'free115', sailArea: 6.3, wind: { speedKn: 20, gustiness: 0.1, shifts: 0.1, chop: 1.5 }, start: 'sailing' },
+    steps: [
+      {
+        say: 'Good jumping weather: 20 knots and a short, steep chop. Get planing on a beam reach, hooked in and in both straps (they\'re how you take the board with you).',
+        run: (x) => x.coach.sail(x.dt, { twa: 105, pump: true, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => strapsReady(sim, x, 15),
+      },
+      {
+        say: 'Watch the water just ahead. As a steep face comes, hold {LB} to crouch: knees bent, loading up. As the tail starts up the face, let go: your legs drive the board off the water, and stiff legs take the whole kick of the face on top of yours.',
+        minTime: 6,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto', jump: true }),
+        done: (sim, x) => jumps(sim, x) >= 1,
+      },
+      {
+        say: 'In the air: weight back ({RS} down) keeps the nose up, the sail sheeted in ({RT}) holds you up, and you pull your knees up under you. Land tail first, or flat, and let your knees soak it up.',
+        minTime: 7,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto', jump: true }),
+        done: (sim, x) => jumps(sim, x, (j) => j.how !== 'nose first!') >= 2,
+      },
+      {
+        say: 'Nose first is the one to avoid: weight forward in the air drops the nose, it digs in and stops the board dead, and you go over the front. The steeper the face and the faster you hit it, the higher you fly: pick the steep ones.',
+        minTime: 8,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto', jump: true }),
+        done: (sim, x) => jumps(sim, x) >= 2,
+      },
+      {
+        say: 'On flat water a pop is only a little hop: the chop is your ramp. Every landing costs a little speed, so speed sailors keep the board on the water; the rest of us go looking for ramps.',
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' }),
         done: (sim, x) => x.t > 5 && sim.state === S.SAILING,
       },
     ],

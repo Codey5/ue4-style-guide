@@ -109,6 +109,52 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (!ok) process.exitCode = 1;
     }
   }
+  if (!only || only === 'jump') {
+    // Jumps (115 L / 6.3 m², 20 kn, beam reach): the coach pops off the
+    // steeper chop faces. A well-timed pop off a face should fly about half a
+    // metre for two thirds of a second; a pop on flat water is a little hop;
+    // weight forward in the air brings the nose down and throws you over the front.
+    console.log('\nJumps');
+    const J = ({ chop, mode, airWeight, seconds = 70 }) => {
+      const sim = new Sim({ boardId: 'free115', sailArea: 6.3, wind: { speedKn: 20, gustiness: 0, shifts: 0, chop }, start: 'sailing', assists: { autoHike: true } });
+      const ap = new Autopilot(sim, 105, {});
+      const jumps = [];
+      let falls = 0, last = null, nEv = 0, spins = 0;
+      for (let i = 0; i < seconds / DT; i++) {
+        const c = ap.controls(DT);
+        if (sim.t > 15) {
+          // 'timed': the coach's eye for a ramp; 'blind': crouch and pop every 2.5 s whatever the water is doing.
+          if (mode === 'timed') ap.coach.jump(c, 1.5);
+          else if (sim.sailor.straps === 2 && sim.sailor.hooked) c.pop = (sim.t - 15) % 2.5 < 0.3;
+          if (airWeight !== undefined && sim.airborne && sim.popT !== undefined) c.weight = airWeight;
+        }
+        const was = sim.state;
+        sim.step(DT, c);
+        if (sim.state === S.FALLING && was !== S.FALLING) falls++;
+        if (sim.state === S.WATER) { sim.reset('sailing', sim.pos); ap.coach = new ap.coach.constructor(sim); }
+        if (sim.jump && sim.jump !== last) { last = sim.jump; if (sim.jump.popped) jumps.push(sim.jump); }
+        while (nEv < sim.events.length) if (sim.events[nEv++].type === 'spinout') spins++;
+      }
+      const avg = (k) => (jumps.length ? jumps.reduce((a, j) => a + j[k], 0) / jumps.length : 0);
+      const r = { n: jumps.length, h: avg('height'), air: avg('air'), maxH: Math.max(0, ...jumps.map((j) => j.height)), falls, spins,
+        noseFirst: jumps.filter((j) => j.how === 'nose first!').length };
+      console.log(`  chop ${chop} ${mode}${airWeight !== undefined ? ` weight ${airWeight} in the air` : ''}: ${r.n} jumps, ${r.h.toFixed(2)} m (max ${r.maxH.toFixed(2)}) for ${r.air.toFixed(2)} s, nose first ${r.noseFirst}, spin-outs ${spins}, falls ${falls}`);
+      return r;
+    };
+    const timed = J({ chop: 1.5, mode: 'timed' }), blind = J({ chop: 1.5, mode: 'blind' }), flat = J({ chop: 0.2, mode: 'blind' });
+    const fwd = J({ chop: 1.5, mode: 'timed', airWeight: 1 });
+    const checks = [
+      ['Jumps: popped off chop faces, about half a metre for two thirds of a second', timed.n >= 10 && timed.h > 0.35 && timed.h < 0.9 && timed.air > 0.45 && timed.air < 1.1],
+      ['Jumps: the coach lands them cleanly (no falls, rare spin-outs)', timed.falls === 0 && timed.spins <= 3],
+      ['Jumps: timing the pop onto a face beats popping blind', timed.h > blind.h + 0.1],
+      ['Jumps: on flat water a pop is only a little hop', flat.maxH < 0.25],
+      ['Jumps: weight forward in the air lands you nose first and over the front', fwd.falls >= 2 && fwd.noseFirst + fwd.falls > timed.noseFirst + 2],
+    ];
+    for (const [name, ok] of checks) {
+      console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+      if (!ok) process.exitCode = 1;
+    }
+  }
   if (!only || only === 'gear') {
     console.log('\nGear check');
     const cases = [

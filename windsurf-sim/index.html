@@ -50,7 +50,7 @@ body {
   position: absolute; background: var(--glass); border: 1px solid var(--hair); border-radius: var(--r);
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 10px 12px;
 }
-.speed { top: max(14px, env(safe-area-inset-top, 0px)); left: 16px; min-width: 168px; }
+.speed { top: max(14px, env(safe-area-inset-top, 0px)); left: 16px; min-width: 168px; max-width: 292px; }
 .speed .sog { display: flex; align-items: baseline; gap: 6px; }
 .speed .sog b { font: 900 64px/0.9 var(--display); letter-spacing: -0.01em; }
 .speed .sog span { font: 700 18px/1 var(--display); color: var(--ink-dim); letter-spacing: 0.04em; }
@@ -60,6 +60,7 @@ body {
 .chip.on { color: #10202a; background: var(--good); border-color: transparent; }
 .chip.hot { color: #10202a; background: var(--signal); border-color: transparent; }
 .chip.alarm { color: #fff; background: var(--bad); border-color: transparent; }
+.chip.air { color: #10202a; background: var(--ink); border-color: transparent; }
 
 .wind { top: max(14px, env(safe-area-inset-top, 0px)); right: 16px; width: 188px; text-align: center; }
 .wind svg { width: 132px; height: 132px; display: block; margin: 2px auto 4px; }
@@ -232,7 +233,9 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
       <span class="chip" id="chip-hook">Hooked in</span>
       <span class="chip" id="chip-straps">Straps</span>
       <span class="chip" id="chip-spin" hidden>Spin-out</span>
+      <span class="chip air" id="chip-air" hidden>Air</span>
     </div>
+    <div class="row jumprow" id="jumprow" hidden><span>JUMP <span class="num" id="jump-last">0.00</span> m · <span class="num" id="jump-air">0.0</span> s</span><span>BEST <span class="num" id="jump-best">0.00</span> m</span></div>
   </section>
 
   <section class="pod wind" aria-label="Wind">

@@ -25,7 +25,7 @@ export const CONTROL_MAP = [
   ['X (□)', 'F (tap / hold)', 'Tap: step into the next footstrap · Hold: feet out of the straps'],
   ['B (○)', 'T', 'Tack: step round the front of the mast'],
   ['Y (△)', 'G', 'Flip the sail (gybe) · swap sides in secure position'],
-  ['LB (L1) hold', 'U hold', 'Uphaul when on the board · waterstart when in the water'],
+  ['LB (L1) hold', 'U / J hold', 'Uphaul when on the board · waterstart when in the water · sailing: crouch, let go to pop (jump)'],
   ['RB (R1) hold', 'P hold', 'Pump the sail to get onto the plane'],
   ['L3 click', 'X', 'Drop the rig'],
   ['D-pad ← / →', 'V', 'Change camera'],
@@ -122,6 +122,7 @@ export class Input {
     c.sheet = this.kbSheet; c.hike = this.kbHike;
     c.pump = k('KeyP');
     c.uphaul = k('KeyU');
+    c.pop = k('KeyU') || k('KeyJ');
     c.strapsHeld = this.fHeld > 0.3;
 
     // Gamepad overrides when it's being used.
@@ -147,6 +148,7 @@ export class Input {
         c.hike = lt;
         c.pump = b(BTN.RB);
         c.uphaul = b(BTN.LB);
+        c.pop = b(BTN.LB);
       }
       const prev = this.prevButtons;
       const edge = (i) => b(i) && !prev[i];

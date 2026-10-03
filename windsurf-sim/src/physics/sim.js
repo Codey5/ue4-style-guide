@@ -34,6 +34,14 @@ export const BEACH_Z = -260; // the shoreline runs east-west, north of the start
 
 /** Share of the chop's vertical kick that gets past your legs to the whole board-rig-sailor system. */
 const LEGS = 0.4;
+/**
+ * The pop: legs driving the board off the water. POP_T is how long the
+ * extension lasts, POP_ACC the extra upward push it gives the whole system
+ * while the board is still on the water (a full crouch: about 1.5 m/s).
+ */
+const POP_T = 0.15, POP_ACC = 10;
+/** How long holding the pop button takes to crouch fully (s). */
+const CROUCH_T = 0.3;
 /** Standard harness line centre, as a fraction of the boom from the mast (see body.js). */
 const LINES_AT = 0.38;
 /** Typical ratio of the loaded sail's centre of pressure to its area centroid (calibrates handLoads). */
@@ -53,7 +61,7 @@ export function normTune(t = {}) {
 /** Normalised controls the sim consumes (see ui/input.js for the mapping). */
 export function emptyControls() {
   return {
-    rake: 0, lean: 0, weight: 0, rail: 0, sheet: 0, hike: 0, pump: false, uphaul: false, strapsHeld: false,
+    rake: 0, lean: 0, weight: 0, rail: 0, sheet: 0, hike: 0, pump: false, uphaul: false, pop: false, strapsHeld: false,
     pressed: { hook: false, straps: false, tack: false, flip: false, climb: false, drop: false },
   };
 }
@@ -130,11 +138,12 @@ export class Sim {
     this.heave = 0; this.heaveVel = 0;
     this.airborne = false; this.airTime = 0; this.airHeight = 0; this.contact = 1; this.noseDrag = 0; this.slamDrag = 0;
     this.impact = 0; this.finAir = 0; this.landing = null; this.aLong = 0;
+    this.popT = undefined; this.popK = 0; this.jump = null; this.takeoff = null;
     this.rig = { rake: 0, lean: 0, boom: side * 80 * DEG, side, up: 1 };
     this.sailor = {
       side, x: this.board.mastFootX - 0.35, leanX: 0, beta: 4 * DEG, betaRate: 0, hang: 0, hangTime: 0, phi: 0, phiRate: 0,
       hooked: false, straps: 0, stamina: 1, gripLost: 0, hookTimer: 0, strapsHoldTime: 0,
-      pumpPhase: 0, fallType: null,
+      pumpPhase: 0, fallType: null, crouch: 0, knees: 0,
     };
     this.twa = side * Math.PI / 2;
     this.pullFelt = undefined;
@@ -382,6 +391,18 @@ export class Sim {
     const sailorLat = sailorOnBoard ? this.sailorHeight * 0.56 * Math.sin(Math.max(0, sailor.beta)) + 0.1 : 0.8;
     const Iz = mB * b.length ** 2 / 12 + mS * (0.08 + (sailor.x - cgX) ** 2 + sailorLat ** 2) +
       mR * (0.6 + (b.mastFootX - cgX) ** 2);
+    // Flying, there's no water to turn the board: your feet in the straps
+    // keep it pointing where it's going (it would land sliding sideways
+    // otherwise), and twisting it on its rail with them turns it.
+    if (this.airborne && sailorOnBoard && speed > 2) {
+      // (the sail carries you downwind in the air, so where you're going turns too)
+      const travel = Math.atan2(-this.vel[2], this.vel[0]);
+      const a0 = this.accel ?? [0, 0, 0];
+      const travelRate = (this.vel[2] * a0[0] - this.vel[0] * a0[2]) / (speed * speed);
+      // (only once properly flying: skipping over the tops, the fin still has it)
+      N += Iz * smoothstep(0.08, 0.25, this.airTime ?? 0) * (30 * wrapAngle(travel - this.yaw) + 8 * (travelRate - this.yawRate) - 4 * this.roll);
+    }
+
     const acc = scale(F, 1 / (m * (1 + 0.08 * (1 - p))));
     this.vel = add(this.vel, scale(acc, dt));
     this.vel[1] = 0;
@@ -922,6 +943,7 @@ export class Sim {
 
   updateStance(dt, ctl) {
     const s = this.sailor, b = this.board;
+    this.updateKnees(dt, ctl);
     if (this.state !== S.SAILING) {
       s.leanX = damp(s.leanX, 0, 6, dt);
       return;
@@ -939,6 +961,71 @@ export class Sim {
         this.emit('straps', 'Feet out of the straps');
       }
     } else s.strapsHoldTime = 0;
+  }
+
+  /**
+   * The wind under a flying board (N, upward): the bottom is a small, very
+   * low-aspect flat plate. With the nose or the windward rail lifted into the
+   * apparent wind it carries a little of your weight; falling flat, it
+   * brakes the drop a touch.
+   */
+  boardAirLift(b) {
+    const R = boardMatrix(this.yaw, this.pitch, this.roll);
+    const n = mulMV(R, [0, 1, 0]);
+    const wv = this.wind.sample(this.pos[0], 0.6, this.pos[2], this.t);
+    const aw = [wv[0] - this.vel[0], -this.heaveVel, wv[2] - this.vel[2]];
+    const sp = Math.hypot(aw[0], aw[1], aw[2]);
+    if (sp < 1) return 0;
+    const sinA = dot(aw, n) / sp; // + = air striking the bottom
+    const area = 0.72 * b.length * b.width;
+    const ar = b.width * b.width / area;
+    const cn = Math.sign(sinA) * ((Math.PI * ar / 2) * Math.abs(sinA) + 2 * sinA * sinA);
+    return 0.5 * RHO_AIR * sp * sp * area * cn * n[1];
+  }
+
+  /**
+   * Jumping. Hold the pop button to crouch (knees soft, soaking up the chop
+   * and loading up), let go to pop: the legs drive the board down and off
+   * the water, and stiff legs take the whole kick of the chop face you're
+   * on instead of soaking it up. Popped as the tail climbs a steep face, the
+   * two add up and the board flies; on flat water it's a little hop. You
+   * need speed (planing) and both feet in the straps to take the board with
+   * you. In the air you pull your knees up, which lifts the board under you.
+   */
+  updateKnees(dt, ctl) {
+    const s = this.sailor;
+    const sailing = this.state === S.SAILING;
+    if (this.popT !== undefined) this.popT += dt;
+    // (a pop that never left the water was just a bounce)
+    if (this.popT !== undefined && !this.airborne && this.popT > POP_T + 0.4) this.popT = undefined;
+    if (!sailing) this.popT = undefined;
+    const popping = this.popT !== undefined && this.popT < POP_T;
+    // (the same button uphauls and waterstarts: still held from that, it isn't a crouch)
+    if (!sailing) this.popBlock = !!ctl.pop;
+    else if (!ctl.pop) this.popBlock = false;
+    if (sailing && ctl.pop && !this.popBlock && !this.airborne) s.crouch = Math.min(1, s.crouch + dt / CROUCH_T);
+    else if (s.crouch > 0 && !(sailing && ctl.pop)) {
+      if (sailing && !this.airborne) {
+        const p = this.hull?.planing ?? 0;
+        if (s.straps < 2) this.emit('hint', 'Both feet in the straps to jump: the straps are how you take the board with you (X)');
+        else if (p < 0.6) this.emit('hint', 'Get planing first: a jump needs speed');
+        else {
+          this.popT = 0;
+          this.popK = (0.35 + 0.65 * s.crouch) * smoothstep(0.6, 0.9, p);
+          this.popStart = this.t;
+        }
+      }
+      s.crouch = 0;
+    }
+    // Knees: bent in the crouch, straightening through the pop, tucked up in
+    // the air after a jump, absorbing the landing.
+    const jumping = this.popT !== undefined && this.airborne;
+    const target = !sailing || popping ? 0 : jumping ? 0.14 : 0.16 * s.crouch;
+    const prev = s.knees;
+    s.knees = damp(s.knees, target, popping ? 30 : this.airborne ? 6 : 10, dt);
+    // Flying, the board is light against your body: pulling your knees up
+    // lifts it (and pushing your feet down before landing lowers it).
+    if (this.airborne) this.pos[1] += (s.knees - prev) * 0.49 * this.sailorHeight * 0.9;
   }
 
   /**
@@ -980,8 +1067,12 @@ export class Sim {
     const slopeC = (surf(x0 + wet) - surf(x0)) / wet;
     const xc = lerp(-0.05 * b.length, x0 + wet / 2, smoothstep(0.3, 0.9, p));
     const surfH = lerp((hN + hT) / 2, sC, p);
-    // How fast that surface rises under you: the wave's own motion plus its slope times your speed.
-    const vS = lerp(0, vC + u * slopeC, p) * LEGS;
+    // How fast that surface rises under you: the wave's own motion plus its
+    // slope times your speed. Soft knees soak up most of it (more crouched);
+    // popping, stiff legs take all of it.
+    const popping = this.popT !== undefined && this.popT < POP_T;
+    const legs = popping ? 1 : LEGS * (1 - 0.35 * this.sailor.crouch);
+    const vS = lerp(0, vC + u * slopeC, p) * legs;
     const tp = Math.tan(this.pitch);
     const zC = this.pos[1] + xc * tp;
     const zCdot = this.heaveVel + xc * this.pitchRate;
@@ -997,10 +1088,19 @@ export class Sim {
     // the wetted length and the flow angle change (soft, and well damped).
     const k = lerp(140, 100, p), c = lerp(20, 17, p);
     const touching = imm > -0.004;
-    const push = touching ? Math.max(0, gEff + k * (imm - draft) + c * (vS - zCdot)) : 0;
+    // (the pop: your legs driving the board down against the water)
+    const popPush = popping && touching ? POP_ACC * this.popK : 0;
+    let push = touching ? Math.max(0, gEff + k * (imm - draft) + c * (vS - zCdot)) + popPush : 0;
+    // Flying, the wind gets under the board: a little lift with the nose (or
+    // the windward rail) up into the apparent wind.
+    if (!touching && sailorOnBoard) push += this.boardAirLift(b) / this.totalMass;
     // Slamming over the chop draws its energy from your speed: the power
-    // the water damps out of the bouncing, as drag.
-    this.slamDrag = touching && sailorOnBoard ? 0.7 * p * this.totalMass * c * (vS - zCdot) ** 2 / Math.max(3, Math.abs(u)) : 0;
+    // the water damps out of the bouncing, as drag. Popping off a face is
+    // different: stiff legs turn some of your speed into the climb, without
+    // the slamming, and driving the board down into the water loads the
+    // planing surface, so its drag goes up with the lift for that moment.
+    this.slamDrag = touching && sailorOnBoard ? (popping ? this.totalMass * Math.max(0, c * (vS - zCdot) * zCdot) :
+      0.7 * p * this.totalMass * c * (vS - zCdot) ** 2) / Math.max(3, Math.abs(u)) + hull.drag * popPush / gEff : 0;
     this.dbgChop = { imm, draft, vS, zCdot, push, gEff, k, slopeC, sC, wet, pitch: this.pitch, xc };
     this.heaveVel += (push - gEff) * dt;
     this.pos[1] += this.heaveVel * dt;
@@ -1011,6 +1111,7 @@ export class Sim {
     this.airborne = imm < -0.02 || (wasAir && !touching);
     if (!sailorOnBoard) this.airborne = false;
     if (this.airborne) {
+      if (!wasAir) this.takeoff = { x: this.pos[0], z: this.pos[2], t: this.t, popped: this.popT !== undefined };
       this.airTime = (this.airTime ?? 0) + dt;
       this.airHeight = Math.max(this.airHeight ?? 0, -imm);
     } else {
@@ -1022,13 +1123,32 @@ export class Sim {
         // Touching down scrubs off speed: more landing hard, most nose-first.
         const sp = Math.hypot(this.vel[0], this.vel[2]);
         if (sp > 1) {
-          const loss = Math.min(0.5 * sp, (0.12 + 0.4 * smoothstep(0, -6, rel)) * hit);
+          // (and coming down on the tail with the nose high in the air, it stalls)
+          const loss = Math.min(0.5 * sp, (0.12 + 0.4 * smoothstep(0, -6, rel) + 0.2 * smoothstep(8, 18, rel)) * hit);
           this.vel = scale(this.vel, 1 - loss / sp);
+          // (and your body carries on: landing from any height, you feel it as a lurch forward)
+          this.aLong = (this.aLong ?? 0) - loss * 15 * smoothstep(1.2, 2.5, hit);
         }
         this.impact = Math.max(this.impact ?? 0, clamp(hit / 2.5, 0, 1));
-        if (this.landing.air >= 0.4 && this.state === S.SAILING) this.emit('hop', `Airtime ${this.landing.air.toFixed(1)} s!`, 1);
-        // A tail-first slap, or landing sideways, drags air down the fin.
-        if (rel > 8 || (this.airHeight ?? 0) > 0.12) this.finAir = 0.45;
+        this.sailor.knees = Math.min(0.2, this.sailor.knees + hit * 0.03); // (absorbing it)
+        const to = this.takeoff;
+        const popped = to?.popped || this.popT !== undefined;
+        this.popT = undefined;
+        if (this.state === S.SAILING && (popped ? this.landing.air >= 0.25 : this.landing.air >= 0.4)) {
+          // A jump: how high, how long, how far, and how you came down.
+          const dist = to ? Math.hypot(this.pos[0] - to.x, this.pos[2] - to.z) : 0;
+          const how = rel < -3 ? 'nose first!' : rel > 3 ? 'tail first' : 'flat';
+          this.jump = { height: this.landing.height, air: this.landing.air, dist, rel, hit, how, popped, t: this.t };
+          this.landing.jump = this.jump;
+          if (!this.bestJump || this.jump.height > this.bestJump.height) this.bestJump = this.jump;
+          this.emit('jump', `${popped ? 'Jump' : 'Airtime'}: ${this.jump.height.toFixed(2)} m high, ${this.jump.air.toFixed(1)} s, ${dist.toFixed(0)} m — landed ${how}`, 1);
+        }
+        // Landing sideways (the board slid downwind in the air), plunging in
+        // steeply tail first, or dropping from high up drags air down the fin.
+        const fwdL = [Math.cos(this.yaw), 0, -Math.sin(this.yaw)], stbdL = [Math.sin(this.yaw), 0, Math.cos(this.yaw)];
+        const slip = Math.abs(Math.atan2(dot(this.vel, stbdL), Math.max(1, Math.abs(dot(this.vel, fwdL)))));
+        this.finAir = Math.max(this.finAir ?? 0, 0.45 * clamp(smoothstep(4 * DEG, 12 * DEG, slip) + 0.6 * smoothstep(9, 20, rel) +
+          0.4 * smoothstep(0.3, 1, this.airHeight ?? 0), 0, 1));
       }
       this.airTime = 0;
       this.airHeight = 0;
@@ -1066,6 +1186,8 @@ export class Sim {
       const pitchTarget = hull.trim + slopeBoard * (1 - 0.55 * p);
       pitchAcc = 90 * (pitchTarget - this.pitch) - 16 * this.pitchRate + 250 * nose * (1 - 0.7 * dig);
     }
+    // Popping, you kick the tail down as your legs drive: the nose comes up.
+    if (popping) pitchAcc += 7 * this.popK;
     this.pitchRate += pitchAcc * dt;
     this.pitch += this.pitchRate * dt;
 
@@ -1074,8 +1196,10 @@ export class Sim {
       const maxRoll = lerp(8 * (0.75 / b.width), 30, p) * DEG;
       rollCmd = ctl.rail * maxRoll;
     }
-    const rollTarget = rollCmd + waveRoll * (sailorOnBoard ? 0.6 : 1) * (1 - 0.7 * p);
-    this.rollRate += (70 * (rollTarget - this.roll) - 14 * this.rollRate) * dt;
+    // (in the air the water no longer rolls it; your feet do, more freely)
+    const inAir = this.airborne ? 1 : 0;
+    const rollTarget = rollCmd * (1 + 0.4 * inAir) + waveRoll * (sailorOnBoard ? 0.6 : 1) * (1 - 0.7 * p) * (1 - inAir);
+    this.rollRate += ((70 - 40 * inAir) * (rollTarget - this.roll) - (14 - 6 * inAir) * this.rollRate) * dt;
     this.roll += this.rollRate * dt;
   }
 
@@ -1337,15 +1461,23 @@ export class Sim {
       }
       return;
     }
+    // (thrown over the front around a jump: what went wrong there)
+    const jumpWhy = () => {
+      if (this.airborne) return 'with your weight forward in the air the nose dropped and the rig took you over the front. Keep your weight back in the air (RS down) and the nose up.';
+      const l = this.landing;
+      if (!l || this.t - l.t > 0.6 || l.air < 0.25) return null;
+      return l.rel < -3 ? 'the nose hit the water first and the board stopped dead under you. Weight back in the air and land tail first.'
+        : 'you landed hard and the board stopped under you. Land tail first with soft knees, and ease the sheet a touch as you touch down.';
+    };
     if (fa && sailing && fa.comX > fa.toe + 0.05 && s.phiRate < 0) {
       // Tipped forward over your front foot by the pull.
-      if (s.hooked && speed > 4) this.fall('catapult', 'the gust\'s pull through your harness lines tipped you over your front foot and launched you over the boom. Keep your weight back and sheet out the moment a gust hits!');
+      if (s.hooked && speed > 4) this.fall('catapult', jumpWhy() ?? 'the gust\'s pull through your harness lines tipped you over your front foot and launched you over the boom. Keep your weight back and sheet out the moment a gust hits!');
       else this.fall('leeward', 'the pull dragged you forward over your front foot. Lean back against it and sheet out when it gusts.');
     } else if (fa && sailing && fa.comX + (fa.tip + 150 * mS / 75) / (mS * G) < fa.heel - 0.1 && s.phiRate > 0) {
       // Leaned back further than the pull (and a pull up on the boom) can hold.
       this.fall('windward', 'you leaned back with too little pull to hold you and sat down off the back. Ease the lean when the power drops.');
     } else if (s.beta < -24 * DEG) {
-      if (s.hooked && speed > 5.5) this.fall('catapult', 'a gust yanked you up out of your stance by the harness lines and over the boom. Sheet out and sink your weight back the moment a gust hits!');
+      if (s.hooked && speed > 5.5) this.fall('catapult', jumpWhy() ?? 'a gust yanked you up out of your stance by the harness lines and over the boom. Sheet out and sink your weight back the moment a gust hits!');
       else this.fall('leeward', 'too much power for your stance. Hike out (LT) or sheet out (RT).');
     } else if (s.beta > 86 * DEG || s.hangTime > 1.2 || s.side * this.rig.lean > 58 * DEG) {
       if (this.aero && this.aero.alphaMid < -2 * DEG) this.fall('backwind', 'the wind got on the wrong side of the sail and pushed you in.');

@@ -146,6 +146,17 @@ export class Hud {
     $('chip-straps').className = `chip ${st ? 'hot' : ''}`;
     $('chip-spin').hidden = !sim.finVentilated;
     $('chip-spin').className = 'chip alarm';
+    // Flying: how high the board is off the water right now.
+    const flying = sim.airborne && (sim.airTime ?? 0) > 0.12;
+    $('chip-air').hidden = !flying;
+    if (flying) $('chip-air').textContent = `Air ${(sim.airHeight ?? 0).toFixed(2)} m`;
+    const j = sim.jump, best = sim.bestJump;
+    $('jumprow').hidden = !best;
+    if (j) {
+      $('jump-last').textContent = j.height.toFixed(2);
+      $('jump-air').textContent = j.air.toFixed(1);
+      $('jump-best').textContent = best.height.toFixed(2);
+    }
     const holding = sim.state === S.SAILING || sim.state === S.FLIP || sim.state === S.TACK;
     $('bal-text').textContent = holding ? `lean ${(sim.sailor.beta * RAD).toFixed(0)}°${sim.state === S.SAILING && sim.betaMax !== undefined ? ` of ${(sim.betaMax * RAD).toFixed(0)}°` : ''}` : '—';
     $('v-sheet').textContent = (controls.sheet * 100).toFixed(0);
@@ -245,11 +256,16 @@ export class Hud {
           add(`${g.RB} hold`, 'Pump to get over the hump');
           add(`${g.RS} ↑`, 'Weight forward, board flat');
           add(g.B, 'Tack (head up first)');
+        } else if (sim.airborne && (sim.airTime ?? 0) > 0.12) {
+          add(`${g.RS} ↓`, 'Weight back: nose up, land tail first');
+          add(g.RT, 'Stay sheeted in: the sail holds you up');
+          add(g.LS, 'Rig upright, a touch to windward');
         } else {
           if (!s.hooked) add(g.A, 'Hook in');
           else add(g.A, 'Unhook (before a gybe)');
           if (s.straps < 2) add(g.X, s.straps === 0 ? 'Front foot into the strap' : 'Back foot into the strap');
           else add(`${g.X} hold`, 'Feet out for a gybe');
+          if (s.straps === 2) add(`${g.LB} hold, let go`, 'Crouch, then pop off a chop face');
           add(g.LT, 'Hike out against the pull');
           add(g.RS, 'Rail: carve with toes / heels');
           add(g.Y, 'Flip the sail at dead downwind');
@@ -298,6 +314,9 @@ export class Hud {
       row('Lean / balanced at', `${f(sim.sailor.beta * RAD)}° / ${f((sim.betaEq ?? 0) * RAD)}°`) +
       row('Reach (arms or lines)', `${f((sim.betaMin ?? 0) * RAD)}° to ${f((sim.betaMax ?? 0) * RAD)}°${sim.bodyGeo && !sim.bodyGeo.fits ? ' (boom out of reach)' : ''}`) +
       row('Weight out from centreline', `${f((bal.leverMax ?? 0) * 100)} cm at full reach`) +
+      `</dl><h3>Jumps</h3><dl>` +
+      row('Last', sim.jump ? `${f(sim.jump.height, 2)} m · ${f(sim.jump.air, 1)} s · ${f(sim.jump.dist)} m, ${sim.jump.how}` : '–') +
+      row('Best', sim.bestJump ? `${f(sim.bestJump.height, 2)} m · ${f(sim.bestJump.air, 1)} s` : '–') +
       `</dl>`;
   }
 }

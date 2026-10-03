@@ -49,7 +49,8 @@ export class LessonUi {
     const set = (id, t) => { $(id).textContent = t; };
     set('pv-A-t', isPs ? '✕' : 'A'); set('pv-B-t', isPs ? '○' : 'B'); set('pv-X-t', isPs ? '□' : 'X'); set('pv-Y-t', isPs ? '△' : 'Y');
     set('pv-lt-t', `${isPs ? 'L2' : 'LT'} hike`); set('pv-rt-t', `${isPs ? 'R2' : 'RT'} sheet`);
-    set('pv-lb-t', `${isPs ? 'L1' : 'LB'} uphaul`); set('pv-rb-t', `${isPs ? 'R1' : 'RB'} pump`);
+    set('pv-rb-t', `${isPs ? 'R1' : 'RB'} pump`);
+    this.lastLb = '';
   }
 
   /** Fill caption tokens like {RT} with the player's glyphs. */
@@ -96,7 +97,9 @@ export class LessonUi {
     $('pv-rs').setAttribute('cy', (92 - controls.weight * 10).toFixed(1));
     $('pv-lt').querySelector('.pv-fill').setAttribute('width', (52 * controls.hike).toFixed(1));
     $('pv-rt').querySelector('.pv-fill').setAttribute('width', (52 * controls.sheet).toFixed(1));
-    lit('pv-lb', controls.uphaul);
+    lit('pv-lb', controls.uphaul || controls.pop);
+    const lb = `${isPs ? 'L1' : 'LB'} ${info.sailing ? 'jump' : 'uphaul'}`;
+    if (lb !== this.lastLb) { $('pv-lb-t').textContent = lb; this.lastLb = lb; }
     lit('pv-rb', controls.pump);
     const legend = `Rig rake ${signed(controls.rake)} · lean ${signed(controls.lean)}<br>Weight ${signed(controls.weight)} · rail ${signed(controls.rail)}`;
     if (legend !== this.lastLegend) { $('pv-legend').innerHTML = legend; this.lastLegend = legend; }

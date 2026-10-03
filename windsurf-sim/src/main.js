@@ -209,6 +209,7 @@ let last = performance.now();
 let acc = 0;
 let rumbleTimer = 0;
 let rumbleKick = 0;
+let lastPop;
 let lastLanding = null;
 let lastControls = null;
 // Physics runs at a fixed 240 Hz; rendering interpolates between the last two
@@ -291,6 +292,13 @@ function frame(now) {
       } else if (e.type === 'spinout' || e.type === 'grip' || e.type === 'nosedive') rumbleKick = Math.max(rumbleKick, 0.7);
       else if (e.type === 'planing') rumbleKick = Math.max(rumbleKick, 0.25);
     }
+    // The pop: the tail kicks water as it leaves, and a sharp knock through the controller.
+    if (sim.popStart !== undefined && sim.popStart !== lastPop) {
+      lastPop = sim.popStart;
+      effects.slap(sim, boardGroup, clamp(0.4 * sim.popK, 0.2, 0.4));
+      audio.slap(0.4);
+      rumbleKick = Math.max(rumbleKick, 0.55);
+    }
     // Touching down off a chop: spray, a slap and a thump through the controller.
     if (sim.landing && sim.landing !== lastLanding) {
       lastLanding = sim.landing;
@@ -334,7 +342,7 @@ function frame(now) {
   if (lesson) {
     lessonUi.update(dt, lesson, shown, framePressed, hud.glyphs(input), hud.isPs(input), {
       index: LESSONS.indexOf(lesson.lesson), count: LESSONS.length,
-      inWater: sim.state === S.WATER || sim.state === S.FALLING,
+      inWater: sim.state === S.WATER || sim.state === S.FALLING, sailing: sim.state === S.SAILING,
     });
   }
   if (!paused) audio.update(sim);

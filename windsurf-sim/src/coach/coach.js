@@ -22,6 +22,51 @@ export class Coach {
     c.pressed[name] = true;
   }
 
+  /**
+   * Reading the chop ahead (a good sailor's eye): how fast the water under
+   * the tail will be rising as the board runs onto it over the next moment
+   * (m/s), now and at its steepest, and how soon that comes (s).
+   */
+  rampAhead(horizon = 0.6, step = 1 / 60) {
+    const sim = this.sim, w = sim.waves, b = sim.board;
+    const fx = Math.cos(sim.yaw), fz = -Math.sin(sim.yaw);
+    const xT = b.transomX + 0.35; // the planing patch, on the tail
+    const e = 0.01;
+    let now = 0, peak = -Infinity, inT = 0;
+    for (let tau = 0; tau <= horizon + 1e-9; tau += step) {
+      const px = sim.pos[0] + sim.vel[0] * tau + fx * xT, pz = sim.pos[2] + sim.vel[2] * tau + fz * xT;
+      const v = (w.height(px + sim.vel[0] * e, pz + sim.vel[2] * e, sim.t + tau + e) - w.height(px, pz, sim.t + tau)) / e;
+      if (tau === 0) now = v;
+      if (v > peak) { peak = v; inT = tau; }
+    }
+    return { now, peak, inT };
+  }
+
+  /**
+   * Jumping off the chop: crouch (hold the pop button) as a steep face
+   * comes, and pop (let go) as the tail starts up it, so the legs' kick and
+   * the face's add up. Only off a face steep enough to be worth it, and not
+   * again straight after the last one.
+   */
+  jump(c, minPeak = 1.5) {
+    const sim = this.sim, s = sim.sailor, t = sim.telemetry;
+    // Touching down from a jump: ease the sheet a touch, so the fin isn't
+    // hit with the sail's full pull the moment it bites again.
+    const l = sim.landing;
+    if (l?.jump?.popped && l !== this.eased) {
+      this.eased = l;
+      this.sheet = Math.max(0.05, this.sheet - 0.08);
+      c.sheet = this.sheet;
+    }
+    const ready = sim.state === S.SAILING && s.straps === 2 && s.hooked && t.planing > 0.9 && t.speed > 6;
+    if (!ready || sim.airborne || sim.t - (this.lastPop ?? -9) < 1.6) { this.crouching = false; return c; }
+    const r = this.rampAhead();
+    if (!this.crouching && r.peak > minPeak && r.inT < 0.35 && r.inT > 0.1) this.crouching = true;
+    if (this.crouching && (r.inT <= 0.05 || r.peak < 0.7 * minPeak)) { this.crouching = false; this.lastPop = sim.t; }
+    c.pop = this.crouching;
+    return c;
+  }
+
   /** LT value that balances the current pull (what a good sailor does by feel). */
   hikeFor(dt) {
     const sim = this.sim;
@@ -51,7 +96,8 @@ export class Coach {
   /**
    * Sail a course. Options:
    *  twa (deg), alpha (target angle of attack, deg), turnRate (deg/s),
-   *  pump, straps, hook, moveBack, weight, lean, rail, hike ('auto' = drive LT).
+   *  pump, straps, hook, moveBack, weight, lean, rail, hike ('auto' = drive LT),
+   *  jump (pop off chop faces steeper than jumpPeak, m/s of rise).
    */
   sail(dt, o = {}) {
     const sim = this.sim;
@@ -159,6 +205,7 @@ export class Coach {
     if ((o.hook ?? o.straps) && going && !s.hooked && this.sheet > 0.45 && lines?.fits &&
       // (with auto-hike holding you out at the balance, within a few degrees of it)
       lines.betaMax >= s.beta - (sim.assists.autoHike ? 12 : 4) * DEG) this.press(c, 'hook', 1.2);
+    if (o.jump) this.jump(c, o.jumpPeak);
     return c;
   }
 }
