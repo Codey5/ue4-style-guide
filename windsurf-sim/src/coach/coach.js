@@ -76,6 +76,12 @@ export class Coach {
         const grip = 250 + 400 * sim.sailor.stamina;
         over = Math.max(over, (sim.handForce - 0.8 * grip) / grip * 3);
       }
+      // Fore and aft: ease off before the pull is more than leaning back on your toes can hold.
+      const pb = sim.pitchBalance;
+      if (pb && pb.tipMax > 50) {
+        over = Math.max(over, (pb.tip - 0.75 * pb.tipMax) / pb.tipMax * 2);
+        if (pb.tipNow > 50) over = Math.max(over, (pb.tip - 0.85 * pb.tipNow) / pb.tipNow * 2);
+      }
     }
     // Rig lean: a little to windward when planing on a reach. More whenever
     // you need to hang further out than your arms (or harness lines) reach:
@@ -99,9 +105,12 @@ export class Coach {
     this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22, 0.8, dt);
     c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp, -0.2, 1);
     const aTarget = (o.alpha ?? 20 + 4 * deep) * DEG - clamp(over, 0, 1) * 14 * DEG;
-    // Don't sheet in faster than you can get your body out against it (a few
-    // degrees short of full stretch is just your legs and core holding you).
-    const lag = sim.betaTarget !== undefined ? Math.max(0, sim.betaTarget - sim.sailor.beta - 6 * DEG) : 0;
+    // Don't sheet in faster than you can get your body out and back against
+    // it (a few degrees short of full stretch is just your legs and core
+    // holding you; leaning back, only short of what holds the pull at all).
+    const fa = sim.pitchBalance;
+    const lag = (sim.betaTarget !== undefined ? Math.max(0, sim.betaTarget - sim.sailor.beta - 6 * DEG) : 0) +
+      (fa ? 2 * Math.max(0, fa.phiNeed - sim.sailor.phi) + 4 * fa.excess : 0);
     if (sim.sailor.gripLost > 0) this.sheet = Math.min(this.sheet, 0.3);
     else this.sheet = clamp(this.sheet + clamp(-(t.alpha - aTarget) * 2.2 - Math.max(0, over) * 1.5 - lag * 4, -1.5, 0.2) * dt, 0.05, 1);
     c.sheet = this.sheet;
@@ -119,14 +128,17 @@ export class Coach {
     const s = sim.sailor, b = sim.board;
     const going = p > 0.95 && t.speed > 5.5;
     const wantBack = going && (o.straps || o.moveBack);
-    if (wantBack && s.straps === 0 && s.x > b.frontStrapX + 0.18) c.weight = -1;
+    // (walk right back first, so the front foot only has a short step back
+    // into its strap: a long step back while leaning against the pull drops
+    // you forward over your toes)
+    if (wantBack && s.straps === 0 && s.x > b.frontStrapX - 0.1) c.weight = -1;
     else if (o.straps && going && s.straps < 2) this.press(c, 'straps', 0.6);
     else if (s.straps === 0) c.weight = o.weight ?? 0.2;
     else if (s.straps === 2 && going) c.weight = o.weight ?? -(0.35 + 0.55 * deep) * smoothstep(6, 9, t.speed);
     // Hook in once sheeted in enough that the lines reach where you need to hang.
     const lines = sim.hookReach;
     if ((o.hook ?? o.straps) && going && !s.hooked && this.sheet > 0.45 && lines?.fits &&
-      lines.betaMax >= s.beta - 4 * DEG) this.press(c, 'hook', 1.2);
+      (sim.assists.autoHike || lines.betaMax >= s.beta - 4 * DEG)) this.press(c, 'hook', 1.2);
     return c;
   }
 }

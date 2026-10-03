@@ -3,6 +3,7 @@
 // telemetry panel for those who want the numbers.
 import { DEG, MS_TO_KN, RAD, clamp } from '../physics/math.js';
 import { S } from '../physics/sim.js';
+import { stance } from '../physics/body.js';
 import { CONTROL_MAP } from './input.js';
 
 const $ = (id) => document.getElementById(id);
@@ -164,14 +165,27 @@ export class Hud {
     const outline = `M0,${nose} C${(hw * 0.9).toFixed(1)},${nose} ${hw.toFixed(1)},${(+wide - 40).toFixed(1)} ${hw.toFixed(1)},${wide} L${tw.toFixed(1)},${tail} L${(-tw).toFixed(1)},${tail} L${(-hw).toFixed(1)},${wide} C${(-hw).toFixed(1)},${(+wide - 40).toFixed(1)} ${(-hw * 0.9).toFixed(1)},${nose} 0,${nose} Z`;
     const strapZ = [0.29 * b.width * k, 0.2 * b.width * k];
     const sideX = s.side; // starboard = right on the diagram
-    let feet = '';
+    let feet = '', pitchText = '';
     const fx = (x, z) => `<ellipse cx="${(z * k * 0.9).toFixed(1)}" cy="${y(x)}" rx="5" ry="9" fill="#ffc531"/>`;
     if (sim.state === S.SAILING || sim.state === S.FLIP) {
-      if (s.straps === 2) feet = fx(b.frontStrapX, sideX * 0.29 * b.width) + fx(b.backStrapX, sideX * 0.2 * b.width);
-      else if (s.straps === 1) feet = fx(b.frontStrapX, sideX * 0.29 * b.width) + fx(s.x - 0.32, sideX * 0.04);
-      else feet = fx(s.x + 0.26, sideX * 0.03) + fx(s.x - 0.32, sideX * 0.06);
+      const st = stance(b, s, sim.state, sim.stateData, sim.stateTime);
+      feet = fx(st.feetF[0], st.feetF[2]) + fx(st.feetB[0], st.feetB[2]);
       const lx = sim.feetLoadX();
-      feet += `<line x1="-30" x2="30" y1="${y(lx)}" y2="${y(lx)}" stroke="#69d4ea" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+      const pb = sim.state === S.SAILING ? sim.pitchBalance : null;
+      if (pb && sim.bodyGeo) {
+        // Fore and aft: where your feet can press (back heel to front toes),
+        // where they press now, and your centre of mass leaning back against
+        // the pull. Amber as the pull nears what your toes can hold; red past it.
+        const base = sim.bodyGeo.ctx.base[0];
+        const tone = pb.excess > 0.02 ? '#ff5a4a' : pb.cop > pb.toe - 0.07 ? '#ffab3a' : '#69d4ea';
+        const yT = +y(base + pb.toe), yH = +y(base + pb.heel), yC = +y(base + pb.comX);
+        const gx = -sideX * 40;
+        feet += `<rect x="${gx - 2}" y="${yT.toFixed(1)}" width="4" height="${(yH - yT).toFixed(1)}" rx="2" fill="rgba(233,242,245,.18)"/>` +
+          `<line x1="${gx - 7}" x2="${gx + 7}" y1="${y(lx)}" y2="${y(lx)}" stroke="${tone}" stroke-width="3" stroke-linecap="round"/>` +
+          `<line x1="-30" x2="30" y1="${y(lx)}" y2="${y(lx)}" stroke="${tone}" stroke-width="1.5" stroke-dasharray="3 3"/>` +
+          `<circle cx="${gx}" cy="${clamp(yC, -118, 96).toFixed(1)}" r="3.5" fill="none" stroke="#e9f2f5" stroke-width="1.5"/>`;
+        pitchText = `<text x="0" y="104" text-anchor="middle" fill="${tone}" font-size="13" font-family="B612 Mono, monospace">back ${Math.max(0, s.phi / DEG).toFixed(0)}°</text>`;
+      } else feet += `<line x1="-30" x2="30" y1="${y(lx)}" y2="${y(lx)}" stroke="#69d4ea" stroke-width="1.5" stroke-dasharray="3 3"/>`;
     } else if (sim.state === S.SECURE || sim.state === S.UPHAUL || sim.state === S.TACK) {
       feet = fx(b.mastFootX - 0.16, sideX * 0.12) + fx(b.mastFootX - 0.5, sideX * 0.1);
     }
@@ -183,7 +197,7 @@ export class Hud {
     $('stance-svg').innerHTML =
       `<path d="${outline}" fill="rgba(233,242,245,.1)" stroke="rgba(233,242,245,.55)" stroke-width="1.5"/>` +
       straps +
-      `<circle cx="0" cy="${y(b.mastFootX)}" r="4" fill="#e9f2f5"/>` + feet +
+      `<circle cx="0" cy="${y(b.mastFootX)}" r="4" fill="#e9f2f5"/>` + feet + pitchText +
       `<text x="0" y="122" text-anchor="middle" fill="#93aab4" font-size="13" font-family="B612 Mono, monospace">rail ${roll > 0 ? 'stbd' : roll < 0 ? 'port' : ''} ${Math.abs(roll)}°</text>`;
   }
 

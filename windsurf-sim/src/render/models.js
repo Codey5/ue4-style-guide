@@ -4,7 +4,7 @@ import { DEG, clamp, lerp, smoothstep } from '../physics/math.js';
 import { rigAxes } from '../physics/sail.js';
 import { S } from '../physics/states.js';
 import { boardShape, deckY } from '../physics/shape.js';
-import { BODY, bodyContext, boomGrips, boomLocal, boomStations, overreach, poseBody, reachLimit, stance, tubeOffset } from '../physics/body.js';
+import { BODY, bodyContext, boomGrips, boomLocal, boomStations, overreach, poseBody, reachLimit, reachPhi, stance, tubeOffset } from '../physics/body.js';
 
 export { deckY };
 
@@ -372,11 +372,14 @@ export class Sailor {
         b: toBoard(new THREE.Vector3(0.12, Math.min(rig.geo.boomHeight, 0.5 + up * 0.9), -side * 0.08)).toArray(),
       };
     } else {
-      const g = boomGrips(b, sim.rig, sim.sailGeo, hooked);
+      const g = boomGrips(b, sim.rig, sim.sailGeo, hooked, s.gripX);
       hands = { f: g.f, b: g.b };
       lines = { a: g.lineA, b: g.lineB };
     }
-    const ctx = bodyContext({ H, stance: pose, side, leanX: s.leanX, hooked, hands, lines, lineLength: sim.harnessLines, onBoom });
+    // Leaning back against the pull (fore and aft): the reach is judged the
+    // way the physics judges it.
+    const phi = onBoom && st === S.SAILING ? s.phi ?? 0 : 0;
+    const ctx = bodyContext({ H, stance: pose, side, leanX: s.leanX, hooked, hands, lines, lineLength: sim.harnessLines, onBoom, phi: reachPhi(phi) });
     const reach = ctx.reach;
     // Hanging at full stretch the physics lean can run a degree or two past
     // the reach (your arms holding you), or lag a moment behind a rig moved
@@ -388,7 +391,20 @@ export class Sailor {
       if (lim.fits) beta = clamp(beta, lim.betaMin, lim.betaMax);
     }
     this.leanDrawn = beta;
-    const body = poseBody(ctx, beta);
+    // Then lean back as far as the arms (or harness lines) reach toward the
+    // physics lean: the hips go back over the tail, arms straight.
+    let phiDraw = reachPhi(phi);
+    if (onBoom && phi !== phiDraw && this.reachFits) {
+      const fits = (f) => overreach(ctx, poseBody(ctx, beta, f)) <= 0;
+      if (fits(phi)) phiDraw = phi;
+      else if (fits(phiDraw)) {
+        let lo = phiDraw, hi = phi;
+        for (let i = 0; i < 8; i++) { const m = (lo + hi) / 2; if (fits(m)) lo = m; else hi = m; }
+        phiDraw = lo;
+      }
+    }
+    this.phiDrawn = phiDraw;
+    const body = poseBody(ctx, beta, phiDraw);
     let pelvis = V(body.pelvis), neck = V(body.neck), mid = V(body.mid);
     const half = V(ctx.half), base = V(ctx.base), leanDir = V(ctx.leanDir), facing = V(ctx.facing);
     let haF = V(hands.f), haB = V(hands.b);
@@ -453,6 +469,11 @@ export class Sailor {
         const over = s.fallType === 'catapult' ? 1.4 : s.fallType === 'windward' || s.fallType === 'backwind' ? 0 : 0.6;
         const lift = Math.sin(Math.PI * k) * (0.5 + over * 0.8);
         const shift = new THREE.Vector3(over * 0.8, 0, -side * over * 1.2).multiplyScalar(Math.sin(Math.PI * k * 0.5));
+        if (s.fallType === 'catapult') {
+          // Head first over the boom: the harness lines pivot you forward about the hips.
+          const pivot = out.pelvis.clone(), axis = new THREE.Vector3(0, 0, 1), turn = -2.3 * smoothstep(0, 0.75, k);
+          for (const j of JOINTS) out[j].sub(pivot).applyAxisAngle(axis, turn).add(pivot);
+        }
         for (const j of JOINTS) out[j].y += lift, out[j].add(shift);
         return out;
       }

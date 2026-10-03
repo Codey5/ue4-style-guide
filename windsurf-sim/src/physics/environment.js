@@ -19,6 +19,7 @@ export class Wind {
     this.gustiness = opts.gustiness ?? 0.45; // 0 = laminar, 1 = very gusty
     this.shifts = opts.shifts ?? 0.5; // direction shift amount 0..1
     this.chop = opts.chop ?? 1; // chop multiplier
+    this.boost = 0; // extra wind everywhere (a scripted gust, as a fraction)
   }
 
   get speed() {
@@ -50,7 +51,7 @@ export class Wind {
 
   /** True wind velocity vector (m/s) at world point (x, height h, z). */
   sample(x, h, z, t) {
-    const speed = this.speed * this.gustFactor(x, z, t) * heightFactor(h);
+    const speed = this.speed * (1 + this.boost) * this.gustFactor(x, z, t) * heightFactor(h);
     const a = this.fromDeg * DEG + this.shiftAngle(x, z, t);
     return [-Math.sin(a) * speed, 0, Math.cos(a) * speed];
   }

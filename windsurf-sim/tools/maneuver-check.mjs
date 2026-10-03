@@ -4,6 +4,7 @@
 import { DEG, MS_TO_KN, clamp } from '../src/physics/math.js';
 import { Sim, S, emptyControls } from '../src/physics/sim.js';
 import { Autopilot } from './autopilot.mjs';
+import { Coach } from '../src/coach/coach.js';
 
 const DT = 1 / 240;
 const run = (sim, seconds, fn) => {
@@ -93,6 +94,39 @@ const lastEvents = (sim, n = 6) => sim.events.slice(-n).map((e) => `[${e.t.toFix
   const sim = new Sim({ boardId: 'move95', sailArea: 5.3, sailorMass: 85, wind: { speedKn: 10, gustiness: 0, shifts: 0 }, start: 'water' });
   run(sim, 2, (s) => { const c = emptyControls(); c.pressed.climb = s.t < 0.1; return c; });
   report('sinker refuses climb-on', sim.state === S.WATER && sim.events.some((e) => e.type === 'sinker'), lastEvents(sim, 1));
+}
+// 8–10. Fore and aft: planing hooked in, a gust's extra pull through the
+// harness lines tips you over the front. Weight forward with the sail locked
+// in, it catapults you over the boom; weight back and easing the sheet, you
+// ride it out. In between, you lean back against the pull.
+const gustRun = (technique) => {
+  const sim = new Sim({ boardId: 'free115', sailArea: 6.3, wind: { speedKn: 16, gustiness: 0, shifts: 0 }, start: 'sailing', assists: { autoHike: true } });
+  const coach = new Coach(sim);
+  let lock, settled = null;
+  run(sim, 30, (s) => {
+    s.wind.boost = s.t < 24 ? 0 : 0.5 * clamp((s.t - 24) / 0.6, 0, 1);
+    if (s.state !== S.SAILING) return emptyControls();
+    const c = coach.sail(DT, { twa: 105, straps: true, hook: true, hike: 'auto' });
+    if (s.t > 22.5 && !settled) settled = { ...s.pitchBalance, phi: s.sailor.phi, hooked: s.sailor.hooked, straps: s.sailor.straps };
+    if (s.t > 23 && technique === 'locked') { lock ??= c.sheet; c.sheet = coach.sheet = lock; c.weight = 0.5; }
+    if (s.t > 23 && technique === 'ride') c.weight = s.wind.boost > 0.02 ? -1 : -0.3;
+    return c;
+  });
+  const fall = sim.events.find((e) => e.type === 'fall');
+  return { sim, settled, fall, type: fall ? sim.sailor.fallType : null };
+};
+{
+  const { settled } = gustRun('ride');
+  report('planing hooked in: leaning back against the pull', settled.hooked && settled.straps === 2 && settled.phi > 10 * DEG && settled.comX < settled.cop - 0.15,
+    `lean back ${(settled.phi / DEG).toFixed(0)}°, centre of mass ${((settled.cop - settled.comX) * 100).toFixed(0)} cm behind the feet's pressure`);
+}
+{
+  const r = gustRun('locked');
+  report('gust, weight forward and sail locked in -> catapult', r.type === 'catapult', lastEvents(r.sim, 2));
+}
+{
+  const r = gustRun('ride');
+  report('gust, weight back and sheet eased -> rides it out', !r.fall && r.sim.state === S.SAILING && r.sim.telemetry.planing > 0.95, `${r.sim.telemetry.kn.toFixed(1)} kn | ${lastEvents(r.sim, 2)}`);
 }
 void MS_TO_KN;
 if (failures) { console.log(`${failures} maneuver check(s) failed`); process.exit(1); }

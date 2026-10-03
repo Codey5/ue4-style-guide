@@ -9,6 +9,29 @@ import { Coach } from './coach.js';
 const kn = (sim) => (sim.telemetry ? sim.telemetry.kn : 0);
 const absTwa = (sim) => Math.abs(sim.twa) / DEG;
 const planing = (sim) => !!sim.telemetry && sim.telemetry.planing > 0.95 && sim.telemetry.speed > 5.5;
+/** Seconds a condition has held (accumulated in the step's memory under `key`). */
+const held = (x, key, cond) => (x.m[key] = cond ? (x.m[key] ?? 0) + x.dt : 0);
+/**
+ * A scripted gust: once you're planing, `at` seconds into the step it sweeps
+ * in, building over 0.6 s to `size` (a fraction of the wind), holds for
+ * `hold` seconds and fades over 1.5 s. Sets x.m.gustOn while it's building
+ * and x.m.gustPassed once it has gone through.
+ */
+function gust(x, size, { at = 3, hold = 3.5 } = {}) {
+  const m = x.m, sim = x.sim;
+  if (m.gustT === undefined) {
+    if (x.t < at || !planing(sim)) { sim.wind.boost = 0; return; }
+    m.gustT = x.t;
+    sim.emit('gust', `Gust! ${Math.round(sim.wind.speedKn * (1 + size))} knots coming through`, 2);
+  }
+  const g = x.t - m.gustT;
+  const k = g < 0.6 ? smoothstep(0, 0.6, g) : g < 0.6 + hold ? 1 : 1 - smoothstep(0.6 + hold, 2.1 + hold, g);
+  sim.wind.boost = size * k;
+  m.gustOn = g < 0.6;
+  m.gustPassed = g > 2.1 + hold;
+}
+const strapsReady = (sim, x, minKn) => x.t > 4 && planing(sim) && sim.sailor.hooked && sim.sailor.straps === 2 && kn(sim) > minKn;
+
 /** Hold the board on a true wind angle with the rig while in secure position or the water. */
 function rigSteer(sim, twaDeg) {
   const side = sim.sailor.side;
@@ -271,6 +294,99 @@ export const LESSONS = [
       },
     ],
   },
+  {
+    id: 'foreaft',
+    title: 'Lean back against the pull',
+    summary: 'The sail tips you forward as well as sideways. Balance it fore and aft with your weight and your lean back.',
+    setup: { boardId: 'free135', sailArea: 7.0, wind: { speedKn: 15, gustiness: 0.1, shifts: 0.1, chop: 0.8 }, start: 'sailing' },
+    steps: [
+      {
+        say: 'Get planing on a beam reach, hooked in and in both straps.',
+        run: (x) => x.coach.sail(x.dt, { twa: 105, pump: true, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => strapsReady(sim, x, 14),
+      },
+      {
+        say: 'The rig is pinned at the mast foot and its drive tips it forward. You hold it back through the harness, so it tips you forward too, over your front foot. You balance that by leaning back. Watch the stance panel: the grey bar is where your feet can press, heel to toes; the line is where they press now; the ring is your centre of mass, held back behind them by the pull.',
+        minTime: 9,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 9,
+      },
+      {
+        say: 'Weight forward ({RS} up, gently). You stand taller and press through the front foot, and more of your weight hangs on the boom into the mast foot. The nose goes down: more grip in chop, but more drag.',
+        minTime: 4,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto', weight: 0.6 }),
+        done: (sim, x) => held(x, 'fwd', sim.state === S.SAILING && sim.sailor.leanX > 0.05) > 2.5,
+      },
+      {
+        say: 'Now weight back ({RS} down). Sink your hips back over the tail and press through the back foot. The nose lifts and the board frees up.',
+        minTime: 4,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto', weight: -0.8 }),
+        done: (sim, x) => held(x, 'back', sim.state === S.SAILING && sim.sailor.leanX < -0.08) > 2.5,
+      },
+      {
+        say: 'Bear away to a broad reach (rig forward, {LS} up). The sail\'s pull swings forward: less of it pulls you out sideways, more of it tips you forward. Hang out less and sink back over the back foot.',
+        minTime: 5,
+        run: (x) => x.coach.sail(x.dt, { twa: 132, turnRate: 8, straps: true, hook: true, hike: 'auto', weight: -0.8 }),
+        done: (sim, x) => held(x, 'broad', sim.state === S.SAILING && absTwa(sim) > 122) > 3,
+      },
+      {
+        say: 'Head back up to a beam reach (rig back, {LS} down). The pull swings out to the side again: hang further out and stand a little taller.',
+        minTime: 4,
+        run: (x) => x.coach.sail(x.dt, { twa: 100, turnRate: 8, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => held(x, 'beam', sim.state === S.SAILING && absTwa(sim) < 110) > 2,
+      },
+    ],
+  },
+  {
+    id: 'catapult',
+    title: 'Gusts and catapults',
+    summary: 'Why a gust launches you over the boom when you\'re hooked in, and how to ride it out instead.',
+    setup: { boardId: 'free115', sailArea: 6.3, wind: { speedKn: 16, gustiness: 0, shifts: 0.1, chop: 0.8 }, start: 'sailing' },
+    steps: [
+      {
+        say: 'Get planing on a beam reach, hooked in and in both straps.',
+        run: (x) => x.coach.sail(x.dt, { twa: 105, pump: true, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => strapsReady(sim, x, 16),
+      },
+      {
+        say: 'Hooked in, the harness lines hold the rig with your hips, and nothing gives. Now the wrong way: weight forward, sail locked in. A gust is coming. Watch the stance panel go red as its pull tips the coach over the front foot…',
+        watchOnly: true,
+        expectFall: true,
+        run: (x) => {
+          const c = x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' });
+          if (x.m.lock === undefined) x.m.lock = c.sheet;
+          c.sheet = x.coach.sheet = x.m.lock;
+          c.weight = 0.5;
+          return c;
+        },
+        tick: (x) => gust(x, 0.5),
+        done: (sim) => (sim.state === S.FALLING && sim.stateTime > 1.6) || sim.state === S.WATER,
+      },
+      {
+        say: 'Catapult! Launched over the boom by the harness lines. Back on the board: get planing again, hooked in and in both straps.',
+        enter: (sim, run) => run.resetToSailing(),
+        run: (x) => x.coach.sail(x.dt, { twa: 105, pump: true, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => strapsReady(sim, x, 16),
+      },
+      {
+        say: 'Another gust is coming. This time, as it hits: sink your weight back ({RS} down) and ease the sheet ({RT}) to spill the extra power. Sheet back in as it passes.',
+        retryOnFall: 'Catapulted! Back on the board. Try again: weight back and ease the sheet the moment the gust hits.',
+        run: (x) => {
+          const c = x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto', weight: x.sim.wind.boost > 0.02 ? -1 : -0.3 });
+          // (eased a touch more while the gust builds: you feel it coming)
+          if (x.m.gustOn) c.sheet = x.coach.sheet = Math.max(0.4, c.sheet - 0.25 * x.dt);
+          return c;
+        },
+        tick: (x) => gust(x, 0.45),
+        done: (sim, x) => !!x.m.gustPassed && sim.state === S.SAILING,
+      },
+      {
+        say: 'You rode it out. Gusts show as dark patches on the water upwind: get your weight back and be ready on the sheet before they reach you.',
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 5 && sim.state === S.SAILING,
+      },
+    ],
+  },
 ];
 
 export const findLesson = (id) => LESSONS.find((l) => l.id === id);
@@ -291,11 +407,39 @@ export class LessonRunner {
     this.failed = null;
     this.fallTime = 0;
     this.prev = emptyControls();
+    this.expectedFalls = []; // falls a step meant to show: {t, type}
+    this.noFalls = sim.assists.noFalls;
+    sim.wind.boost = 0;
     lesson.begin?.(sim, this);
+    this.enterStep();
+  }
+
+  /** Set up the current step: its own start, and no "no falls" assist for a fall it shows or retries. */
+  enterStep() {
+    const st = this.current;
+    this.sim.assists.noFalls = st?.expectFall || st?.retryOnFall ? false : this.noFalls;
+    if (st?.watchOnly && this.mode !== 'watch') {
+      // The coach takes over from you mid-run, from your trim.
+      this.coach = new Coach(this.sim);
+      this.coach.sheet = this.sim.lastControls?.sheet ?? this.coach.sheet;
+    }
+    st?.enter?.(this.sim, this);
   }
 
   get current() {
     return this.lesson.steps[this.step];
+  }
+
+  /** Back on the board, sailing off where you fell in (and a fresh coach, sheet eased). */
+  resetToSailing() {
+    this.sim.reset('sailing', this.sim.pos);
+    this.sim.wind.boost = 0;
+    this.coach = new Coach(this.sim);
+  }
+
+  /** Whether the coach has the controls: watching, or a step only the coach demonstrates. */
+  get coachDriving() {
+    return this.mode === 'watch' || (!this.done && !!this.current?.watchOnly);
   }
 
   ctx(dt) {
@@ -322,11 +466,24 @@ export class LessonRunner {
     this.t += dt;
     const sim = this.sim;
     const st = this.current;
+    st.tick?.(this.ctx(dt));
     if (sim.state === S.FALLING || sim.state === S.WATER) {
-      // A step that starts in the water is fine; otherwise a fall stalls the lesson.
-      if (!st.done(sim, this.ctx(dt)) && this.lesson.setup.start !== 'water') {
+      if (st.expectFall) {
+        // The fall this step demonstrates.
+        if (sim.state === S.FALLING && sim.stateTime <= dt * 1.5) this.expectedFalls.push({ t: sim.t, type: sim.sailor.fallType });
+      } else if (!st.done(sim, this.ctx(dt)) && this.lesson.setup.start !== 'water') {
+        // A step that starts in the water is fine; otherwise a fall stalls the lesson.
         this.fallTime += dt;
         if (this.mode === 'watch' && this.fallTime > 2.5) { this.failed = 'fell'; return 'fell'; }
+        if (st.retryOnFall && this.fallTime > 2) {
+          // Straight back on the board to have another go at this step.
+          this.resetToSailing();
+          sim.emit('lesson', st.retryOnFall, 2);
+          this.t = 0;
+          this.mem = {};
+          this.fallTime = 0;
+          return 'retry';
+        }
       }
     } else this.fallTime = 0;
     // Once a step's goal is reached it stays reached. Watching, a step stays on
@@ -337,10 +494,13 @@ export class LessonRunner {
       this.step++;
       this.t = 0;
       this.mem = {};
+      sim.wind.boost = 0;
       if (this.step >= this.lesson.steps.length) {
         this.done = true;
+        sim.assists.noFalls = this.noFalls;
         return 'complete';
       }
+      this.enterStep();
       return 'step';
     }
     if (this.mode === 'watch' && this.t > 45) { this.failed = 'timeout'; return 'fell'; }

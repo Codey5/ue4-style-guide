@@ -62,10 +62,11 @@ export class LessonUi {
     this.setGlyphs(glyphs, isPs);
     const l = runner.lesson;
     const watch = runner.mode === 'watch';
+    const coach = runner.coachDriving; // (some steps only the coach demonstrates)
     $('lesson-eyebrow').textContent = `Lesson ${info.index + 1} of ${info.count} · ${l.title}`;
-    $('lesson-mode').textContent = watch ? 'Watching the coach' : 'Your turn';
-    $('lesson-mode').className = `lesson-mode ${watch ? '' : 'you'}`;
-    $('pad-title').textContent = watch ? "Coach's controller" : 'Your controller';
+    $('lesson-mode').textContent = coach ? 'Watching the coach' : 'Your turn';
+    $('lesson-mode').className = `lesson-mode ${coach ? '' : 'you'}`;
+    $('pad-title').textContent = coach ? "Coach's controller" : 'Your controller';
     let text;
     if (runner.done) text = watch ? 'That\'s the technique. Now try it yourself.' : 'Lesson complete. Nicely sailed!';
     else {

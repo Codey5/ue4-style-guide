@@ -16,7 +16,7 @@ New to it, or to windsurfing? Open **Lessons** in the menu.
 
 ## Lessons
 
-Six lessons, each with two modes:
+Eight lessons, each with two modes:
 
 - **Watch:** a coach sails the technique step by step, with a caption for each step. An on-screen controller shows exactly what the coach does with the sticks, triggers and buttons, in Xbox or PlayStation layout.
 - **Try it:** you sail the same lesson. The steps tick off as you complete them, and the same controller overlay shows your own inputs.
@@ -31,8 +31,12 @@ Press Y (△, or G on the keyboard) while watching to take over.
 | 4 | Tack | Beginner 210 L, 5.3 m², 10 kn |
 | 5 | Carve gybe | Freeride 135 L, 7.0 m², 17 kn |
 | 6 | Waterstart | Freeride 115 L, 6.3 m², 16 kn |
+| 7 | Lean back against the pull (fore-and-aft balance, weight forward and back, broad reach) | Freeride 135 L, 7.0 m², 15 kn |
+| 8 | Gusts and catapults | Freeride 115 L, 6.3 m², 16 kn, with scripted gusts |
 
-The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; leans the rig to windward when it needs to hang further out (and comes in to hook in); sits back on the tail at speed; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls, loses its grip or spins out. It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom or the body is drawn at a different lean from the one the physics balances.
+In **Gusts and catapults** the coach first gets it wrong on purpose: hooked in, weight forward and the sail locked in, a gust catapults it over the boom (the coach takes the controls for that step even in Try it). Then it's your turn to ride a gust out: weight back and ease the sheet as it hits. If it catapults you, you're put straight back on the board for another go.
+
+The coach is not a canned animation. It drives the same simulation through the same controls a player uses: it steers with rig rake, then with the rails once planing; trims the sheet to an angle of attack; hikes to match the pull; leans the rig to windward when it needs to hang further out (and comes in to hook in); sits back on the tail at speed; and eases off before its grip goes. `npm test` runs every lesson for 65, 75 and 90 kg sailors and fails if the coach falls, loses its grip or spins out (except the catapult it means to show, which has to be a catapult). It also poses the 3D sailor through every lesson, and through powered-up sandbox runs for short and tall sailors with the boom at both ends of its range, and fails if a hand ever leaves the boom or the body is drawn at a different lean from the one the physics balances.
 
 ## Controls
 
@@ -58,7 +62,7 @@ Sticks are relative to the board. Push the left stick where you want the mast ti
 | View / Share | Tab | Telemetry panel |
 | Menu / Options | Esc | Pause: conditions, gear, controls, technique |
 
-The in-game **Technique** tab walks through uphauling, steering, getting planing, harness and straps, tacking, the carve gybe and the waterstart, with a glossary.
+The in-game **Technique** tab walks through uphauling, steering, getting planing, harness and straps, hanging off the rig, leaning back against the pull, gusts and catapults, the broad reach, tacking, the carve gybe and the waterstart, with a glossary.
 
 ## What's simulated
 
@@ -103,9 +107,13 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 - Set your weight, height, boom height and harness line length in the Gear menu. The body is built from standard anthropometric proportions (segment lengths and masses), and the physics balances exactly the body you see: the lean in the HUD is the lean that's drawn.
 - The default sailor is 183 cm and 75 kg, with the boom between chest and shoulder height (0.74 × your height, 135 cm) and 32" harness lines (0.45 × your height).
 - The sail's heeling moment about the board's centreline is fought by your weight times how far your centre of mass is out from that centreline, worked out from the posed body (feet in the straps, hook in the lines, hands on the boom), plus core and leg strength (which scale with body mass) and foot pressure on the rails.
-- How far out you can hang is geometry. Unhooked, it's your arms' reach to the boom; hooked in, it's the harness lines. Leaning the rig to windward brings the boom out over the water so you can hang further out, but past about 15° the sail loses more drive than you gain. Longer lines let you hang further out. A higher boom lets you lean further on straight arms but needs longer lines. With the sail eased right out, the back hand slides forward on the boom.
+- How far out you can hang is geometry. Unhooked, it's your arms' reach to the boom; hooked in, it's the harness lines. Leaning the rig to windward brings the boom out over the water so you can hang further out, but past about 15° the sail loses more drive than you gain. Longer lines let you hang further out. A higher boom lets you lean further on straight arms but needs longer lines. Your hands slide back along the boom as you move back toward the straps; with the sail eased right out they stay forward, where the boom is still in reach.
 - To hook in, the lines have to reach the hook: sheet in and come in toward the boom. Hooked in with your feet still forward, the lines are behind you and you can't hang out far; in the straps they're over your feet.
-- Too little hike for the power and you're pulled over (a catapult if you're hooked in and fast). Hang out with more weight than the sail is pulling and the rig comes over on top of you: you fall in to windward.
+- Fore and aft, too. The rig is pinned at the mast foot and its drive (high up) and lift (behind the mast) tip it forward. You hold it back through your hands or the harness, so the same pull tips you forward over your front foot. You balance it by leaning back, with the hips back over the tail, until your weight behind your feet matches the pull at the hook or hands. Your feet can press anywhere from the back heel to the front toes, a little further with them in the straps. Weight forward or back (right stick) picks where; leaning back with weight forward, more of your weight hangs on the boom into the mast foot. The board feels that pressure: it's where the hull is loaded. The HUD's stance panel shows it: a bar from heel to toes, a line where your feet press, a ring for your centre of mass, and how far back you're leaning, amber as the pull nears what your toes can hold and red past it.
+- Technique takes some of the pull before it reaches you: the rig's own weight, a push-pull between your hands, and hanging your weight down on the boom behind the mast (into the mast foot, which presses the nose down, so only as much as you need).
+- A step is a step. Moving your feet back into the straps doesn't move your body: you come upright over the new stance and have to lean back again. Walk back first and the front foot only has a short step into its strap; step a long way back while leaning hard against the pull and it drags you forward over your toes.
+- **Catapults.** Hooked in, the lines can't give. A gust's extra pull arrives faster than you can lean back, tips you over your front foot, and the harness launches you over the boom. Weight back and easing the sheet as the gust hits lets you ride it out. Unhooked, your arms give first: the rig rakes forward, and if it keeps dragging you forward you let go with the back hand. Lean back with too little pull to hold you (a lull) and you sit down off the back of the board.
+- Too little hike for the power and you're pulled over sideways (a catapult if you're hooked in and fast). Hang out with more weight than the sail is pulling and the rig comes over on top of you: you fall in to windward.
 - You can pull yourself back upright on the boom, since the rig is pinned at the mast foot.
 - Unhooked, your forearms tire and a big gust rips the sail out of your back hand. The harness takes the load off your arms but won't let you escape a gust.
 - Hooked in and in the straps, the stance pulls the rig back, and harness load goes into the mast foot (mast-foot pressure keeps the nose down).
@@ -119,20 +127,21 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 ### Validation
 
-`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers, and fails if bearing away from a beam reach to 130° costs more than 10% of the speed. Typical results (75 kg, 183 cm sailor):
+`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers, and fails if bearing away from a beam reach to 130° costs more than 10% of the speed, or if a gust doesn't catapult a sailor with weight forward and the sail locked in (or does catapult one who sinks back and eases the sheet). Typical results (75 kg, 183 cm sailor):
 
 | Setup | Result | Real-world reference |
 | --- | --- | --- |
 | 135 L, 7.0 m², 6–10 kn, beam reach | 4–6 kn, displacement | Slogging speeds |
-| 135 L, 7.0 m², 11 / 12 kn | 6.7 kn slogging / just planes | Planing threshold ~12 kn for this combination |
-| 135 L, 7.0 m², 14 / 16 / 20 kn | 18.1 / 19.5 / 21.5 kn board speed | Typical freeride GPS speeds |
-| 135 L, 7.0 m², 24 kn | 22.9 kn, sailor at the limit | 7.0 m² is too big here |
+| 135 L, 7.0 m², 11 / 12 kn | 6.8 kn slogging / planes at 14 kn | Planing threshold ~12 kn for this combination |
+| 135 L, 7.0 m², 14 / 16 / 20 kn | 17.8 / 19.1 / 19.8 kn board speed | Typical freeride GPS speeds |
+| 135 L, 7.0 m², 24 kn | 20.4 kn, sailor at the limit | 7.0 m² is too big here |
 | 135 L, 16 kn, close-hauled planing | holds about 55° to the true wind | 50–55° typical for freeride |
-| 135 L, 16 kn, 90° / 130° | 18.8 / 19.0 kn | A broad reach is as fast or faster once planing |
-| 135 L, 22 kn, 100° / 130° / 145° | 22.3 / 23.4 / 18.6 kn | Fastest on a broad reach; deep angles need more wind |
+| 135 L, 16 kn, 90° / 130° | 18.4 / 19.1 kn | A broad reach is as fast or faster once planing |
+| 135 L, 22 kn, 100° / 130° / 145° | 19.9 / 21.5 / 18.7 kn | Fastest on a broad reach; deep angles need more wind |
 | 135 L, 16 kn, 140° and deeper | drops off the plane | The apparent wind gets too light to carry the board |
-| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 22.4 / 25.7 kn | Smaller, faster boards |
-| 183 cm, 32" lines, hooked in, rig leaned ~16°, fully powered | hangs out ~30°, centre of mass ~0.7 m out | A typical hooked-in freeride stance |
+| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 22.1 / 24.5 kn | Smaller, faster boards |
+| 183 cm, 32" lines, hooked in, rig leaned ~16°, fully powered | hangs out ~25–30°, leans back ~30°, centre of mass ~35 cm behind where the feet press | A typical hooked-in freeride stance |
+| 115 L, 6.3 m², 16 kn, planing hooked in, gust to 24 kn | weight forward, sail locked in: catapulted. Weight back, sheet eased: rides it out | Why you sheet out and sink back in a gust |
 | 210 L beginner, 5.3 m², 8 kn | 4.5 kn, can sail 55° upwind | Daggerboard boards point in light wind |
 | 95 L board, 85 kg sailor | refuses to float you standing still | A sinker |
 
@@ -143,7 +152,7 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 ```bash
 npm install        # three.js and esbuild
 npm run dev        # http://localhost:8000 serves index.html with live ES modules
-npm run build      # writes dist/beam-reach.html (single file, ~715 KB)
+npm run build      # writes dist/beam-reach.html (single file, ~730 KB)
 npm test           # physics speed polar, maneuver checks, every lesson sailed by the coach, hands-on-boom pose check
 ```
 
@@ -163,5 +172,5 @@ The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the fra
 - Real swell and breaking waves.
 - Race courses and timing.
 - Remappable controls.
-- A detailed sailor animation rig: the sailor is a simple figure posed with inverse kinematics, the same body the physics balances. There's no fore-and-aft balance yet: catapults come from being pulled over sideways, not thrown forward.
+- A detailed sailor animation rig: the sailor is a simple figure posed with inverse kinematics, the same body the physics balances. Leaning back, it's drawn as far back as its arms (or harness lines) reach toward the lean the physics balances.
 

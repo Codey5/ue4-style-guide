@@ -247,7 +247,7 @@ function frame(now) {
     framePressed = {};
     let restartLesson = null;
     while (acc >= DT && steps < 24) {
-      const coachDriving = lesson && lesson.mode === 'watch';
+      const coachDriving = lesson && lesson.coachDriving;
       const c = coachDriving ? lesson.controls(DT) : first ? controls : { ...controls, pressed: {} };
       prevState = snapshot();
       sim.step(DT, c);

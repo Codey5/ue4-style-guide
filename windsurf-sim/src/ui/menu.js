@@ -46,6 +46,13 @@ const TECHNIQUE = `
 <p>Your weight only counters the sail as far out as you can hang. Unhooked that's your arms' reach to the boom; hooked in it's your harness lines. The HUD shows your lean and how far out you can go (lean 24° of 33°). To hang further out, lean the rig to windward (left stick toward the wind): the boom comes out over the water to you. Past about 15° the sail loses more drive than you gain, so sheet out instead.</p>
 <p>To hook in, sheet in and come in toward the boom (ease LT) so the lines reach the hook. In the straps the lines sit over your feet and you hang furthest out; hooked in with your feet still forward, you can't.</p>
 <p>Hang out with too little wind in the sail (a lull, or LT held in light air) and your weight pulls the rig over on top of you: ease LT when the power drops.</p>
+<h3>Leaning back against the pull</h3>
+<p>The sail doesn't only pull you out to the side. The rig is pinned at the mast foot and its drive tips it forward; you hold it back through your hands or the harness, so it tips you forward too, over your front foot. You balance that by leaning back, hips back over the tail, until your weight behind your feet matches the pull. The stance panel shows it: the grey bar is where your feet can press (back heel to front toes), the line is where they press, the ring is your centre of mass, and "back" is how far you're leaning back.</p>
+<p>Weight forward (right stick up) presses through the front foot and hangs more of your weight on the boom into the mast foot: the nose goes down, for control in chop. Weight back sinks your hips over the tail and frees the board up. On a broad reach the pull swings forward: hang out less and sink back over the back foot.</p>
+<p>Walk back along the board before stepping into the front strap, so the step is short. A step moves your feet, not your body: step a long way back while leaning hard against the pull and it drags you forward over your toes.</p>
+<h3>Gusts and catapults</h3>
+<p>Hooked in, the harness lines can't give. When a gust hits, its extra pull tips you over your front foot faster than you can lean back, and the lines launch you over the boom: a catapult. The stance panel goes amber, then red. As a gust reaches you, sink your weight back (right stick down) and ease the sheet (RT) to spill the extra power, then sheet back in as it passes. Gusts show as dark patches on the water upwind, so get ready before they arrive.</p>
+<p>Unhooked, your arms give first: the rig rakes forward, and if the pull keeps dragging you forward you let go with the back hand. In a lull, ease your lean back or you sit down off the tail.</p>
 <h3>Speed on a broad reach</h3>
 <p>Once planing, a broad reach (about 120–135° to the wind) is the fastest point of sail: the sail's pull points forward instead of over the side, so you're no longer overpowered. Keep the rig fairly upright, with only enough windward lean to keep the boom within reach (with the boom eased, leaning it more just tips the sail's force upward), sheet in close to the stall and sit back on the tail (right stick down) so the board rides on less water.</p>
 <p>Bear away much further and the apparent wind gets lighter as it swings behind you. In a moderate breeze you drop off the plane somewhere past 135°; it takes more wind to plane deep downwind.</p>
@@ -67,7 +74,7 @@ const TECHNIQUE = `
 <dt>Bear away / head up</dt><dd>Turn away from / toward the wind.</dd>
 <dt>Planing</dt><dd>Riding on top of the water on dynamic lift instead of floating; drag drops and speed jumps.</dd>
 <dt>Spin-out</dt><dd>The fin ventilates and loses grip; the tail slides out. Sheet out and press on the front foot.</dd>
-<dt>Catapult</dt><dd>Launched over the front by a gust while hooked in.</dd>
+<dt>Catapult</dt><dd>Launched over the boom by a gust while hooked in: its pull tips you over your front foot faster than you can lean back. Sink back and sheet out as gusts hit.</dd>
 <dt>Sinker</dt><dd>A board with less volume (litres) than you, your rig and the board weigh (kg): it only floats you when planing.</dd>
 <dt>Harness lines</dt><dd>The loop of rope on the boom you hook into. Its length (in inches, typically 26–34") sets how far out you hang.</dd>
 <dt>Mast foot pressure</dt><dd>Weight hung through the harness into the mast foot; keeps the nose down at speed.</dd>

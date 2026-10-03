@@ -19,6 +19,7 @@ export const ANKLE = 0.075; // ankle joint above the deck (m)
 // Segment mass fractions (Winter): legs with feet, trunk, head and neck, arms.
 const M_LEGS = 0.322, M_TRUNK = 0.497, M_HEAD = 0.081, M_ARMS = 0.1;
 const UP = [0, 1, 0];
+const HIP_HINGE = 0.8; // torso tips back this share of the legs' lean
 
 // ---------------------------------------------------------------------------
 // The rig on the board
@@ -37,22 +38,46 @@ export const boomLocal = (geo, x, side) => [x, geo.boomHeight + (x / geo.boomLen
 
 /**
  * Where the hands hold the boom, and where the harness lines are tied on
- * (metres from the mast). With the sail eased right out the back hand slides
- * forward, or the boom would be out of reach to leeward.
+ * (metres from the mast). The hands centre at `center` along the boom when
+ * given (they slide back along it as you move back toward the straps), a
+ * little more than shoulder width apart. With the sail eased right out the
+ * back hand slides forward, or the boom would be out of reach to leeward.
  */
-export function boomStations(geo, hooked, boom = 0) {
+export function boomStations(geo, hooked, boom = 0, center = undefined) {
   const L = geo.def.boom; // the boom's nominal length, as on the sail's rig chart
-  const front = 0.26 + (hooked ? 0.04 : 0);
-  const back = L * (hooked ? 0.5 : 0.44);
+  let front = 0.26 + (hooked ? 0.04 : 0);
+  let back = L * (hooked ? 0.5 : 0.44);
+  if (center !== undefined) {
+    // (eased right out, the back of the boom is out over the water to
+    // leeward: the hands stay forward where it's in reach)
+    const half = 0.5 * (back - front), eased = smoothstep(20 * DEG, 50 * DEG, Math.abs(boom));
+    const c = clamp(center + (front + half - center) * eased, 0.15 + half, 0.6 * L - half);
+    front = c - half;
+    back = c + half;
+  }
   return { front, back: back + (front + 0.42 - back) * smoothstep(25 * DEG, 65 * DEG, Math.abs(boom)), lineA: 0.33 * L, lineB: 0.43 * L };
 }
 
-/** Hand and harness-line points on the windward boom tube, board frame. */
-export function boomGrips(board, rig, geo, hooked) {
-  const f = rigFrame(board, rig), st = boomStations(geo, hooked, rig.boom), side = rig.side;
+/**
+ * Hand and harness-line points on the windward boom tube, board frame.
+ * centerX: where along the board (board x) the hands should centre, or
+ * undefined for the standard grip.
+ */
+export function boomGrips(board, rig, geo, hooked, centerX = undefined) {
+  const f = rigFrame(board, rig), side = rig.side;
   const at = (x) => rigToBoard(f, boomLocal(geo, x, side));
+  let center;
+  if (centerX !== undefined) {
+    // The boom runs back (and out) from the mast: find the station over centerX.
+    const x0 = 0.2, x1 = 0.6 * geo.def.boom, b0 = at(x0)[0], b1 = at(x1)[0];
+    if (Math.abs(b1 - b0) > 0.05) center = x0 + (centerX - b0) / (b1 - b0) * (x1 - x0);
+  }
+  const st = boomStations(geo, hooked, rig.boom, center);
   return { f: at(st.front), b: at(st.back), lineA: at(st.lineA), lineB: at(st.lineB) };
 }
+
+/** Where along the board the hands centre for a stance: a little ahead of the feet. */
+export const gripCenterX = (st) => 0.5 * (st.feetF[0] + st.feetB[0]) + 0.12;
 
 // ---------------------------------------------------------------------------
 // Stance
@@ -100,14 +125,17 @@ export function stance(board, sailor, state, stateData = {}, stateTime = 0) {
  * hands: {f, b} grip points (board frame) or null; lines: {a, b} harness line
  * ends on the boom when hooked in; lineLength: the harness line loop (m).
  */
-export function bodyContext({ H, stance: st, side, leanX = 0, hooked = false, hands = null, lines = null, lineLength = 0.45 * H, onBoom = false }) {
+/**
+ * Leaning back moves the hips; the shoulders reach forward and the torso
+ * turns to keep the hands on the boom, so only this much of the fore-and-aft
+ * lean counts against the sideways reach.
+ */
+export const reachPhi = (phi) => clamp(phi, -10 * DEG, 4 * DEG);
+
+export function bodyContext({ H, stance: st, side, leanX = 0, hooked = false, hands = null, lines = null, lineLength = 0.45 * H, onBoom = false, phi = 0 }) {
   const base = scale(add(st.feetF, st.feetB), 0.5);
-  // Hooked in you hang under the harness lines; otherwise centred between the hands.
-  const hangX = hooked && lines ? (lines.a[0] + lines.b[0]) / 2 : hands ? (hands.f[0] + hands.b[0]) / 2 : base[0];
-  // Lean out to windward and back toward where you hang (weight on the back
-  // foot leans you further back).
-  const aft = onBoom ? clamp((hangX - base[0]) * 0.9, -0.6, 0.3) : -0.22;
-  const leanDir = norm([aft - leanX * 0.8, 0, side]);
+  // Lean out to windward; how far back toward the tail is the balance's job (phi).
+  const leanDir = [0, 0, side];
   let across = [1, 0, 0];
   if (onBoom && hands) {
     // Shoulders along the board, turning square to it as the boom is let out.
@@ -116,31 +144,36 @@ export function bodyContext({ H, stance: st, side, leanX = 0, hooked = false, ha
     if (dot(d, d) > 0.01) across = norm(d);
   }
   return {
-    H, side, hooked, onBoom, hands, lines, lineLength, sit: st.sit, feetF: st.feetF, feetB: st.feetB, base,
-    leanDir, facing: scale(leanDir, -1), across, half: scale(across, BODY.shoulder * H), hangX,
+    H, side, hooked, onBoom, hands, lines, lineLength, sit: st.sit, feetF: st.feetF, feetB: st.feetB, base, phi,
+    leanDir, facing: scale(leanDir, -1), across, half: scale(across, BODY.shoulder * H),
     reach: BODY.reach * H, hookFacing: norm([0.2, 0, -side]),
   };
 }
 
 /**
- * Joints for a lean angle beta (legs from vertical, out to windward). Hanging
- * in the harness the body is nearly straight; holding on with the arms the
- * torso stays a little more upright. On the boom the body hangs fore and aft
- * under the harness lines, or centred between the hands.
+ * Joints for a lean angle beta (legs from vertical, out to windward) and a
+ * fore-and-aft lean phi (positive back toward the tail). Leaning back hinges
+ * at the hips: the legs tip back by phi about the feet, the torso only by
+ * part of it, so the hips go back while the shoulders stay near the boom.
+ * Hanging in the harness the body is nearly straight; holding on with the
+ * arms the torso stays a little more upright.
  */
-export function poseBody(ctx, beta) {
+export function poseBody(ctx, beta, phi = ctx.phi ?? 0) {
   const { H, sit, base, leanDir, facing } = ctx;
   const bT = beta * (ctx.hooked ? 1 : 0.85);
   const legAxis = add(scale(UP, Math.cos(beta)), scale(leanDir, Math.sin(beta)));
   const torsoAxis = add(scale(UP, Math.cos(bT)), scale(leanDir, Math.sin(bT)));
   const pelvis = addScaled(addScaled(base, legAxis, BODY.leg * H * (1 - sit)), facing, sit * 0.3);
   const neck = addScaled(pelvis, torsoAxis, BODY.torso * H);
-  if (ctx.onBoom) {
-    const dx = clamp(ctx.hangX - neck[0], -0.3, 0.3);
-    pelvis[0] += dx * 0.5;
-    neck[0] += dx;
-  }
-  return bodyFrom(ctx, pelvis, neck);
+  if (!phi) return bodyFrom(ctx, pelvis, neck);
+  const hips = tipBack(base, pelvis, phi);
+  return bodyFrom(ctx, hips, add(hips, tipBack([0, 0, 0], sub(neck, pelvis), phi * HIP_HINGE)));
+}
+
+/** A point rotated back toward the tail about the lateral axis through `about`. */
+function tipBack(about, p, phi) {
+  const dx = p[0] - about[0], dy = p[1] - about[1], c = Math.cos(phi), s = Math.sin(phi);
+  return [about[0] + dx * c - dy * s, about[1] + dx * s + dy * c, p[2]];
 }
 
 /** Shoulders, hook and centre of mass for a pelvis and neck position. */
@@ -204,6 +237,23 @@ export function reachLimit(ctx, hi = 70 * DEG, lo = -20 * DEG) {
   return { betaMax, betaMin, fits: true };
 }
 
+/**
+ * Centre of mass ahead of the middle of the feet (m) by fore-and-aft lean, at
+ * a sideways lean beta, for the fore-and-aft balance.
+ */
+export function pitchTable(ctx, beta) {
+  const phis = [-30, -15, 0, 10, 20, 30, 40].map((d) => d * DEG);
+  const fwd = [], dists = [];
+  for (const f of phis) {
+    const body = poseBody(ctx, beta, f);
+    fwd.push(body.com[0] - ctx.base[0]);
+    dists.push(Math.hypot(body.com[0] - ctx.base[0], body.com[1] - ctx.base[1]));
+  }
+  // Leaning back moves the centre of mass back: keep it monotonic for the lookups.
+  for (let i = 1; i < fwd.length; i++) fwd[i] = Math.min(fwd[i], fwd[i - 1] - 1e-4);
+  return { phis, fwd, dists, negFwd: fwd.map((v) => -v) };
+}
+
 // ---------------------------------------------------------------------------
 // Lever tables for the balance
 
@@ -216,7 +266,7 @@ export function leverTable(ctx, lo, hi, n = 9) {
   const betas = [], levers = [], dists = [];
   for (let i = 0; i < n; i++) {
     const b = lo + ((hi - lo) * i) / (n - 1);
-    const body = poseBody(ctx, b);
+    const body = poseBody(ctx, b, 0); // before tipping back: rotating about the lateral axis leaves the lever alone
     betas.push(b);
     levers.push(Math.max(body.com[2] * ctx.side, i ? levers[i - 1] + 1e-4 : -Infinity));
     dists.push(len(sub(body.com, ctx.base)));
@@ -237,5 +287,11 @@ const lookup = (xs, ys, x) => {
 export const leverAt = (tbl, beta) => lookup(tbl.betas, tbl.levers, beta);
 /** Distance of the centre of mass from the feet (m) at a lean. */
 export const comDistAt = (tbl, beta) => lookup(tbl.betas, tbl.dists, beta);
+/** Centre of mass ahead of the middle of the feet (m) at a fore-and-aft lean. */
+export const comFwdAt = (pt, phi) => lookup(pt.phis, pt.fwd, phi);
+/** The fore-and-aft lean that puts the centre of mass x ahead of the middle of the feet. */
+export const phiForFwd = (pt, x) => lookup(pt.negFwd, pt.phis, -x);
+/** Distance of the centre of mass from the feet at a fore-and-aft lean. */
+export const comDistPhi = (pt, phi) => lookup(pt.phis, pt.dists, phi);
 /** The lean that puts the centre of mass at a lever. */
 export const leanFor = (tbl, lever) => lookup(tbl.levers, tbl.betas, lever);
