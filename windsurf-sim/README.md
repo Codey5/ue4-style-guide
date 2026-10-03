@@ -14,6 +14,25 @@ No controller? The keyboard works too (see below), though analog triggers make i
 
 New to it, or to windsurfing? Open **Lessons** in the menu.
 
+## Speed sessions
+
+Free sailing is logged by a GPS, the way speedsurfers measure themselves (the GPS Team Challenge categories). It samples your speed and position ten times a second and keeps your best:
+
+| | |
+| --- | --- |
+| **2 s** | 2-second peak: best average speed over any 2 seconds |
+| **10 s** | best average over any 10 seconds |
+| **5×10 s** | average of your five best 10-second windows that don't overlap |
+| **500 m** | best average over any 500 metres |
+| **NM** | best average over a nautical mile (1852 m) |
+| **α 500** | alpha: a run of at most 500 m out and back through a gybe, finishing within 50 m of where it started |
+
+The GPS panel (under the wind dial) shows this session beside your personal bests; a new best is announced once the run is over. The **Speed** tab in the menu has your bests (with the date, board, sail and wind), this session, and a log of recent sessions, all kept in your browser. Lessons aren't logged.
+
+**The speed strip.** A long, low sandbar lies a few hundred metres downwind of the start, angled so that sailing along it is a broad reach on starboard tack. The chop can't get past it: the water in its lee is flat right behind it and builds up again over about 450 m of fetch, while the chop breaks white on its windward edge. Two orange flags on the bar mark a 500 m course, and a line of yellow buoys marks the outside of the flat water. Keep off the sand: sail onto it and you run aground. **Start: at the speed strip** (Go sailing, or the Speed tab) puts you at the top of it, already heading down it. The physics, the water shader and the wake all use the same sheltering, so the flat water you see is the flat water you sail on: in 22 kn and rough chop the coach goes about 28 kn on the strip and 20 kn outside it.
+
+**Choosing your gear.** Pick your board and sail in the Gear tab. Its chart shows, for each sail on that board at your weight, the wind it works in: from getting planing (pumping onto it on a beam reach) to overpowered (sailing with the sail eased right off), with today's wind marked and the sail a good sailor would rig (well powered, about two thirds of the way up its range) picked out. The ranges come from the simulation itself: `npm run quiver` has the coach sail every board with every sail across the wind range, at 75 kg, and they're scaled for your weight (heavier sailors need more wind to plane and can hold more). After a session, its log entry says how your gear actually suited the wind: well matched, overpowered (planing with the sail eased right off, or pulled over) or underpowered (off the plane while trying to get going).
+
 ## Lessons
 
 Eleven lessons, each with two modes:
@@ -191,16 +210,18 @@ Rig tuning, same board and sail (`node tools/physics-check.mjs tune`):
 ```bash
 npm install        # three.js and esbuild
 npm run dev        # http://localhost:8000 serves index.html with live ES modules
-npm run build      # writes dist/beam-reach.html (single file, ~730 KB)
-npm test           # physics speed polar, maneuver checks, every lesson sailed by the coach, hands-on-boom pose check
+npm run build      # writes dist/beam-reach.html (single file, ~790 KB)
+npm test           # physics speed polar, maneuver checks, GPS & speed strip, every lesson sailed by the coach, hands-on-boom pose check
+npm run quiver     # recalibrate the gear advisor's wind ranges (src/physics/quiver.js) from the physics
 ```
 
 ```
 src/physics/   wind & chop, sail aero, planing hull & foils, the sailor's body geometry, balance + state machine (no rendering deps)
 src/coach/     the coach (an expert sailor driving the controls) and the lesson scripts
+src/game/      the GPS speed logger and the session log (personal bests, gear verdict)
 src/render/    three.js: water shader, sky & spot, board/rig/sailor models, spray & wake, cameras
 src/ui/        gamepad & keyboard input, HUD, menu, procedural audio
-tools/         build script, physics, maneuver, lesson and pose checks
+tools/         build script, physics, maneuver, GPS, lesson and pose checks, gear-advisor calibration
 ```
 
 The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the frame rate; rendering interpolates between the last two physics states so motion stays smooth at any refresh rate. The water has no textures: waves and ripples are evaluated per pixel and filtered by their size on screen (the procedural equivalent of mipmapping), so distant water doesn't shimmer.
@@ -209,7 +230,7 @@ The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the fra
 
 - Wave sailing (big jumps and rides on real swell) and foiling.
 - Real swell and breaking waves.
-- Race courses and timing.
+- Race courses (a slalom course against a ghost of your best lap would build on the GPS).
 - Remappable controls.
 - A detailed sailor animation rig: the sailor is a simple figure posed with inverse kinematics, the same body the physics balances. Leaning back, it's drawn as far back as its arms (or harness lines) reach toward the lean the physics balances.
 

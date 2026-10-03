@@ -245,7 +245,8 @@ export class Effects {
       dz += q * amp * c.dz * Math.cos(th);
       h += amp * Math.sin(th);
     }
-    return [x + dx, h, z + dz];
+    const k = waves.shelter(x, z);
+    return [x + dx * k, h * k, z + dz * k];
   }
 
   /** view: { camera, height (drawing-buffer pixels), water, t (the time the water is drawn at) } */
@@ -351,7 +352,7 @@ export class Effects {
     this.wakeUniforms.uTime.value = wt;
     const center = view.water ? view.water.uniforms.uCenter.value : { x: sim.pos[0], z: sim.pos[2] };
     const spacing = view.water ? view.water.uniforms.uSpacing.value : 0.0475;
-    const maxAge = 7 - 3.5 * clamp((waves.hs - 0.2) / 0.5, 0, 1); // chop breaks it up sooner
+    const maxAge = 7 - 3.5 * clamp((waves.hsAt(sim.pos[0], sim.pos[2]) - 0.2) / 0.5, 0, 1); // chop breaks it up sooner
     const n = this.trail.length;
     for (let i = 0; i < this.trailN; i++) {
       const tp = this.trail[i];

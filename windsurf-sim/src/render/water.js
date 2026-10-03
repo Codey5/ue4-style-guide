@@ -2,6 +2,7 @@
 // you see is the chop the board rides and the dark patches are real gusts.
 import * as THREE from 'three';
 import { GUST_ADVECT, GUST_EVOLVE, GUST_SCALE } from '../physics/environment.js';
+import { SHELTER_GLSL } from '../physics/spot.js';
 
 export const NOISE_GLSL = /* glsl */ `
 float hash3(ivec3 p) {
@@ -35,9 +36,11 @@ uniform vec3 uCenter;
 uniform float uSpacing;   // vertex spacing of the radial grid per metre of distance
 uniform vec4 uWaveA[8];   // dirX, dirZ, k, omega
 uniform vec2 uWaveB[8];   // amplitude, phase
+uniform vec2 uWindDir;
 varying vec3 vWorld;
 varying vec2 vBase;
 varying float vHeight;
+${SHELTER_GLSL}
 void main() {
   vec3 p = position + vec3(uCenter.x, 0.0, uCenter.z);
   vBase = p.xz;
@@ -46,12 +49,13 @@ void main() {
   // rest are drawn per pixel as normals. Stops the far water swimming.
   float spacing = max(0.1, dist * uSpacing);
   float far = 1.0 - smoothstep(600.0, 1400.0, dist);
+  float shel = shelterAt(p.xz, uWindDir);
   vec2 disp = vec2(0.0);
   float h = 0.0;
   for (int i = 0; i < 8; i++) {
     vec4 a = uWaveA[i];
     float lambda = 6.2831853 / a.z;
-    float amp = uWaveB[i].x * smoothstep(2.5 * spacing, 5.0 * spacing, lambda) * far;
+    float amp = uWaveB[i].x * smoothstep(2.5 * spacing, 5.0 * spacing, lambda) * far * shel;
     float th = a.z * (a.x * p.x + a.y * p.z) - a.w * uTime + uWaveB[i].y;
     float q = min(0.55 / (a.z * max(uWaveB[i].x, 1e-4) * 8.0 + 1e-3), 1.0);
     disp += q * amp * a.xy * cos(th);
@@ -86,6 +90,7 @@ varying vec3 vWorld;
 varying vec2 vBase;
 varying float vHeight;
 ${NOISE_GLSL}
+${SHELTER_GLSL}
 float gustFactor(vec2 xz) {
   if (uGustiness <= 0.0) return 1.0;
   float adv = uWindSpeed * ${GUST_ADVECT.toFixed(3)} * uTime;
@@ -127,9 +132,11 @@ void main() {
   vec3 n = vec3(0.0, 1.0, 0.0);
   float lost = 0.0;
   float hp = 0.0, slopeDown = 0.0, ampSum = 0.0, kAmp = 0.0, ampAll = 0.0;
+  // (in the lee of the sandbar the chop is sheltered, to flat right behind it)
+  float shel = shelterAt(vBase, wd);
   for (int i = 0; i < 8; i++) {
     vec4 a = uWaveA[i];
-    float amp = uWaveB[i].x;
+    float amp = uWaveB[i].x * shel;
     float w = keep(6.2831853 / a.z, fp);
     float th = a.z * (a.x * vBase.x + a.y * vBase.y) - a.w * uTime + uWaveB[i].y;
     float q = min(0.55 / (a.z * max(amp, 1e-4) * 8.0 + 1e-3), 1.0);
@@ -166,6 +173,10 @@ void main() {
   vec3 refl = skyColor(R);
   float shallow = smoothstep(uShoreZ + 160.0, uShoreZ + 20.0, vWorld.z);
   vec3 body = mix(uDeep, uShallow, shallow * 0.8);
+  // Shallow, sandy water either side of the sandbar.
+  vec2 barSD = barCoords(vBase, wd);
+  float barNear = uBar2.z * barAlong(barSD.x);
+  body = mix(body, vec3(0.2, 0.46, 0.44), barNear * (1.0 - smoothstep(uBar2.y, uBar2.y + 70.0, abs(barSD.y))) * 0.6);
   body *= mix(1.0, 0.82, smoothstep(1.0, 1.35, g));
   // Light and shade on the chop: how high the water is here, from -1 in a
   // trough to +1 on a crest (only the waves big enough to see from here,
@@ -173,7 +184,7 @@ void main() {
   // and go dark; crests are thin water the light shines through, brighter
   // and a little greener, most of all looking toward the sun.
   float hRel = clamp(hp / max(ampSum * 0.75, 1e-3), -1.3, 1.3);
-  float seen = clamp(ampSum / max(ampAll, 1e-3), 0.0, 1.0) * smoothstep(0.04, 0.25, uHs);
+  float seen = clamp(ampSum / max(ampAll, 1e-3), 0.0, 1.0) * smoothstep(0.04, 0.25, uHs * shel);
   float lift = smoothstep(-1.0, 1.0, hRel);
   body *= mix(1.0, mix(0.6, 1.2, lift), seen);
   float sunward = pow(max(dot(-V, uSunDir), 0.0), 2.0);
@@ -193,7 +204,7 @@ void main() {
   // across the wind along the crest, travelling downwind with the waves.
   // Only some crests break at a time; more of them as the wind gets up
   // (the first white horses at Bft 3-4, many by Bft 5).
-  float capWind = smoothstep(3.5, 10.0, uWindSpeed * g);
+  float capWind = smoothstep(3.5, 10.0, uWindSpeed * g) * smoothstep(0.25, 0.7, shel);
   float crest = smoothstep(0.2, 0.6, hp / max(ampSum, 1e-3));
   float front = smoothstep(0.15, -0.45, slopeDown / max(kAmp, 1e-4));
   float c0 = uWaveA[0].w / uWaveA[0].z; // the dominant chop's speed
@@ -236,11 +247,16 @@ void main() {
   float trailWeb = mix(min(1.0, wallT * 2.4), 1.0 - smoothstep(wallT - softW, wallT + softW, abs(wn)), keep(0.8, fp));
   float trail = trailMask * max(trailWeb * (0.55 + 0.3 * tex), 0.04 + 0.07 * tex) * kc; // a milky film between the walls
   // In a gale (Bft 7 and up) the foam gets blown into thin streaks along the wind.
-  float gale = smoothstep(12.5, 17.0, uWindSpeed * g);
+  float gale = smoothstep(12.5, 17.0, uWindSpeed * g) * smoothstep(0.25, 0.7, shel);
   float streakN = noise3(vec3((along - drift) / 30.0, across / 0.45, uTime * 0.015));
   float streak = smoothstep(0.55, 0.8, streakN) * gale * keep(1.5, fp);
   float shoreFoam = smoothstep(uShoreZ + 6.0, uShoreZ + 1.0, vWorld.z) * (0.5 + 0.5 * sin(uTime * 0.8 + xz.x * 0.05));
-  col = mix(col, vec3(0.94, 0.97, 0.99), clamp(foam + trail + shoreFoam * 0.6 + streak * 0.3, 0.0, 1.0));
+  // The chop breaking on the sandbar's windward edge, and lapping its lee edge.
+  float hw = uBar2.y;
+  float breakers = barNear * smoothstep(-hw - 15.0, -hw - 8.0, barSD.y) * (1.0 - smoothstep(-hw - 1.0, -hw + 1.0, barSD.y)) *
+    smoothstep(0.4, 0.75, noise3(vec3(barSD.x / 3.0, barSD.y / 1.5, uTime * 0.9)) * 0.5 + 0.5) * smoothstep(0.08, 0.35, uHs);
+  float lap = barNear * (1.0 - smoothstep(0.3, 1.6, abs(barSD.y - hw))) * (0.35 + 0.25 * sin(uTime * 1.3 + barSD.x * 0.4));
+  col = mix(col, vec3(0.94, 0.97, 0.99), clamp(foam + trail + shoreFoam * 0.6 + streak * 0.3 + breakers * 0.85 + lap * 0.5, 0.0, 1.0));
   float fog = 1.0 - exp(-uFogDensity * uFogDensity * camDist * camDist);
   col = mix(col, uFogColor, fog);
   gl_FragColor = vec4(col, 1.0);
@@ -297,6 +313,8 @@ export class Water {
       uGustiness: { value: 0.4 },
       uHs: { value: 0.3 },
       uShoreZ: { value: -260 },
+      uBar: { value: new THREE.Vector4() },
+      uBar2: { value: new THREE.Vector3() },
       uSpacing: { value: 0.06 },
     };
     this.material = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader, fragmentShader });
@@ -319,6 +337,11 @@ export class Water {
     this.uniforms.uGustiness.value = wind.gustiness;
     this.uniforms.uHs.value = waves.hs;
     this.uniforms.uShoreZ.value = shoreZ;
+    const bar = waves.bar;
+    if (bar) {
+      this.uniforms.uBar.value.set(bar.ax, bar.az, bar.lx, bar.lz);
+      this.uniforms.uBar2.value.set(bar.length, bar.halfWidth, 1);
+    } else this.uniforms.uBar2.value.set(1, 1, 0);
   }
 
   update(time, camera) {

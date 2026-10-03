@@ -162,7 +162,7 @@ export class Coach {
     this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22, 0.8, dt);
     c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp, -0.2, 1);
     // Rough water: a touch less power, so the board stays under control over the chop.
-    const rough = smoothstep(0.35, 0.8, sim.waves.hs) * (p > 0.9 ? 1 : 0);
+    const rough = smoothstep(0.35, 0.8, sim.waves.hsAt(sim.pos[0], sim.pos[2])) * (p > 0.9 ? 1 : 0);
     const aTarget = (o.alpha ?? 20 + 4 * deep) * DEG - clamp(over, 0, 1) * 14 * DEG - rough * 3 * DEG;
     // Don't sheet in faster than you can get your body out and back against
     // it (a few degrees short of full stretch is just your legs and core

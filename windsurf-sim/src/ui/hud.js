@@ -5,6 +5,11 @@ import { DEG, MS_TO_KN, RAD, clamp } from '../physics/math.js';
 import { S } from '../physics/sim.js';
 import { stance } from '../physics/body.js';
 import { CONTROL_MAP } from './input.js';
+import { CATEGORIES } from '../game/gps.js';
+import { SANDBAR, barCoords, barPoint } from '../physics/spot.js';
+
+const KN = MS_TO_KN;
+const knots = (v) => (v > 0 ? (v * KN).toFixed(1) : '–');
 
 const $ = (id) => document.getElementById(id);
 
@@ -166,6 +171,49 @@ export class Hud {
     this.drawStance(sim);
     this.drawHints(sim, input);
     if (this.telemetryOn) this.drawTelemetry(sim);
+  }
+
+  /**
+   * The GPS panel: this session's bests in each speedsurfing category beside
+   * your personal bests, and which way the speed strip is.
+   */
+  updateGps(dt, gps, book, sim) {
+    const el = $('gps');
+    el.hidden = !gps;
+    if (!gps) return;
+    if (this.gpsRef !== gps) { this.gpsRef = gps; this.f10 = null; this.gpsTimer = 0; }
+    this.gpsTimer = (this.gpsTimer ?? 0) - dt;
+    if (this.gpsTimer > 0) return;
+    this.gpsTimer = 0.25;
+    const d = gps.duration;
+    $('gps-time').textContent = `${Math.floor(d / 60)}:${String(Math.floor(d % 60)).padStart(2, '0')}`;
+    if (!this.f10 || sim.t > this.f10.at) this.f10 = { v: gps.five10(), at: sim.t + 2 };
+    const sess = { ...gps.best, five10: this.f10.v.n === 5 ? this.f10.v.v : 0 };
+    const since = book.current?.date ?? 0;
+    let html = '<span class="h">kn</span><span class="h r">now</span><span class="h r">best</span>';
+    for (const c of CATEGORIES) {
+      const pb = book.bests[c.key];
+      const mine = pb && pb.date >= since && Math.abs(pb.v - sess[c.key]) < 0.01;
+      html += `<span class="k">${c.label}</span><span class="v${mine ? ' new' : ''}">${knots(sess[c.key])}</span><span class="pb">${pb ? knots(pb.v) : '–'}</span>`;
+    }
+    if (html !== this.lastGps) { $('gps-rows').innerHTML = html; this.lastGps = html; }
+    // The speed strip: on it, or how far and which way to its lee.
+    const wd = sim.wind.dir, bar = SANDBAR;
+    const [s, dd] = barCoords(bar, wd[0], wd[2], sim.pos[0], sim.pos[2]);
+    const on = s > 0 && s < bar.length && dd > bar.halfWidth + 3 && dd < bar.halfWidth + 140;
+    const strip = $('gps-strip');
+    strip.classList.toggle('on', on);
+    if (on) {
+      const course = s > bar.course[0] && s < bar.course[1];
+      $('gps-strip-t').textContent = `On the speed strip: flat water${course ? ', between the flags' : ''}`;
+    } else {
+      const [tx, tz] = barPoint(bar, wd[0], wd[2], clamp(s, 40, bar.length - 40), bar.halfWidth + bar.laneD);
+      const vx = tx - sim.pos[0], vz = tz - sim.pos[2];
+      const fwd = vx * Math.cos(sim.yaw) - vz * Math.sin(sim.yaw), right = vx * Math.sin(sim.yaw) + vz * Math.cos(sim.yaw);
+      $('gps-arrow').setAttribute('transform', `rotate(${(Math.atan2(right, fwd) * RAD).toFixed(0)})`);
+      const dist = Math.hypot(vx, vz);
+      $('gps-strip-t').textContent = `Speed strip ${dist > 950 ? `${(dist / 1000).toFixed(1)} km` : `${Math.round(dist / 10) * 10} m`}`;
+    }
   }
 
   drawStance(sim) {

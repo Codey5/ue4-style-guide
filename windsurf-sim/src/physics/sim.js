@@ -13,6 +13,7 @@ import {
   dot, lerp, mulMtV, mulMV, norm, scale, smoothstep, sub, wrapAngle,
 } from './math.js';
 import { Wind, Waves } from './environment.js';
+import { barCoords, barPoint, onBar } from './spot.js';
 import { BOARDS, BOOM_RATIO, DEFAULT_SAILOR, LINES_RATIO, findBoard, findSail } from './gear.js';
 import { buildSailGeometry, sailForces } from './sail.js';
 import { foilPolar, planingSolve } from './hull.js';
@@ -78,7 +79,9 @@ function sanitize(c) {
 export class Sim {
   constructor(opts = {}) {
     this.wind = new Wind(opts.wind);
-    this.waves = new Waves(this.wind);
+    // (the spot: a sandbar sheltering a speed strip, or open water)
+    this.spot = opts.spot ?? null;
+    this.waves = new Waves(this.wind, this.spot?.bar ?? null);
     this.assists = { autoHike: false, noFalls: false, ...(opts.assists ?? {}) };
     this.events = [];
     this.t = 0;
@@ -276,7 +279,7 @@ export class Sim {
       xLoad = b.mastFootX - 0.3;
     }
     W = Math.max(W, 0.25 * mB * G);
-    const chop = this.waves.hs;
+    const chop = this.waves.hsAt(this.pos[0], this.pos[2]);
     const hull = planingSolve(u, W, xLoad, b, chop);
     this.hull = hull;
 
@@ -420,6 +423,18 @@ export class Sim {
     this.updateBalance(dt, ctl, tauPull, handForce, p, speed, sailorOnBoard);
     this.updateFeel(dt, speed);
 
+    // ---- Running aground on the sandbar: the fin digs into the sand.
+    const bar = this.spot?.bar;
+    if (bar && sailorOnBoard && this.state !== S.FALLING && onBar(bar, this.wind.dir[0], this.wind.dir[2], this.pos[0], this.pos[2])) {
+      const wd = this.wind.dir;
+      const [s, d] = barCoords(bar, wd[0], wd[2], this.pos[0], this.pos[2]);
+      this.fall('aground', 'your fin hit the sand. Keep off the sandbar: the flat water is just to leeward of it.');
+      // (you walk the board off it, back into the water on the side you came from)
+      const out = barPoint(bar, wd[0], wd[2], s, Math.sign(d || 1) * (bar.halfWidth + 6));
+      this.pos[0] = out[0]; this.pos[2] = out[1];
+      this.vel = [0, 0, 0];
+    }
+
     // ---- Sinking boards.
     if (sailorOnBoard && hull.sinking > 0.012 && this.state !== S.FALLING) {
       this.sinkTime += dt;
@@ -550,7 +565,7 @@ export class Sim {
       // badly; in a carve the board turns with the rail and it doesn't.
       const carving = smoothstep(0.2, 0.5, Math.abs(this.yawRate));
       const vent = 0.92 - 0.07 * Math.max(0, tauDeg - 4.5) - Math.min(0.3, 0.015 * Math.max(0, windwardRoll - 6)) * (1 - carving) -
-        0.1 * this.waves.hs - (this.sailor.straps === 2 && this.sailor.leanX < -0.08 ? 0.08 : 0) -
+        0.1 * this.waves.hsAt(this.pos[0], this.pos[2]) - (this.sailor.straps === 2 && this.sailor.leanX < -0.08 ? 0.08 : 0) -
         // (air dragged down the fin by a tail-first or high landing)
         0.35 * clamp((this.finAir ?? 0) / 0.45, 0, 1);
       this.finMargin = demand / Math.max(0.2, vent);
@@ -677,7 +692,7 @@ export class Sim {
     s.fallType = type;
     this.finVentilated = false;
     this.setState(S.FALLING, { type, rig0: { ...this.rig } });
-    const titles = { catapult: 'Catapult!', leeward: 'Pulled over', windward: 'Fell in to windward', sink: 'Sank', backwind: 'Backwinded' };
+    const titles = { catapult: 'Catapult!', leeward: 'Pulled over', windward: 'Fell in to windward', sink: 'Sank', backwind: 'Backwinded', aground: 'Aground' };
     this.emit('fall', `${titles[type] ?? 'Wipeout'} — ${text}`, 3);
   }
 

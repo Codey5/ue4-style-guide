@@ -3,6 +3,8 @@
 import { BOARDS, BOOM_RATIO, LINES_RATIO, SAILS } from '../physics/gear.js';
 import { CONTROL_MAP } from './input.js';
 import { LESSONS } from '../coach/lessons.js';
+import { adviseSail, windRange } from '../physics/quiver.js';
+import { CATEGORIES } from '../game/gps.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -26,7 +28,43 @@ const linesPosLabel = (s) => cmLabel(s.tuneLines ?? 0, 'forward', 'back', 'stand
 const mastLabel = (s) => cmLabel(s.tuneMast ?? 0, 'back', 'forward', 'middle of the track');
 const HAUL = { downhaul: ['light', 'a touch light', 'normal', 'firm', 'maximum'], outhaul: ['loose · full', 'a touch loose', 'normal', 'firm', 'tight · flat'] };
 const haulLabel = (key, v) => HAUL[key][Math.round((v + 1) * 2)];
-export const recommendedSail = (massKg, windKn) => (massKg * 1.34) / Math.max(windKn, 5);
+const KN = 1.943844;
+const kn1 = (v) => (v > 0 ? (v * KN).toFixed(2) : '–');
+const boardName = (id) => BOARDS.find((b) => b.id === id)?.name ?? id;
+const dateLabel = (ms) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+const clock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+const W0 = 5, W1 = 40; // the chart's wind axis (knots)
+const xPct = (w) => ((Math.min(Math.max(w, W0), W1) - W0) / (W1 - W0)) * 100;
+
+/**
+ * The quiver chart: for each sail, on this board at your weight, the wind
+ * range from getting planing to being overpowered, with today's wind marked.
+ */
+function quiverChart(s) {
+  const best = adviseSail(s.boardId, s.mass, s.windKn);
+  const ticks = [10, 15, 20, 25, 30, 35];
+  const rows = SAILS.map((sail, i) => {
+    const r = windRange(s.boardId, sail.area, s.mass);
+    const sel = Math.abs(sail.area - s.sailArea) < 0.05, isBest = best && best.sail === sail;
+    const usable = r.over > r.plane;
+    const left = xPct(r.plane), right = usable ? xPct(r.over) : left;
+    const range = usable ? `${Math.round(r.plane)}–${r.over > W1 ? `${W1}+` : Math.round(r.over)}` : '—';
+    const fits = s.windKn > r.plane && s.windKn < r.over;
+    const tip = usable
+      ? `${sail.name}: planing from about ${r.plane.toFixed(0)} kn, overpowered above about ${r.over > W1 ? `${W1}+` : r.over.toFixed(0)} kn`
+      : `${sail.name}: too much sail for this board at your weight`;
+    return `<button class="q-row${sel ? ' sel' : ''}${fits ? '' : ' off'}" data-sail="${i}" title="${tip}">
+      <span class="q-l">${sail.name}</span>
+      <span class="q-track"><span class="q-bar${r.over > W1 ? ' open' : ''}" style="left:${left.toFixed(1)}%;width:${Math.max(0, right - left).toFixed(1)}%"></span><span class="q-wind" style="left:${xPct(s.windKn).toFixed(1)}%"></span></span>
+      <span class="q-n">${sel || isBest ? range : ''}${isBest ? ' <em>best</em>' : ''}</span>
+    </button>`;
+  }).join('');
+  const axis = `<div class="q-row q-axis" aria-hidden="true"><span class="q-l">knots</span><span class="q-track">${ticks.map((t) => `<span class="q-tick" style="left:${xPct(t)}%">${t}</span>`).join('')}<span class="q-wind q-now" style="left:${xPct(s.windKn).toFixed(1)}%"><b>${s.windKn}</b></span></span><span class="q-n"></span></div>`;
+  const mine = windRange(s.boardId, s.sailArea, s.mass);
+  const verdict = s.windKn < mine.plane ? `too small to get you planing in ${s.windKn} kn` : s.windKn > mine.over ? `too big: overpowered in ${s.windKn} kn` : `good for ${s.windKn} kn`;
+  return `<div class="quiver">${axis}${rows}</div>
+    <p class="rec">Your ${s.sailArea.toFixed(1)} m² on the ${boardName(s.boardId)}: planing from about ${mine.plane.toFixed(0)} kn, overpowered above about ${mine.over > W1 ? `${W1}+` : mine.over.toFixed(0)} kn, so ${verdict}.${best && Math.abs(best.sail.area - s.sailArea) > 0.05 ? ` Best in ${s.windKn} kn: the ${best.sail.name}.` : ''}</p>`;
+}
 
 const TECHNIQUE = `
 <h3>Reading the wind</h3>
@@ -65,6 +103,8 @@ const TECHNIQUE = `
 <p>With rumble on, the low motor carries the sail's load and thumps as a gust fills the sail; it pulses, harder and harder, as the pull tips you toward your toes before a catapult. The high motor buzzes as the fin nears a spin-out and pulses when a hand is about to lose its grip.</p>
 <h3>Sailing through chop</h3>
 <p>At speed every chop throws the board up and slaps it down: it skips off the tops and flies off the steeper ones (the controller's chatter goes quiet in the air, and it thumps when you land). Slamming costs speed, so flat water is fast. Keep your weight back (right stick down) and a little less sheet in: the nose stays up over the chop. Weight forward, the nose rides into the backs of the waves and can bury: the board stops dead and throws you over the front. In the air your feet steer the board: keep the nose up and land flat or tail first; a high or tail-first landing can drag air down the fin. The mast foot forward keeps the board steadier in rough water. Sailing with the waves on a broad reach smooths the ride; heading up into them is the roughest, and if a big one knocks you off the plane upwind, bear away to get going again.</p>
+<h3>Speed sailing</h3>
+<p>Flat water is fast: every chop you slam over costs speed. The speed strip is in the lee of the sandbar a few hundred metres downwind of the start (the GPS panel points the way): the water is flat right behind the bar and roughens again further out, so stay close in, between the bar and the yellow buoys, and keep off the sand itself or you'll run aground. Sail it on a broad reach, about 120° off the wind: well powered, hooked in, both feet in the straps, weight back on the tail so the board rides on as little water as it can, and the sail sheeted in hard to keep the drive on. Rig tuning helps: outhaul tight for a flat, low-drag sail, more downhaul to twist off the gusts, mast foot back to free the board up. Your GPS logs every free-sailing session: the 2-second peak is the headline number, but 10 seconds, 500 m and the nautical mile reward holding your speed, and alpha 500 rewards a fast gybe (out, gybe, back within 50 m of where you started). Pick a sail you can hold sheeted in: overpowered, you're sailing with it eased and you're slower, not faster.</p>
 <h3>Jumping off the chop</h3>
 <p>A chop face is a ramp. Planing, hooked in and with both feet in the straps (that's how the board comes with you), watch the water just ahead: as a steep face comes, hold LB to crouch, then let go as the tail starts up it. Your legs drive the board off the water, and stiff legs take the whole kick of the face on top of yours, so timing is everything: pop on flat water and it's a little hop. In the air keep your weight back (right stick down) so the nose stays up, stay sheeted in (the sail holds you up, and leaning the rig a touch to windward lifts you more), and your knees come up under you. The sail carries you downwind while you fly; your feet keep the board pointing where it's going. Land tail first or flat with soft knees, easing the sheet a touch: nose first, it digs in and stops dead and you go over the front, and coming down sideways or from high up can spin the fin out. Every landing costs some speed.</p>
 <h3>Speed on a broad reach</h3>
@@ -179,7 +219,9 @@ export class Menu {
           ${this.started ? '<button class="btn primary" id="act-resume">Resume</button><button class="btn" id="act-restart-secure">Restart: secure position</button>' : '<button class="btn primary" id="act-secure">Go sailing</button>'}
           <button class="btn" id="act-restart-water">${this.started ? 'Restart' : 'Start'}: in the water</button>
           <button class="btn" id="act-restart-sailing">${this.started ? 'Restart' : 'Start'}: already sailing</button>
+          <button class="btn" id="act-restart-strip">${this.started ? 'Restart' : 'Start'}: at the speed strip</button>
         </div>
+        <p class="muted">Free sailing is logged by your GPS: the Speed tab has your records. The speed strip is the flat water in the lee of the sandbar, a few hundred metres downwind.</p>
         <h3>Quick controls</h3>
         <div class="maptable"><table><tbody>
           ${CONTROL_MAP.slice(0, 8).map(([pad, kb, what]) => `<tr><td>${pad}</td><td>${kb}</td><td>${what}</td></tr>`).join('')}
@@ -196,7 +238,6 @@ export class Menu {
           <p class="muted">Changes apply immediately. The wind blows side-shore, along the beach.</p>
         </div>`;
     } else if (this.tab === 'gear') {
-      const rec = recommendedSail(s.mass, s.windKn);
       const total = s.mass + (BOARDS.find((x) => x.id === s.boardId)?.mass ?? 8) + 9;
       c.innerHTML = `
         <h2>Gear</h2>
@@ -206,7 +247,10 @@ export class Menu {
             <p>${b.blurb}</p>${b.volume < total ? '<span class="spec" style="color:var(--warn)">Sinker at your weight</span>' : ''}</button>`).join('')}
         </div>
         ${slider('sail', 'Sail size', 0, SAILS.length - 1, 1, SAILS.findIndex((x) => Math.abs(x.area - s.sailArea) < 0.05), `${s.sailArea.toFixed(1)} m²`)}
-        <p class="rec">Rule of thumb for ${s.mass} kg in ${s.windKn} kn: about ${rec.toFixed(1)} m².</p>
+        <h3>Which sail for the wind</h3>
+        <p class="muted">Each bar is the wind a sail works in on this board for your ${s.mass} kg: from getting planing (pumping onto it on a beam reach) to overpowered (sailing with the sail eased right off). The line is today's wind, ${s.windKn} kn. Pick a sail by clicking its bar.</p>
+        ${quiverChart(s)}
+        <p class="muted small">Worked out from the simulation itself: the coach sailed every board and sail across the wind range to find where each one planes and where it's too much.</p>
         ${slider('mass', 'Your weight', 50, 110, 1, s.mass, `${s.mass} kg`)}
         ${slider('height', 'Your height', 155, 200, 1, s.height, `${s.height} cm`)}
         ${slider('boom', 'Boom height', -12, 16, 1, s.boomRel, boomLabel(s))}
@@ -222,6 +266,8 @@ export class Menu {
         ${toggle('autohike', 'Auto-hike: the game balances your body against the pull (LT is ignored)', s.autoHike)}
         ${toggle('nofalls', 'No falls: you never get pulled over or fall back', s.noFalls)}
         <p class="muted">Gear changes restart you in the secure position.</p>`;
+    } else if (this.tab === 'speed') {
+      c.innerHTML = this.speedPage();
     } else if (this.tab === 'controls') {
       c.innerHTML = `
         <h2>Controls</h2>
@@ -234,6 +280,7 @@ export class Menu {
         ${toggle('invert', 'Invert rig rake (stick up = rig back)', s.invertRake)}
         ${toggle('particles', 'Wind particles: specks drifting with the wind', s.windParticles)}
         ${toggle('shake', 'Camera sway over chop', s.cameraShake)}
+        ${toggle('gpspanel', 'GPS panel: your session\'s speeds and records while free sailing', s.gpsPanel)}
         ${slider('volume', 'Volume', 0, 1, 0.05, s.volume, `${Math.round(s.volume * 100)}%`)}`;
     } else {
       c.innerHTML = `<h2>Technique</h2>${TECHNIQUE}`;
@@ -253,6 +300,15 @@ export class Menu {
     on('act-restart-secure', 'click', () => h.start('secure'));
     on('act-restart-water', 'click', () => h.start('water'));
     on('act-restart-sailing', 'click', () => h.start('sailing'));
+    on('act-restart-strip', 'click', () => h.start('strip'));
+    on('act-strip', 'click', () => h.start('strip'));
+    on('act-clear', 'click', (e) => {
+      if (e.target.dataset.armed) { h.clearRecords(); this.render(); }
+      else { e.target.dataset.armed = '1'; e.target.textContent = 'Click again to clear every record'; }
+    });
+    for (const row of this.content.querySelectorAll('[data-sail]')) {
+      row.addEventListener('click', () => { s.sailArea = SAILS[+row.dataset.sail].area; h.gear(); this.render(); });
+    }
     on('act-lesson-restart', 'click', () => h.lesson(this.activeLesson.lesson.id, this.activeLesson.mode));
     on('act-lesson-switch', 'click', () => h.lesson(this.activeLesson.lesson.id, this.activeLesson.mode === 'watch' ? 'try' : 'watch'));
     on('act-lesson-exit', 'click', () => h.exitLesson());
@@ -293,8 +349,41 @@ export class Menu {
     on('invert', 'change', (e) => { s.invertRake = e.target.checked; h.options(); });
     on('particles', 'change', (e) => { s.windParticles = e.target.checked; h.options(); });
     on('shake', 'change', (e) => { s.cameraShake = e.target.checked; h.options(); });
+    on('gpspanel', 'change', (e) => { s.gpsPanel = e.target.checked; h.options(); });
     // Re-render the rule-of-thumb line when the weight changes.
     on('mass', 'change', () => this.render());
+  }
+
+  /** The Speed tab: personal bests, this session and the session log. */
+  speedPage() {
+    const { book, gps, verdict } = this.h.sessions();
+    const bests = book.bests;
+    const gear = (e) => `${boardName(e.board)} · ${Number(e.sail).toFixed(1)} m²`;
+    const pbRows = CATEGORIES.map((cat) => {
+      const b = bests[cat.key];
+      return `<tr><td>${cat.label}</td><td class="num">${b ? kn1(b.v) : '–'}</td><td>${cat.long}</td><td>${b ? `${dateLabel(b.date)} · ${gear(b)} · ${b.wind} kn` : ''}</td></tr>`;
+    }).join('');
+    let now = '<p class="muted">Not logging: the GPS runs while you\'re free sailing (not in lessons).</p>';
+    if (gps) {
+      const r = gps.results();
+      now = `<p>${clock(r.duration)} on the water, ${(r.distance / 1000).toFixed(2)} km sailed. 2 s ${kn1(r.s2)} · 10 s ${kn1(r.s10)} · 5×10 s ${r.five10n === 5 ? kn1(r.five10) : '–'} · 500 m ${kn1(r.m500)} · NM ${kn1(r.nm)} · α 500 ${kn1(r.alpha)} knots.</p>
+        <p class="${verdict?.kind === 'good' ? 'rec' : 'muted'}">${verdict?.text ?? ''}</p>`;
+    }
+    const log = book.log.slice(0, 12).map((e) => {
+      const r = e.results ?? {};
+      return `<tr><td>${dateLabel(e.date)}</td><td>${clock(r.duration ?? 0)} · ${((r.distance ?? 0) / 1000).toFixed(1)} km</td><td class="num">${kn1(r.s2)}</td><td class="num">${kn1(r.s10)}</td><td class="num">${kn1(r.m500)}</td><td class="num">${kn1(r.alpha)}</td><td>${gear(e)} · ${e.wind} kn</td><td>${e.verdict?.kind === 'over' ? 'overpowered' : e.verdict?.kind === 'under' ? 'underpowered' : e.verdict?.kind === 'good' ? 'well matched' : ''}</td></tr>`;
+    }).join('');
+    return `
+      <h2>Speed</h2>
+      <p class="muted">Your GPS logs every free-sailing session the way speedsurfers measure themselves: ten samples a second, and the best 2-second peak, 10 seconds, five 10-second runs, 500 metres, nautical mile, and alpha 500 (a run of up to 500 m out and back through a gybe, finishing within 50 m of where it started). Flat water is fast: the speed strip in the lee of the sandbar is where records go, between the two orange flags is a 500 m course.</p>
+      <div class="actions" style="margin-top:0"><button class="btn primary" id="act-strip">Sail the speed strip</button></div>
+      <h3>Personal bests (knots)</h3>
+      <div class="rtable"><table><tbody>${pbRows}</tbody></table></div>
+      <h3>This session</h3>
+      ${now}
+      <h3>Recent sessions</h3>
+      ${log ? `<div class="rtable"><table><thead><tr><th>Date</th><th>Time · distance</th><th>2 s</th><th>10 s</th><th>500 m</th><th>α 500</th><th>Gear · wind</th><th>Gear verdict</th></tr></thead><tbody>${log}</tbody></table></div>` : '<p class="muted">Sessions show up here once you\'ve sailed a minute and a few hundred metres.</p>'}
+      <div class="actions"><button class="btn" id="act-clear">Clear records</button></div>`;
   }
 
   /** Gamepad navigation over the visible focusable elements. */

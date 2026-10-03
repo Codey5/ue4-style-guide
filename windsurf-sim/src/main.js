@@ -15,6 +15,11 @@ import { Menu } from './ui/menu.js';
 import { Audio } from './ui/audio.js';
 import { LessonUi } from './ui/lessonui.js';
 import { LESSONS, findLesson, LessonRunner } from './coach/lessons.js';
+import { Coach } from './coach/coach.js';
+import { SANDBAR, barPoint } from './physics/spot.js';
+import { adviseSail } from './physics/quiver.js';
+import { CATEGORIES, GpsLogger } from './game/gps.js';
+import { GearVerdict, SessionBook } from './game/sessions.js';
 
 const DT = 1 / 240;
 const STORE_KEY = 'beam-reach-settings-v2';
@@ -24,7 +29,7 @@ const defaults = {
   boardId: 'free135', sailArea: 7.0, mass: 75, height: 183, boomRel: 0, linesRel: 0,
   tuneLines: 0, tuneMast: 0, downhaul: 0, outhaul: 0, // rig tuning: cm along the boom / track, and -1..1
   autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
-  windParticles: true, cameraShake: true,
+  windParticles: true, cameraShake: true, gpsPanel: true,
 };
 function loadSettings() {
   try {
@@ -83,7 +88,8 @@ function makeSim(start, setup = null, watch = false) {
     wind: { ...wind, fromDeg: 270 },
     // The coach does its own hiking and never uses the no-falls assist.
     assists: watch ? { autoHike: false, noFalls: false } : { autoHike: settings.autoHike, noFalls: settings.noFalls },
-    start: setup?.start ?? start,
+    start: setup?.start ?? (start === 'strip' ? 'sailing' : start),
+    spot: { bar: SANDBAR },
     // Lessons sail a standard tune (or their own); free sailing, yours.
     tune: setup ? setup.tune ?? {} : {
       linesPos: settings.tuneLines / 100, mastPos: settings.tuneMast / 100, downhaul: settings.downhaul, outhaul: settings.outhaul,
@@ -112,7 +118,16 @@ function restart(mode, setup = null, watch = false) {
   const at = sim ? [sim.pos[0], 0, sim.pos[2]] : null;
   const nearShore = at && at[2] < BEACH_Z + 40;
   sim = makeSim(mode, setup, watch);
-  if (!setup && at && !nearShore && Math.hypot(at[0], at[2]) < 2500) sim.reset(mode, at);
+  if (mode === 'strip') {
+    // At the top of the speed strip, in the sandbar's lee, already heading down it.
+    const wd = sim.wind.dir;
+    const [x, z] = barPoint(SANDBAR, wd[0], wd[2], 40, SANDBAR.halfWidth + SANDBAR.laneD);
+    sim.reset('sailing', [x, 0, z]);
+    sim.yaw = Math.atan2(-SANDBAR.lz, SANDBAR.lx);
+    sim.vel = [SANDBAR.lx * 5, 0, SANDBAR.lz * 5];
+  } else if (!setup && at && !nearShore && Math.hypot(at[0], at[2]) < 2500) sim.reset(mode, at);
+  // Free sailing is logged by the GPS as a session; lessons aren't.
+  if (setup) endSession(); else startSession();
   buildModels();
   syncWorld();
   effects.clearTrail();
@@ -138,6 +153,51 @@ function applyOptions() {
 
 let paused = true;
 let gearTimer = 0;
+
+// ---- GPS speed sessions: logged while free sailing, with your personal bests.
+const book = new SessionBook();
+let gps = null, verdict = null, lastState = null, recordCheck = 0, sessionSave = 0, five10Check = 0;
+const advice = () => adviseSail(settings.boardId, settings.mass, settings.windKn);
+function sessionMeta() {
+  return { board: settings.boardId, sail: settings.sailArea, mass: settings.mass, wind: settings.windKn, gust: settings.gustiness, chop: settings.chop };
+}
+function saveSession() {
+  if (!gps) return;
+  book.update(gps.results(), verdict.result(advice(), settings.sailArea));
+  book.save();
+}
+function startSession() {
+  endSession();
+  gps = new GpsLogger();
+  verdict = new GearVerdict();
+  book.begin(sessionMeta());
+}
+function endSession() {
+  saveSession();
+  book.end();
+  gps = null;
+  verdict = null;
+}
+/** New personal bests, announced once each run is over (no improvement for three seconds). */
+function checkRecords() {
+  for (const key of ['s2', 's10', 'm500', 'nm', 'alpha']) {
+    const v = gps.best[key];
+    if (book.beats(key, v) && sim.t - (gps.at[key] ?? 0) > 3) announce(key, v);
+  }
+  if (sim.t > five10Check) {
+    five10Check = sim.t + 5;
+    const f = gps.five10();
+    if (f.n === 5 && book.beats('five10', f.v)) announce('five10', f.v);
+  }
+}
+function announce(key, v) {
+  book.claim(key, v);
+  book.save();
+  const cat = CATEGORIES.find((c) => c.key === key);
+  sim.emit('pb', `New personal best — ${cat.label}: ${(v * 1.943844).toFixed(2)} knots`, 2);
+}
+window.addEventListener('pagehide', saveSession);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveSession(); });
 
 function startLesson(id, mode) {
   const def = findLesson(id);
@@ -167,6 +227,7 @@ const menu = new Menu(settings, {
     sim.setWind({ speedKn: settings.windKn, gustiness: settings.gustiness, shifts: settings.shifts, chop: settings.chop });
     syncWorld();
     saveSettings(settings);
+    if (book.current) Object.assign(book.current, sessionMeta());
   },
   gear: () => {
     saveSettings(settings);
@@ -175,6 +236,8 @@ const menu = new Menu(settings, {
     gearTimer = setTimeout(() => restart('secure'), 200);
   },
   options: () => applyOptions(),
+  sessions: () => ({ book, gps, verdict: gps ? verdict.result(advice(), settings.sailArea) : null }),
+  clearRecords: () => { book.clear(); if (gps) book.begin(sessionMeta()); },
 });
 menu.completed = new Set(settings.lessonsDone);
 
@@ -259,6 +322,12 @@ function frame(now) {
       prevState = snapshot();
       sim.step(DT, c);
       usedControls = c;
+      if (gps) {
+        gps.step(sim);
+        verdict.step(sim, DT);
+        if (sim.state === S.FALLING && lastState !== S.FALLING) verdict.fell(sim.sailor.fallType);
+      }
+      lastState = sim.state;
       for (const [k, v] of Object.entries(c.pressed)) if (v) framePressed[k] = true;
       if (lesson) {
         const r = lesson.update(DT);
@@ -339,6 +408,13 @@ function frame(now) {
 
   const shown = usedControls ?? controls;
   hud.update(dt, sim, input, shown);
+  hud.updateGps(dt, gps && !lesson && settings.gpsPanel ? gps : null, book, sim);
+  if (gps && !paused) {
+    recordCheck -= dt;
+    if (recordCheck <= 0) { recordCheck = 0.25; checkRecords(); }
+    sessionSave -= dt;
+    if (sessionSave <= 0) { sessionSave = 5; saveSession(); }
+  }
   if (lesson) {
     lessonUi.update(dt, lesson, shown, framePressed, hud.glyphs(input), hud.isPs(input), {
       index: LESSONS.indexOf(lesson.lesson), count: LESSONS.length,
@@ -371,6 +447,7 @@ function frame(now) {
   }
 
   renderer.render(scene, camera);
-  window.__beamReach = { sim, controls: lastControls, paused, lesson, effects, boardGroup, water, camera, renderer };
+  // (handles for the headless checks and screenshots)
+  window.__beamReach = { sim, controls: lastControls, paused, lesson, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig };
 }
 requestAnimationFrame(frame);

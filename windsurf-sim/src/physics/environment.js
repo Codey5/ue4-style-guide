@@ -2,6 +2,7 @@
 // wind-driven chop on the water surface.
 import { DEG, MS_TO_KN, clamp } from './math.js';
 import { fbm3, noise1 } from './noise.js';
+import { shelterAt } from './spot.js';
 
 export const GUST_SCALE = 170; // metres: typical size of a gust patch
 export const GUST_EVOLVE = 45; // seconds for the gust pattern to reshape itself
@@ -60,11 +61,26 @@ export class Wind {
 /**
  * Wind-driven chop: a handful of directional wave trains travelling downwind.
  * The water shader uses the same components (with Gerstner displacement).
+ * A sandbar (see spot.js), when the spot has one, shelters the water in its
+ * lee: there the chop is scaled down, to flat right behind it.
  */
 export class Waves {
-  constructor(wind) {
+  constructor(wind, bar = null) {
     this.wind = wind;
+    this.bar = bar;
     this.rebuild();
+  }
+
+  /** Chop amplitude factor at a point: 1 in open water, less in the sandbar's lee. */
+  shelter(x, z) {
+    if (!this.bar) return 1;
+    const d = this.wind.dir;
+    return shelterAt(this.bar, d[0], d[2], x, z);
+  }
+
+  /** Significant wave height here (m). */
+  hsAt(x, z) {
+    return this.hs * this.shelter(x, z);
   }
 
   rebuild() {
@@ -91,13 +107,13 @@ export class Waves {
   height(x, z, t) {
     let h = 0;
     for (const c of this.components) h += c.amp * Math.sin(c.k * (c.dx * x + c.dz * z) - c.omega * t + c.phase);
-    return h;
+    return h * this.shelter(x, z);
   }
 
   /** Vertical velocity of the surface (m/s) — used for board bounce. */
   verticalVelocity(x, z, t) {
     let v = 0;
     for (const c of this.components) v -= c.amp * c.omega * Math.cos(c.k * (c.dx * x + c.dz * z) - c.omega * t + c.phase);
-    return v;
+    return v * this.shelter(x, z);
   }
 }

@@ -2,6 +2,7 @@
 // dunes, distant headlands and a few marker buoys out on the water.
 import * as THREE from 'three';
 import { BEACH_Z } from '../physics/sim.js';
+import { SANDBAR, barPoint } from '../physics/spot.js';
 
 export function createEnvironment() {
   const sunDir = new THREE.Vector3(-0.35, 0.55, 0.75).normalize();
@@ -116,6 +117,77 @@ export class World {
     scene.add(this.group);
     this.buildShore();
     this.buildBuoys();
+    this.buildSandbar(SANDBAR);
+  }
+
+  /**
+   * The speed strip: a long low sandbar, awash at its edges, with a line of
+   * small buoys marking the flat water in its lee and two tall orange flags
+   * on it marking a 500 m course.
+   */
+  buildSandbar(bar) {
+    const wd = this.wind.dir;
+    const rnd = mulberry(11);
+    const across = 2 * bar.halfWidth + 10;
+    const geo = new THREE.PlaneGeometry(bar.length, across, 180, 10);
+    const pos = geo.attributes.position;
+    const colors = [];
+    const dry = new THREE.Color(0xe6d3a3), wet = new THREE.Color(0xa38d64);
+    for (let i = 0; i < pos.count; i++) {
+      const s = pos.getX(i) + bar.length / 2, c = pos.getY(i);
+      // A low hump, highest along the middle, rounded off at the ends and
+      // sloping under the water at the edges.
+      const end = Math.min(1, Math.min(s, bar.length - s) / 40);
+      const r = Math.abs(c) / (bar.halfWidth * Math.max(0.15, end));
+      const h = 0.28 * (1 - r * r) + 0.04 * Math.sin(s * 0.05 + rnd() * 0.5) - 0.12;
+      pos.setZ(i, h);
+      const k = THREE.MathUtils.smoothstep(h, -0.02, 0.12);
+      const col = wet.clone().lerp(dry, k);
+      colors.push(col.r, col.g, col.b);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
+    // Lay it along the bar: plane X along the bar, plane Y across it (toward downwind).
+    mesh.rotation.x = -Math.PI / 2;
+    const g = new THREE.Group();
+    g.add(mesh);
+    const mid = barPoint(bar, wd[0], wd[2], bar.length / 2, 0);
+    g.position.set(mid[0], 0, mid[1]);
+    g.rotation.y = Math.atan2(-bar.lz, bar.lx);
+    // (plane Y maps to -Z before the group turns; flip so +Y is to leeward)
+    mesh.scale.y = -Math.sign(bar.lx * wd[2] - bar.lz * wd[0]) || 1;
+    mesh.receiveShadow = true;
+    this.group.add(g);
+
+    // The 500 m course: a tall orange flag on the bar at each end.
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const flagMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, side: THREE.DoubleSide, roughness: 0.6 });
+    for (const s of bar.course) {
+      const [x, z] = barPoint(bar, wd[0], wd[2], s, bar.halfWidth * 0.4);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 7, 8), poleMat);
+      pole.position.set(x, 3.5, z);
+      pole.castShadow = true;
+      this.group.add(pole);
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.3, 8, 1), flagMat);
+      flag.geometry.translate(1.1, 0, 0);
+      const pivot = new THREE.Group();
+      pivot.position.set(x, 6.3, z);
+      pivot.add(flag);
+      this.group.add(pivot);
+      this.flags.push({ group: null, pivot, flag, x, z, phase: rnd() * 6, fixed: true });
+    }
+    // Small buoys every 100 m along the outside of the flat water.
+    const buoyMat = new THREE.MeshStandardMaterial({ color: 0xffd400, roughness: 0.5 });
+    this.laneBuoys = [];
+    for (let s = 50; s <= bar.length - 50; s += 100) {
+      const [x, z] = barPoint(bar, wd[0], wd[2], s, bar.halfWidth + bar.laneD + 35);
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 10), buoyMat);
+      b.position.set(x, 0.05, z);
+      b.castShadow = true;
+      this.group.add(b);
+      this.laneBuoys.push({ mesh: b, x, z, phase: rnd() * 6 });
+    }
   }
 
   buildShore() {
@@ -207,7 +279,7 @@ export class World {
 
   buildBuoys() {
     const spots = [
-      [-220, 130], [220, 130], [0, 420], [-420, 520], [420, 520], [0, 900], [-700, 260], [700, 260], [0, -150],
+      [-220, 130], [220, 130], [0, 420], [-420, 520], [420, 520], [0, 900], [-700, 260], [0, -150],
     ];
     const buoyMat = new THREE.MeshStandardMaterial({ color: 0xffb21e, roughness: 0.5 });
     const flagMat = new THREE.MeshStandardMaterial({ color: 0xe8392b, side: THREE.DoubleSide, roughness: 0.6 });
@@ -246,9 +318,11 @@ export class World {
       f.pivot.rotation.y = Math.atan2(-wv[2], wv[0]);
       f.flag.rotation.x = Math.sin(t * (4 + sp) + f.phase) * 0.25;
       f.flag.rotation.z = -Math.max(0, 1 - sp / 6) * 1.1;
+      if (f.fixed) continue; // (the course flags stand on the sandbar)
       f.group.position.y = waves.height(f.x, f.z, t) - 0.2;
       f.group.rotation.z = Math.sin(t * 1.3 + f.phase) * 0.06;
     }
+    for (const b of this.laneBuoys ?? []) b.mesh.position.y = waves.height(b.x, b.z, t) + 0.05 + Math.sin(t * 1.7 + b.phase) * 0.02;
   }
 }
 

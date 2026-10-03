@@ -110,6 +110,22 @@ body {
 .telemetry dt { color: var(--ink-dim); }
 .telemetry dd { margin: 0; text-align: right; }
 .telemetry h3 { margin: 8px 0 0; font: 700 10px var(--ui); letter-spacing: .14em; text-transform: uppercase; color: var(--signal); }
+.gps { right: 16px; top: calc(max(14px, env(safe-area-inset-top, 0px)) + 244px); width: 188px; }
+.gps .label .num { float: right; font: 11px var(--mono); color: var(--ink); letter-spacing: 0; }
+.gps-grid { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); column-gap: 8px; row-gap: 3px; margin-top: 6px; font: 12px var(--mono); }
+.gps-grid .h { font: 700 9px/1.6 var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+.gps-grid .h.r, .gps-grid .v, .gps-grid .pb { text-align: right; }
+.gps-grid .k { color: var(--ink-dim); }
+.gps-grid .v { color: var(--ink); }
+.gps-grid .v.new { color: var(--signal); font-weight: 700; }
+.gps-grid .pb { color: var(--ink-dim); }
+.gps-strip { display: flex; align-items: center; gap: 6px; margin-top: 8px; font: 11px/1.3 var(--ui); color: var(--ink-dim); }
+.gps-strip.on { color: var(--good); }
+.gps-arrow { flex: none; width: 16px; height: 16px; }
+.gps-arrow path { fill: var(--wind); }
+.gps-strip.on .gps-arrow { display: none; }
+#hud.lesson-on .gps { display: none; }
+@media (max-height: 660px) { .gps { display: none; } }
 .cam { position: absolute; left: 50%; transform: translateX(-50%); top: max(14px, env(safe-area-inset-top, 0px)); font: 11px var(--mono); color: var(--ink-dim); background: var(--glass); padding: 4px 10px; border-radius: 6px; transition: opacity .5s; }
 
 /* ---------- Lessons ---------- */
@@ -166,6 +182,7 @@ body {
 .content h3 { margin: 6px 0 0; font: 700 11px var(--ui); letter-spacing: .14em; text-transform: uppercase; color: var(--signal); }
 .content p, .content li { color: var(--ink); max-width: 68ch; }
 .content .muted { color: var(--ink-dim); }
+.content > * { flex-shrink: 0; }
 .page { display: flex; flex-direction: column; gap: 14px; }
 .field { display: grid; grid-template-columns: 170px minmax(0, 1fr) 92px; gap: 12px; align-items: center; }
 .field label { font-weight: 700; }
@@ -196,6 +213,36 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
 .glossary dt { font-weight: 700; }
 .glossary dd { margin: 0; color: var(--ink-dim); }
 .rec { font: 12px var(--mono); color: var(--good); }
+.small { font-size: 11px; }
+.quiver { display: grid; gap: 2px; }
+.q-row { all: unset; display: grid; grid-template-columns: 58px minmax(0, 1fr) 84px; gap: 10px; align-items: center; cursor: pointer; border-radius: 6px; padding: 2px 4px; }
+.q-row:hover, .q-row:focus-visible { background: rgba(233,242,245,.06); }
+.q-row:focus-visible { outline: 2px solid var(--signal); }
+.q-l { font: 700 12px var(--mono); color: var(--ink); text-align: right; }
+.q-row.off .q-l { color: var(--ink-dim); }
+.q-track { position: relative; height: 16px; }
+.q-track::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(233,242,245,.12); }
+.q-bar { position: absolute; top: 4px; height: 8px; border-radius: 4px; background: var(--wind); opacity: .55; }
+.q-bar.open { border-radius: 4px 0 0 4px; }
+.q-row.sel .q-bar { background: var(--signal); opacity: 1; }
+.q-row.off .q-bar { opacity: .25; }
+.q-row.sel.off .q-bar { opacity: .7; }
+.q-wind { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--ink); }
+.q-n { font: 11px var(--mono); color: var(--ink); white-space: nowrap; }
+.q-n em { font-style: normal; color: var(--good); font-weight: 700; }
+.q-axis { cursor: default; }
+.q-axis:hover { background: none; }
+.q-axis .q-l { font: 700 9px var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+.q-axis .q-track::before { display: none; }
+.q-tick { position: absolute; top: 2px; transform: translateX(-50%); font: 10px var(--mono); color: var(--ink-dim); }
+.q-now { top: 14px; bottom: -4px; }
+.q-now b { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font: 700 10px var(--mono); color: var(--ink); background: var(--glass-solid); padding: 0 3px; }
+.rtable { overflow-x: auto; }
+.rtable table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.rtable th { text-align: left; font: 700 10px var(--ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim); padding: 6px 8px; border-bottom: 1px solid var(--hair); white-space: nowrap; }
+.rtable td { padding: 6px 8px; border-bottom: 1px solid var(--hair); vertical-align: top; color: var(--ink); }
+.rtable td:first-child { font: 700 11px var(--mono); white-space: nowrap; }
+.rtable td.num { font: 700 13px var(--mono); text-align: right; white-space: nowrap; }
 .small-note { display: none; }
 
 @media (max-width: 760px) {
@@ -254,6 +301,12 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
 
   <div class="cam" id="cam-name">Chase camera</div>
 
+  <section class="pod gps" id="gps" hidden aria-label="GPS speed session">
+    <div class="label">GPS session <span class="num" id="gps-time">0:00</span></div>
+    <div class="gps-grid" id="gps-rows"></div>
+    <div class="gps-strip" id="gps-strip"><svg viewBox="-10 -10 20 20" class="gps-arrow" aria-hidden="true"><path id="gps-arrow" d="M0,-8 L5.5,5 L0,2 L-5.5,5 Z"/></svg><span id="gps-strip-t"></span></div>
+  </section>
+
   <aside class="pod telemetry" id="telemetry" hidden aria-label="Telemetry"></aside>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
@@ -300,6 +353,7 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
         <button class="tab" role="tab" data-tab="lessons" aria-selected="false">Lessons</button>
         <button class="tab" role="tab" data-tab="conditions" aria-selected="false">Conditions</button>
         <button class="tab" role="tab" data-tab="gear" aria-selected="false">Gear</button>
+        <button class="tab" role="tab" data-tab="speed" aria-selected="false">Speed</button>
         <button class="tab" role="tab" data-tab="controls" aria-selected="false">Controls</button>
         <button class="tab" role="tab" data-tab="technique" aria-selected="false">Technique</button>
       </nav>
