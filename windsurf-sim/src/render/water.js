@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { GUST_ADVECT, GUST_EVOLVE, GUST_SCALE } from '../physics/environment.js';
 
-const NOISE_GLSL = /* glsl */ `
+export const NOISE_GLSL = /* glsl */ `
 float hash3(ivec3 p) {
   uint h = uint(p.x) * 374761393u + uint(p.y) * 668265263u + uint(p.z) * 1440662683u;
   h = (h ^ (h >> 13u)) * 1274126177u;
@@ -200,24 +200,47 @@ void main() {
   float alongWave = along - c0 * uTime;
   float breakN = noise3(vec3(alongWave / 2.2, across / 9.0, uTime / 2.5)) * 0.65 +
     noise3(vec3(alongWave / 0.9, across / 3.5, uTime / 1.3) + 7.3) * 0.35;
-  float breaking = smoothstep(0.55 - 0.5 * capWind, 0.72 - 0.5 * capWind, breakN);
-  // Foam is bubbly, not paint; finer than a few pixels it reads as a soft white.
+  // A few per cent of the sea breaking at Bft 5, more as it blows harder.
+  float more = 0.3 * capWind + 0.15 * smoothstep(9.0, 16.0, uWindSpeed * g);
+  float breaking = smoothstep(0.62 - more, 0.8 - more, breakN);
+  // Foam is lace, not paint: solid white only where it's actively breaking,
+  // and around that a web of bubble walls torn into streaks running down the
+  // face with the spill. Close up its edges are crisp; finer than a few
+  // pixels the web averages out into a softer white.
   float kf = keep(1.2, fp);
-  float bubbles = mix(0.65, smoothstep(-0.35, 0.45, noise3(vec3(alongWave * 2.6, across * 1.7, uTime * 0.7))), kf);
+  float streaks = noise3(vec3(alongWave / 1.4, across / 0.16, uTime * 0.25)) * keep(0.5, fp);
+  float bubbles = noise3(vec3(alongWave * 3.1, across * 2.3, uTime * 0.7)) * kf;
+  float density = capWind * breaking * crest * mix(0.5, 1.0, front);
+  float tex = smoothstep(-0.35, 0.35, 0.6 * streaks + 0.4 * bubbles);
+  float soft = clamp(fp * 0.8, 0.06, 0.35);
+  float blot = smoothstep(0.3 - soft, 0.3 + soft, density * (0.45 + 0.9 * tex));
+  float wn = noise3(vec3(alongWave / 0.55, across / 0.8, uTime * 0.3) + 2.7) * 0.7 +
+    noise3(vec3(alongWave / 0.2, across / 0.3, uTime * 0.6) + 9.1) * 0.3 * keep(0.3, fp);
+  float wall = 0.035 + 0.14 * density + 0.06 * tex;
+  float softW = clamp(fp * 1.2, 0.015, 0.25);
+  float web = mix(min(1.0, wall * 2.4), 1.0 - smoothstep(wall - softW, wall + softW, abs(wn)), keep(0.8, fp));
+  // The lip where it's just breaking: solid, brightest.
+  float lip = smoothstep(0.82, 1.0, density * (0.7 + 0.5 * tex)) * smoothstep(0.5, 0.85, hp / max(ampSum, 1e-3));
+  float core = lip;
   // Far off, the white horses blur into a flecked, paler sea.
   float kc = keep(2.5, fp);
-  float foam = mix(0.07 * capWind * capWind, capWind * breaking * crest * mix(0.45, 1.0, front) * bubbles, kc);
+  float foam = mix(0.05 * capWind * capWind, blot * max(web, core) * clamp(0.7 + 0.2 * tex + 0.25 * lip, 0.0, 1.0), kc);
   // The foam a breaker leaves behind as the crest runs on: fainter, on its back.
   float trailN = noise3(vec3((alongWave + 1.4) / 2.2, across / 9.0, uTime / 2.5 - 0.35)) * 0.65 +
     noise3(vec3((alongWave + 1.4) / 0.9, across / 3.5, uTime / 1.3 - 0.4) + 7.3) * 0.35;
-  float trail = capWind * smoothstep(0.55 - 0.5 * capWind, 0.78 - 0.5 * capWind, trailN) *
-    smoothstep(-0.25, 0.25, hp / max(ampSum, 1e-3)) * (1.0 - front) * bubbles * 0.45 * kc;
+  float trailD = capWind * smoothstep(0.62 - more, 0.8 - more, trailN) *
+    smoothstep(-0.25, 0.25, hp / max(ampSum, 1e-3)) * (1.0 - front);
+  // ...torn into a thinning web of bubble walls, not a sheet.
+  float trailMask = smoothstep(0.35 - soft, 0.35 + soft, trailD * (0.4 + 0.8 * tex));
+  float wallT = 0.03 + 0.08 * trailD;
+  float trailWeb = mix(min(1.0, wallT * 2.4), 1.0 - smoothstep(wallT - softW, wallT + softW, abs(wn)), keep(0.8, fp));
+  float trail = trailMask * max(trailWeb * (0.55 + 0.3 * tex), 0.04 + 0.07 * tex) * kc; // a milky film between the walls
   // In a gale (Bft 7 and up) the foam gets blown into thin streaks along the wind.
   float gale = smoothstep(12.5, 17.0, uWindSpeed * g);
   float streakN = noise3(vec3((along - drift) / 30.0, across / 0.45, uTime * 0.015));
   float streak = smoothstep(0.55, 0.8, streakN) * gale * keep(1.5, fp);
   float shoreFoam = smoothstep(uShoreZ + 6.0, uShoreZ + 1.0, vWorld.z) * (0.5 + 0.5 * sin(uTime * 0.8 + xz.x * 0.05));
-  col = mix(col, vec3(0.92, 0.95, 0.97), clamp(foam * 0.9 + trail + shoreFoam * 0.6 + streak * 0.3, 0.0, 1.0));
+  col = mix(col, vec3(0.94, 0.97, 0.99), clamp(foam + trail + shoreFoam * 0.6 + streak * 0.3, 0.0, 1.0));
   float fog = 1.0 - exp(-uFogDensity * uFogDensity * camDist * camDist);
   col = mix(col, uFogColor, fog);
   gl_FragColor = vec4(col, 1.0);

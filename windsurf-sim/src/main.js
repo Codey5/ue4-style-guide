@@ -296,8 +296,7 @@ function frame(now) {
       lastLanding = sim.landing;
       const hit = sim.landing.hit;
       if (hit > 0.5) {
-        const fx = Math.cos(sim.yaw), fz = -Math.sin(sim.yaw);
-        effects.splash(new THREE.Vector3(sim.pos[0] - fx * 0.6, sim.pos[1] + 0.05, sim.pos[2] - fz * 0.6), clamp(0.25 + hit * 0.3, 0.3, 0.9));
+        effects.slap(sim, boardGroup, clamp(0.25 + hit * 0.3, 0.3, 0.9));
         audio.slap(clamp(hit / 2, 0.3, 1));
         rumbleKick = Math.max(rumbleKick, clamp(hit / 2.5, 0.25, 0.85));
       }
@@ -320,9 +319,9 @@ function frame(now) {
   boardGroup.updateMatrixWorld(true);
   rig.update(sim, dt, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);
   sailor.update(sim, rig, dt);
-  effects.update(paused ? 0 : dt, sim, boardGroup, sim.waves);
   camRig.update(dt, sim, sim.waves, view);
   water.update(view.t, camera);
+  effects.update(paused ? 0 : dt, sim, boardGroup, sim.waves, { camera, height: renderer.domElement.height, water, t: view.t });
   skyUniforms.uTime.value = view.t;
   world.update(view.t, sim.waves);
   windFx.update(paused ? 0 : dt, camera, sim.wind, view.t, sim.waves.height(camera.position.x, camera.position.z, view.t));
@@ -364,6 +363,6 @@ function frame(now) {
   }
 
   renderer.render(scene, camera);
-  window.__beamReach = { sim, controls: lastControls, paused, lesson };
+  window.__beamReach = { sim, controls: lastControls, paused, lesson, effects, boardGroup, water, camera, renderer };
 }
 requestAnimationFrame(frame);
