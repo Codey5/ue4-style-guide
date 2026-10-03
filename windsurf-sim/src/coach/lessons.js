@@ -387,6 +387,46 @@ export const LESSONS = [
       },
     ],
   },
+  {
+    id: 'tuning',
+    title: 'Tuning the rig',
+    summary: 'Harness lines over the draft, and downhaul for a windy day. The lesson retunes your rig as you sail so you can feel each change.',
+    setup: { boardId: 'free115', sailArea: 6.3, wind: { speedKn: 16, gustiness: 0.15, shifts: 0.1, chop: 0.8 }, start: 'sailing', tune: { linesPos: -0.1 } },
+    steps: [
+      {
+        say: 'Your harness lines are set 10 cm too far forward. Get planing on a beam reach, hooked in and in both straps.',
+        run: (x) => x.coach.sail(x.dt, { twa: 105, pump: true, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => strapsReady(sim, x, 15),
+      },
+      {
+        say: 'Watch the Hands bar. The sail\'s pull sits at its draft, behind your lines, so your back hand does the work the harness should. Over a long run, or in the gusts, that\'s what tires your forearms.',
+        minTime: 7,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 7,
+      },
+      {
+        say: 'On the beach you\'d move the lines back over the draft. Done: both hands go light and the harness takes the pull.',
+        enter: (sim) => sim.setTune({ linesPos: 0 }),
+        minTime: 6,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 6 && sim.sailor.hooked && Math.abs(sim.hands?.couple ?? 99) < 30,
+      },
+      {
+        say: 'The wind is building to 22 knots and gusty. On normal downhaul the gusts blow the draft back: the back hand loads up and the pull jerks you forward.',
+        enter: (sim) => sim.setWind({ speedKn: 22, gustiness: 0.6 }),
+        minTime: 8,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 8,
+      },
+      {
+        say: 'Maximum downhaul. The top of the sail twists open and spills the gusts, and the draft stays put: steadier, and faster when it\'s windy. In light wind you\'d ease it off again for power.',
+        enter: (sim) => sim.setTune({ downhaul: 1 }),
+        minTime: 8,
+        run: (x) => x.coach.sail(x.dt, { twa: 105, straps: true, hook: true, hike: 'auto' }),
+        done: (sim, x) => x.t > 8 && sim.state === S.SAILING,
+      },
+    ],
+  },
 ];
 
 export const findLesson = (id) => LESSONS.find((l) => l.id === id);

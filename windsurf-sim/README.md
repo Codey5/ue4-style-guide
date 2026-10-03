@@ -16,7 +16,7 @@ New to it, or to windsurfing? Open **Lessons** in the menu.
 
 ## Lessons
 
-Eight lessons, each with two modes:
+Nine lessons, each with two modes:
 
 - **Watch:** a coach sails the technique step by step, with a caption for each step. An on-screen controller shows exactly what the coach does with the sticks, triggers and buttons, in Xbox or PlayStation layout.
 - **Try it:** you sail the same lesson. The steps tick off as you complete them, and the same controller overlay shows your own inputs.
@@ -33,6 +33,9 @@ Press Y (△, or G on the keyboard) while watching to take over.
 | 6 | Waterstart | Freeride 115 L, 6.3 m², 16 kn |
 | 7 | Lean back against the pull (fore-and-aft balance, weight forward and back, broad reach) | Freeride 135 L, 7.0 m², 15 kn |
 | 8 | Gusts and catapults | Freeride 115 L, 6.3 m², 16 kn, with scripted gusts |
+| 9 | Tuning the rig (harness line position, downhaul) | Freeride 115 L, 6.3 m², 16 → 22 kn |
+
+In **Tuning the rig** the lesson retunes your rig while you sail: it starts with the harness lines 10 cm too far forward (watch the back hand do the harness's work), moves them back over the sail's draft, then builds the wind to a gusty 22 kn and pulls on maximum downhaul.
 
 In **Gusts and catapults** the coach first gets it wrong on purpose: hooked in, weight forward and the sail locked in, a gust catapults it over the boom (the coach takes the controls for that step even in Try it). Then it's your turn to ride a gust out: weight back and ease the sheet as it hits. If it catapults you, you're put straight back on the board for another go.
 
@@ -62,7 +65,9 @@ Sticks are relative to the board. Push the left stick where you want the mast ti
 | View / Share | Tab | Telemetry panel |
 | Menu / Options | Esc | Pause: conditions, gear, controls, technique |
 
-The in-game **Technique** tab walks through uphauling, steering, getting planing, harness and straps, hanging off the rig, leaning back against the pull, gusts and catapults, the broad reach, tacking, the carve gybe and the waterstart, with a glossary.
+The in-game **Technique** tab walks through uphauling, steering, getting planing, harness and straps, hanging off the rig, leaning back against the pull, gusts and catapults, tuning the rig, what the rumble tells you, the broad reach, tacking, the carve gybe and the waterstart, with a glossary.
+
+**Rumble** (Chrome and Edge): the low motor carries the sail's load and thumps as a gust fills the sail, and pulses harder and harder as the pull tips you toward your toes before a catapult (about half a second of warning). The high motor carries the chop and a fluttering luff, buzzes as the fin nears a spin-out, and pulses when a hand is about to lose its grip.
 
 ## What's simulated
 
@@ -79,6 +84,7 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 - Soft-sail lift/drag polar with luffing below about 5°, a gentle stall past 23°, flat-plate behaviour beyond, and a weaker inverted-camber response when backwinded.
 - The leech twists open as dynamic pressure rises, which is the sail's own gust depower.
 - Raking the rig back and keeping it upright closes the foot gap and raises the effective aspect ratio.
+- Rig tuning (Gear menu). **Outhaul** sets the depth: loose is fuller (more lift for planing early, but more camber drag and the draft further back), tight is flatter. **Downhaul** sets how the leech twists open under load: more twist off for a windy day, a tight leech for grunt in light wind, and with too little the draft blows back in gusts (more drag, a heavier back hand).
 - The force acts at each strip's centre of pressure. Steering comes from the centre of effort moving relative to the fin and daggerboard (rake forward = bear away, sheet in = head up). Leaning the rig to windward gives vertical lift that unweights the board. With the boom eased on a broad reach, the same lean mostly tips the force upward and costs drive.
 
 **Hull**
@@ -115,6 +121,8 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 - **Catapults.** Hooked in, the lines can't give. A gust's extra pull arrives faster than you can lean back, tips you over your front foot, and the harness launches you over the boom. Weight back and easing the sheet as the gust hits lets you ride it out. Unhooked, your arms give first: the rig rakes forward, and if it keeps dragging you forward you let go with the back hand. Lean back with too little pull to hold you (a lull) and you sit down off the back of the board.
 - Too little hike for the power and you're pulled over sideways (a catapult if you're hooked in and fast). Hang out with more weight than the sail is pulling and the rig comes over on top of you: you fall in to windward.
 - You can pull yourself back upright on the boom, since the rig is pinned at the mast foot.
+- **Hands and harness lines.** The sail's pull sits at its draft, part way along the boom. Hooked in with the lines over that point, the harness takes it all and the hands only steady the rig. Lines forward of it leave the back hand pulling a couple (the front pushing); lines behind it load the front hand, and the sail sheets in on you. The hands can't hold the boom quite still against that, and the extra load drains your forearms. Gusts blow the draft back, so a rig balanced in a lull goes back-hand heavy in a gust. The HUD's Hands bar shows front and back.
+- **Mast foot** position (Gear menu): forward puts its weight and the mast-foot pressure further forward (nose down, more control, the rig's pull ahead of the fin); back frees the board for speed.
 - Unhooked, your forearms tire and a big gust rips the sail out of your back hand. The harness takes the load off your arms but won't let you escape a gust.
 - Hooked in and in the straps, the stance pulls the rig back, and harness load goes into the mast foot (mast-foot pressure keeps the nose down).
 
@@ -127,7 +135,7 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 ### Validation
 
-`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers, and fails if bearing away from a beam reach to 130° costs more than 10% of the speed, or if a gust doesn't catapult a sailor with weight forward and the sail locked in (or does catapult one who sinks back and eases the sheet). Typical results (75 kg, 183 cm sailor):
+`npm test` runs the board through steady-state checks with an autopilot sailor (auto-hike on, no gusts) plus scripted maneuvers, and fails if bearing away from a beam reach to 130° costs more than 10% of the speed, or if a gust doesn't catapult a sailor with weight forward and the sail locked in (or does catapult one who sinks back and eases the sheet), or if the controller doesn't warn before the catapult, or if a rig-tuning setting doesn't have the effect below. Typical results (75 kg, 183 cm sailor):
 
 | Setup | Result | Real-world reference |
 | --- | --- | --- |
@@ -144,6 +152,17 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 | 115 L, 6.3 m², 16 kn, planing hooked in, gust to 24 kn | weight forward, sail locked in: catapulted. Weight back, sheet eased: rides it out | Why you sheet out and sink back in a gust |
 | 210 L beginner, 5.3 m², 8 kn | 4.5 kn, can sail 55° upwind | Daggerboard boards point in light wind |
 | 95 L board, 85 kg sailor | refuses to float you standing still | A sinker |
+
+Rig tuning, same board and sail (`node tools/physics-check.mjs tune`):
+
+| Change | Effect |
+| --- | --- |
+| Outhaul loose / tight, 12 kn | 15.6 kn planing / 7.1 kn, not planing |
+| Outhaul loose, 16 kn | back hand 83 N instead of 37 N (the draft further back) |
+| Downhaul maximum / light, gusty 22 kn | 20.3 / 18.7 kn |
+| Downhaul light / maximum, 12 kn | 9.0 / 7.4 kn |
+| Mast foot 10 cm back / forward, 22 kn | 20.7 kn, trim 1.9° / 17.9 kn, trim 1.5° |
+| Harness lines 10 cm forward / back, 16 kn | hands 39 / 118 N (front / back) / 91 / 30 N |
 
 `npm run drag` prints the hull resistance curve, which shows the hump and the effect of stance.
 

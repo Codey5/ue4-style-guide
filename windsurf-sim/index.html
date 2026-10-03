@@ -82,6 +82,12 @@ body {
 .bar.hike .fill { background: var(--wind); }
 .bar.arms .fill { background: var(--good); }
 .bar.pull .fill { background: var(--warn); }
+.bar .track.split { position: relative; }
+.bar .track.split::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(233,242,245,.45); }
+.bar .track.split .fill { position: absolute; top: 0; }
+#f-handF { right: 50%; border-radius: 3px 0 0 3px; }
+#f-handB { left: 50%; border-radius: 0 3px 3px 0; }
+.bar.pull.heavy .fill { background: var(--bad); }
 .bar .v { font: 11px var(--mono); color: var(--ink); float: right; }
 .balance.alarm { border-color: var(--bad); }
 
@@ -261,7 +267,7 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
     <div class="bars">
       <div class="bar sheet"><span class="label">Sheet</span><span class="v num" id="v-sheet">0</span><div class="track"><div class="fill" id="f-sheet"></div></div></div>
       <div class="bar hike"><span class="label">Hike</span><span class="v num" id="v-hike">0</span><div class="track"><div class="fill" id="f-hike"></div></div></div>
-      <div class="bar pull"><span class="label">Pull</span><span class="v num" id="v-pull">0 N</span><div class="track"><div class="fill" id="f-pull"></div></div></div>
+      <div class="bar pull" title="Load in your front and back hand"><span class="label">Hands</span><span class="v num" id="v-pull">0 · 0 N</span><div class="track split"><div class="fill" id="f-handF"></div><div class="fill" id="f-handB"></div></div></div>
       <div class="bar arms"><span class="label">Forearms</span><span class="v num" id="v-arms">100%</span><div class="track"><div class="fill" id="f-arms"></div></div></div>
     </div>
   </section>

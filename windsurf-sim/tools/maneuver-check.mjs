@@ -102,8 +102,11 @@ const lastEvents = (sim, n = 6) => sim.events.slice(-n).map((e) => `[${e.t.toFix
 const gustRun = (technique) => {
   const sim = new Sim({ boardId: 'free115', sailArea: 6.3, wind: { speedKn: 16, gustiness: 0, shifts: 0 }, start: 'sailing', assists: { autoHike: true } });
   const coach = new Coach(sim);
-  let lock, settled = null;
+  let lock, settled = null, warnAt = null, steadyFeel = 0;
   run(sim, 30, (s) => {
+    // The controller's warning (fore-and-aft load) before anything happens.
+    if (s.feel && s.t > 10 && s.t < 23.5) steadyFeel = Math.max(steadyFeel, s.feel.pitch, s.feel.lateral);
+    if (warnAt === null && s.t > 23.5 && s.feel?.pitch > 0.5) warnAt = s.t;
     s.wind.boost = s.t < 24 ? 0 : 0.5 * clamp((s.t - 24) / 0.6, 0, 1);
     if (s.state !== S.SAILING) return emptyControls();
     const c = coach.sail(DT, { twa: 105, straps: true, hook: true, hike: 'auto' });
@@ -113,7 +116,7 @@ const gustRun = (technique) => {
     return c;
   });
   const fall = sim.events.find((e) => e.type === 'fall');
-  return { sim, settled, fall, type: fall ? sim.sailor.fallType : null };
+  return { sim, settled, fall, type: fall ? sim.sailor.fallType : null, warnAt, steadyFeel };
 };
 {
   const { settled } = gustRun('ride');
@@ -123,6 +126,9 @@ const gustRun = (technique) => {
 {
   const r = gustRun('locked');
   report('gust, weight forward and sail locked in -> catapult', r.type === 'catapult', lastEvents(r.sim, 2));
+  const lead = r.fall && r.warnAt !== null ? r.fall.t - r.warnAt : 0;
+  report('rumble: quiet planing steadily, warns before the catapult', r.steadyFeel < 0.05 && lead > 0.25,
+    `steady ${r.steadyFeel.toFixed(2)}, warning ${lead.toFixed(2)} s before`);
 }
 {
   const r = gustRun('ride');

@@ -21,6 +21,11 @@ const linesLabel = (s) => {
   const inch = Math.round((s.height * LINES_RATIO) / 2.54 + (s.linesRel ?? 0));
   return `${inch} in · ${Math.round(inch * 2.54)} cm`;
 };
+const cmLabel = (v, fwd, back, zero) => (v === 0 ? zero : `${Math.abs(v)} cm ${v < 0 ? fwd : back}`);
+const linesPosLabel = (s) => cmLabel(s.tuneLines ?? 0, 'forward', 'back', 'standard');
+const mastLabel = (s) => cmLabel(s.tuneMast ?? 0, 'back', 'forward', 'middle of the track');
+const HAUL = { downhaul: ['light', 'a touch light', 'normal', 'firm', 'maximum'], outhaul: ['loose · full', 'a touch loose', 'normal', 'firm', 'tight · flat'] };
+const haulLabel = (key, v) => HAUL[key][Math.round((v + 1) * 2)];
 export const recommendedSail = (massKg, windKn) => (massKg * 1.34) / Math.max(windKn, 5);
 
 const TECHNIQUE = `
@@ -53,6 +58,11 @@ const TECHNIQUE = `
 <h3>Gusts and catapults</h3>
 <p>Hooked in, the harness lines can't give. When a gust hits, its extra pull tips you over your front foot faster than you can lean back, and the lines launch you over the boom: a catapult. The stance panel goes amber, then red. As a gust reaches you, sink your weight back (right stick down) and ease the sheet (RT) to spill the extra power, then sheet back in as it passes. Gusts show as dark patches on the water upwind, so get ready before they arrive.</p>
 <p>Unhooked, your arms give first: the rig rakes forward, and if the pull keeps dragging you forward you let go with the back hand. In a lull, ease your lean back or you sit down off the tail.</p>
+<h3>Tuning the rig</h3>
+<p>Set up on the beach, in the Gear menu. <b>Harness lines</b> belong over the sail's draft: then both hands go light and the harness takes the pull (watch the Hands bar). Forward of it the back hand pulls and tires; behind it the front hand does and the sail sheets in on you. Gusts blow the draft back, so a rig balanced in a lull goes back-hand heavy in a gust.</p>
+<p><b>Downhaul</b> sets how much the top of the sail twists open under load: more for a windy, gusty day (steadier and faster), less in light wind for power. <b>Outhaul</b> sets the depth: loose and full to plane early, tight and flat for less drag and a draft that stays forward. <b>Mast foot</b> forward keeps the nose down for control; back frees the board up for speed.</p>
+<h3>Feel it through the controller</h3>
+<p>With rumble on, the low motor carries the sail's load and thumps as a gust fills the sail; it pulses, harder and harder, as the pull tips you toward your toes before a catapult. The high motor buzzes as the fin nears a spin-out and pulses when a hand is about to lose its grip.</p>
 <h3>Speed on a broad reach</h3>
 <p>Once planing, a broad reach (about 120–135° to the wind) is the fastest point of sail: the sail's pull points forward instead of over the side, so you're no longer overpowered. Keep the rig fairly upright, with only enough windward lean to keep the boom within reach (with the boom eased, leaning it more just tips the sail's force upward), sheet in close to the stall and sit back on the tail (right stick down) so the board rides on less water.</p>
 <p>Bear away much further and the apparent wind gets lighter as it swings behind you. In a moderate breeze you drop off the plane somewhere past 135°; it takes more wind to plane deep downwind.</p>
@@ -198,6 +208,12 @@ export class Menu {
         ${slider('boom', 'Boom height', -12, 16, 1, s.boomRel, boomLabel(s))}
         ${slider('lines', 'Harness lines', -6, 6, 1, s.linesRel ?? 0, linesLabel(s))}
         <p class="muted">How far out you can hang decides how much power you can hold. Unhooked, it's your arms; hooked in, it's the harness lines. Longer lines let you hang further out but take the boom further from your hands; shorter lines keep you upright and close to the rig. A higher boom lets you lean further out on straight arms but needs longer lines, or the hook won't reach. Leaning the rig to windward brings the boom out over the water to you.</p>
+        <h3>Rig tuning</h3>
+        ${slider('tlines', 'Harness line position', -10, 10, 1, s.tuneLines ?? 0, linesPosLabel(s))}
+        ${slider('tmast', 'Mast foot', -10, 10, 1, s.tuneMast ?? 0, mastLabel(s))}
+        ${slider('downhaul', 'Downhaul', -1, 1, 0.5, s.downhaul ?? 0, haulLabel('downhaul', s.downhaul ?? 0))}
+        ${slider('outhaul', 'Outhaul', -1, 1, 0.5, s.outhaul ?? 0, haulLabel('outhaul', s.outhaul ?? 0))}
+        <p class="muted">Harness lines balanced over the sail's draft leave both hands light (watch the Hands bar). Too far forward and the back hand pulls; too far back and the front hand does, and the sail sheets in on you. The mast foot forward keeps the nose down for control and pointing; back frees the board up for speed. More downhaul twists the top of the sail open: less low-end power, but faster and steadier when it's windy and gusty. A tight outhaul flattens the sail: less power and drag, the draft forward; a loose one is fuller, for planing early, but draggy and back-hand heavy at speed.</p>
         <h3>Assists</h3>
         ${toggle('autohike', 'Auto-hike: the game balances your body against the pull (LT is ignored)', s.autoHike)}
         ${toggle('nofalls', 'No falls: you never get pulled over or fall back', s.noFalls)}
@@ -210,7 +226,7 @@ export class Menu {
           ${CONTROL_MAP.map(([pad, kb, what]) => `<tr><td>${pad}</td><td>${kb}</td><td>${what}</td></tr>`).join('')}
         </tbody></table></div>
         <h3>Options</h3>
-        ${toggle('rumble', 'Rumble: feel the load in the sail and the chop under the board', s.rumble)}
+        ${toggle('rumble', 'Rumble: feel the load in the sail, gusts arriving and the chop; pulses warn of a catapult coming, a fin about to spin out or a hand losing its grip', s.rumble)}
         ${toggle('invert', 'Invert rig rake (stick up = rig back)', s.invertRake)}
         ${toggle('particles', 'Wind particles: specks drifting with the wind', s.windParticles)}
         ${toggle('shake', 'Camera sway over chop', s.cameraShake)}
@@ -259,6 +275,10 @@ export class Menu {
     });
     range('lines', 'linesRel', () => '', (v) => { s.linesRel = v; $('lines-out').textContent = linesLabel(s); h.gear(); });
     range('boom', 'boomRel', () => '', (v) => { s.boomRel = v; $('boom-out').textContent = boomLabel(s); h.gear(); });
+    range('tlines', 'tuneLines', () => '', (v) => { s.tuneLines = v; $('tlines-out').textContent = linesPosLabel(s); h.gear(); });
+    range('tmast', 'tuneMast', () => '', (v) => { s.tuneMast = v; $('tmast-out').textContent = mastLabel(s); h.gear(); });
+    range('downhaul', 'downhaul', (v) => haulLabel('downhaul', v), (v) => { s.downhaul = v; h.gear(); });
+    range('outhaul', 'outhaul', (v) => haulLabel('outhaul', v), (v) => { s.outhaul = v; h.gear(); });
     range('volume', 'volume', (v) => `${Math.round(v * 100)}%`, (v) => { s.volume = v; h.options(); });
     for (const card of this.content.querySelectorAll('[data-board]')) {
       card.addEventListener('click', () => { s.boardId = card.dataset.board; h.gear(); this.render(); });

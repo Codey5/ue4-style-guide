@@ -118,7 +118,11 @@ export class Hud {
     const pull = sim.handForce ?? 0;
     $('f-sheet').style.width = `${(controls.sheet * 100).toFixed(0)}%`;
     $('f-hike').style.width = `${(controls.hike * 100).toFixed(0)}%`;
-    $('f-pull').style.width = `${clamp(pull / 800, 0, 1) * 100}%`;
+    // Hands: front | back, each from the middle out (hooked in, only what the lines don't balance).
+    const hands = sim.state === S.SAILING ? sim.hands : null;
+    $('f-handF').style.width = `${clamp((hands?.front ?? 0) / 500, 0, 1) * 50}%`;
+    $('f-handB').style.width = `${clamp((hands?.back ?? 0) / 500, 0, 1) * 50}%`;
+    $('f-handB').parentElement.parentElement.classList.toggle('heavy', (sim.feel?.hand ?? 0) > 0.4);
     $('f-arms').style.width = `${(sim.sailor.stamina * 100).toFixed(0)}%`;
 
     this.textTimer -= dt;
@@ -146,7 +150,7 @@ export class Hud {
     $('bal-text').textContent = holding ? `lean ${(sim.sailor.beta * RAD).toFixed(0)}°${sim.state === S.SAILING && sim.betaMax !== undefined ? ` of ${(sim.betaMax * RAD).toFixed(0)}°` : ''}` : '—';
     $('v-sheet').textContent = (controls.sheet * 100).toFixed(0);
     $('v-hike').textContent = (controls.hike * 100).toFixed(0);
-    $('v-pull').textContent = `${pull.toFixed(0)} N`;
+    $('v-pull').textContent = hands ? `${hands.front.toFixed(0)} · ${hands.back.toFixed(0)} N` : `${pull.toFixed(0)} N`;
     $('v-arms').textContent = `${(sim.sailor.stamina * 100).toFixed(0)}%`;
     this.drawStance(sim);
     this.drawHints(sim, input);

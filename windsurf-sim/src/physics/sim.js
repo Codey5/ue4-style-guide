@@ -18,7 +18,7 @@ import { buildSailGeometry, sailForces } from './sail.js';
 import { foilPolar, planingSolve } from './hull.js';
 import {
   bodyContext, boomGrips, comDistAt, comDistPhi, comFwdAt, leanFor, leverAt, leverTable, phiForFwd, pitchTable, poseBody, reachLimit,
-  gripCenterX, reachPhi, stance,
+  boomStations, gripCenterX, reachPhi, stance,
 } from './body.js';
 import { S } from './states.js';
 
@@ -31,6 +31,22 @@ const ON_BOARD = new Set([S.SAILING, S.SECURE, S.TACK, S.FLIP, S.UPHAUL]);
 const HOLDS_BOOM = new Set([S.SAILING, S.TACK, S.FLIP]);
 
 export const BEACH_Z = -260; // the shoreline runs east-west, north of the start
+
+/** Standard harness line centre, as a fraction of the boom from the mast (see body.js). */
+const LINES_AT = 0.38;
+/** Typical ratio of the loaded sail's centre of pressure to its area centroid (calibrates handLoads). */
+const CE_REF = 1.02;
+/**
+ * Rig tuning. linesPos: harness lines' centre, metres back along the boom
+ * from the standard spot; mastPos: mast foot, metres forward in its track
+ * from the middle; downhaul and outhaul: -1..1 (see sail.js sailTune).
+ */
+export function normTune(t = {}) {
+  return {
+    linesPos: clamp(t.linesPos ?? 0, -0.1, 0.1), mastPos: clamp(t.mastPos ?? 0, -0.1, 0.1),
+    downhaul: clamp(t.downhaul ?? 0, -1, 1), outhaul: clamp(t.outhaul ?? 0, -1, 1),
+  };
+}
 
 /** Normalised controls the sim consumes (see ui/input.js for the mapping). */
 export function emptyControls() {
@@ -56,6 +72,7 @@ export class Sim {
     this.assists = { autoHike: false, noFalls: false, ...(opts.assists ?? {}) };
     this.events = [];
     this.t = 0;
+    this.tune = normTune(opts.tune);
     this.setGear(opts.boardId ?? 'free135', opts.sailArea ?? 7, opts.sailorMass ?? DEFAULT_SAILOR.mass,
       opts.sailorHeight ?? DEFAULT_SAILOR.height, opts.boomHeight, opts.harnessLines);
     this.reset(opts.start ?? 'secure');
@@ -66,16 +83,27 @@ export class Sim {
    * harnessLines: loop length (m); defaults to 0.45 × body height (32" for a 183 cm sailor).
    */
   setGear(boardId, sailArea, sailorMass, sailorHeight = DEFAULT_SAILOR.height, boomHeight, harnessLines) {
-    this.board = findBoard(boardId);
+    this.baseBoard = findBoard(boardId);
     this.sail = findSail(sailArea);
     this.sailorMass = sailorMass;
     this.sailorHeight = clamp(sailorHeight, 1.5, 2.05);
     this.boomHeight = clamp(boomHeight ?? BOOM_RATIO * this.sailorHeight, 1.0, 1.75);
     this.harnessLines = clamp(harnessLines ?? LINES_RATIO * this.sailorHeight, 0.5, 1.0);
     this.sailGeo = buildSailGeometry(this.sail, this.boomHeight);
-    this.bodyGeo = null;
+    this.setTune(this.tune);
     this.daggerDown = !!this.board.dagger;
     this.prevPoints = null;
+  }
+
+  /**
+   * Rig tuning (see normTune): where the mast foot sits in its track and the
+   * harness lines on the boom, and the downhaul and outhaul on the sail.
+   */
+  setTune(t) {
+    this.tune = normTune({ ...this.tune, ...t });
+    this.board = { ...this.baseBoard, mastFootX: this.baseBoard.mastFootX + this.tune.mastPos };
+    this.sailGeo.linesPos = this.tune.linesPos;
+    this.bodyGeo = null;
   }
 
   get totalMass() {
@@ -182,7 +210,7 @@ export class Sim {
       aero = sailForces(this.sailGeo, {
         R, pos: this.pos, vel: this.vel, yawRate: this.yawRate, mastFoot,
         rake: rig.rake, lean: rig.lean, boom: rig.boom, side: rig.side, dt,
-        prevPoints: this.prevPoints, waterLevel: waterY, qEstimate: this.lastQ ?? 30,
+        prevPoints: this.prevPoints, waterLevel: waterY, qEstimate: this.lastQ ?? 30, tune: this.tune,
         windAt: (pt, h) => this.wind.sample(pt[0], h, pt[2], this.t),
       });
       this.prevPoints = aero.points;
@@ -214,6 +242,7 @@ export class Sim {
     this.tipAero = tipAero * transmit;
     const handForce = Math.max(0, tauPull) / (this.boomHeight + deckY);
     this.handForce = handForce;
+    this.hands = this.handLoads(handForce);
 
     // ---- Vertical load and its fore/aft centre (drives planing trim).
     const rigOnBoard = mR * rig.up;
@@ -354,6 +383,7 @@ export class Sim {
 
     // ---- Sailor balance.
     this.updateBalance(dt, ctl, tauPull, handForce, p, speed, sailorOnBoard);
+    this.updateFeel(dt, speed);
 
     // ---- Sinking boards.
     if (sailorOnBoard && hull.sinking > 0.012 && this.state !== S.FALLING) {
@@ -387,6 +417,66 @@ export class Sim {
       awSpeed: aero ? Math.hypot(...aero.awMid) : 0,
       alpha: aero ? aero.alphaMid : 0,
     };
+  }
+
+  /**
+   * How the rig's pull is shared between the hands and the harness lines.
+   * The sail's load sits at its draft, part way back along the boom; held at
+   * a different point, the hands have to add a twisting couple. Harness
+   * lines forward of that balance point leave the back hand pulling (and
+   * the front hand pushing); lines behind it load the front hand and the
+   * sail wants to sheet in. Gusts blow the draft back (less so with more
+   * downhaul), so a rig balanced in a lull gets back-hand heavy in a gust.
+   * Returns {front, back} (N, pulling), the balance point and the lines (m
+   * from the mast) and the couple's hand force (+ = back hand).
+   */
+  handLoads(P) {
+    const geo = this.sailGeo, s = this.sailor, L = geo.def.boom;
+    const hooked = s.hooked && this.state === S.SAILING;
+    const st = this.bodyGeo?.stations ?? boomStations(geo, hooked, this.rig.boom);
+    const span = Math.max(0.3, st.back - st.front);
+    // The balance point moves with the sail's centre of pressure; the
+    // standard harness line position (a third of the way along) is where it
+    // sits sailing powered up with a normal tune.
+    const ce = this.aero ? this.aero.ceChord : geo.ceChord * CE_REF;
+    const balance = LINES_AT * L * (ce / (geo.ceChord * CE_REF));
+    const lines = 0.5 * (st.lineA + st.lineB);
+    if (!hooked) {
+      const back = P * clamp((balance - st.front) / span, 0, 1);
+      return { front: P - back, back, balance, lines, couple: 0 };
+    }
+    const couple = (P * (balance - lines)) / span;
+    return { front: Math.max(0, -couple) + 0.07 * P, back: Math.max(0, couple) + 0.07 * P, balance, lines, couple };
+  }
+
+  /**
+   * What you feel through the rig and the board, 0..1 each (drives the
+   * controller rumble): the pull nearing what leaning back on your toes can
+   * hold, sideways load at the limit of your hike, the fin close to letting
+   * go, a hand close to losing its grip, and a gust arriving in the sail.
+   */
+  updateFeel(dt, speed) {
+    const s = this.sailor, sailing = this.state === S.SAILING;
+    const pb = sailing ? this.pitchBalance : null;
+    let pitch = 0;
+    if (pb && pb.toe > 0.05) {
+      const copNeed = pb.comX + pb.tip / (this.sailorMass * G);
+      pitch = clamp((copNeed - 0.45 * pb.toe) / (0.55 * pb.toe), 0, 1.5);
+    }
+    const bal = this.balance;
+    // (sideways: the pull past what your weight, hanging as far out as you reach, and your core can hold)
+    const capacity = bal ? this.sailorMass * G * Math.max(0.1, bal.leverMax ?? 0.5) + 0.6 * bal.tauMax : 1;
+    const lateral = sailing && bal ? clamp((bal.tauPull / capacity - 1.2) / 0.3, 0, 1) : 0;
+    const fin = sailing && speed > 4 ? (this.finVentilated ? 1 : smoothstep(0.75, 1, this.finMargin ?? 0)) : 0;
+    const grip = 250 + 400 * s.stamina;
+    const h = this.hands;
+    const handLoad = h ? (s.hooked ? Math.max(h.back, h.front) * 2.2 : h.back * 1.25) : 0;
+    const hand = sailing ? smoothstep(0.6, 1, handLoad / grip) : 0;
+    // (a gust: the sail's load rising faster than a moment ago, ~3 s average)
+    const q = this.aero ? this.aero.qMean : 0;
+    this.feelQ = damp(this.feelQ ?? q, q, 3, dt);
+    const gust = sailing && this.stateTime > 2 ? clamp((q - this.feelQ) / 20, 0, 1) : 0;
+    this.feel = { pitch, lateral, fin, hand, gust };
   }
 
   /** Where the sailor's weight goes through the feet, board x. */
@@ -426,6 +516,7 @@ export class Sim {
       const carving = smoothstep(0.2, 0.5, Math.abs(this.yawRate));
       const vent = 0.92 - 0.07 * Math.max(0, tauDeg - 4.5) - Math.min(0.3, 0.015 * Math.max(0, windwardRoll - 6)) * (1 - carving) -
         0.1 * this.waves.hs - (this.sailor.straps === 2 && this.sailor.leanX < -0.08 ? 0.08 : 0);
+      this.finMargin = demand / Math.max(0.2, vent);
       if (!this.finVentilated && sp > 5 && demand > vent && HOLDS_BOOM.has(this.state)) {
         this.finVentilated = true;
         this.spinoutTime = 0;
@@ -731,6 +822,11 @@ export class Sim {
       const leanCmd = ctl.lean * 34 * DEG + s.side * (clamp(s.hang / 900, 0, 1) * 45 * DEG - (s.reachIn ?? 0) * 1.5);
       let sheet = ctl.sheet;
       if (s.gripLost > 0) sheet *= 0.45; // the back hand slips: the sail opens and dumps power
+      // Hooked in with the lines off the balance point, the hands can't hold
+      // the boom quite where you want it: a heavy back hand lets the sail
+      // open, a heavy front hand lets it sheet in on you.
+      const c = s.hooked ? this.hands?.couple ?? 0 : 0;
+      if (c) sheet = clamp(sheet - (c > 0 ? 0.3 : 0.2) * c / (250 + 400 * s.stamina), 0, 1);
       let open = boomOpen(sheet);
       let rakePump = 0;
       if (ctl.pump && s.stamina > 0.05) {
@@ -878,7 +974,7 @@ export class Sim {
         leanX: s.leanX, hooked, onBoom, hands: g && { f: g.f, b: g.b }, lines: g && { a: g.lineA, b: g.lineB },
         lineLength: this.harnessLines, phi: onBoom ? reachPhi(s.phi) : 0,
       });
-      return { ctx, ...(onBoom ? reachLimit(ctx) : { betaMax: 30 * DEG, betaMin: -30 * DEG, fits: true }) };
+      return { ctx, st: g?.st, ...(onBoom ? reachLimit(ctx) : { betaMax: 30 * DEG, betaMin: -30 * DEG, fits: true }) };
     };
     const now = solve(s.hooked && onBoom);
     this.hookReach = onBoom && !s.hooked ? solve(true) : null;
@@ -887,7 +983,7 @@ export class Sim {
     const body = poseBody(now.ctx, s.beta, s.phi);
     const attach = onBoom && s.hooked ? body.hook : now.ctx.hands ? scale(add(now.ctx.hands.f, now.ctx.hands.b), 0.5) : body.mid;
     return {
-      ctx: now.ctx, betaMax: now.betaMax, betaMin: now.betaMin, fits: now.fits, hookReach: this.hookReach,
+      ctx: now.ctx, betaMax: now.betaMax, betaMin: now.betaMin, fits: now.fits, hookReach: this.hookReach, stations: now.st,
       pitch: pitchTable(now.ctx, s.beta), attachH: attach[1] - this.board.thickness,
       table: leverTable(now.ctx, -30 * DEG, Math.max(now.betaMax, 10 * DEG)),
     };
@@ -1092,7 +1188,9 @@ export class Sim {
     };
 
     // Arms: holding the rig unhooked burns the forearms; the harness takes most of it.
-    const armLoad = s.hooked ? handForce * 0.15 : handForce;
+    // Hooked in, what's left for the arms is steadying the rig plus whatever
+    // the harness lines don't balance (see handLoads).
+    const armLoad = s.hooked ? handForce * 0.1 + Math.abs(this.hands?.couple ?? 0) : handForce;
     const drain = Math.max(0, armLoad - 110) / 300 * 0.03 + (ctl.pump ? 0.05 : 0);
     s.stamina = clamp(s.stamina + (armLoad < 110 && !ctl.pump ? 0.045 : 0) * dt - drain * dt, 0, 1);
     s.gripLost = Math.max(0, s.gripLost - dt);

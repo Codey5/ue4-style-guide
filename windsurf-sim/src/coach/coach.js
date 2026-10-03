@@ -126,7 +126,8 @@ export class Coach {
     // then onto the tail at speed so the board rides on less water (furthest
     // back on a broad reach, where the fin is lightly loaded and won't spin out).
     const s = sim.sailor, b = sim.board;
-    const going = p > 0.95 && t.speed > 5.5;
+    // (properly planing for a moment first, or stepping back drops you off the plane)
+    const going = p > 0.95 && t.speed > 6 && sim.planingTime > 1;
     const wantBack = going && (o.straps || o.moveBack);
     // (walk right back first, so the front foot only has a short step back
     // into its strap: a long step back while leaning against the pull drops

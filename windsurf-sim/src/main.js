@@ -22,6 +22,7 @@ const STORE_KEY = 'beam-reach-settings-v2';
 const defaults = {
   windKn: 15, gustiness: 0.45, shifts: 0.5, chop: 1,
   boardId: 'free135', sailArea: 7.0, mass: 75, height: 183, boomRel: 0, linesRel: 0,
+  tuneLines: 0, tuneMast: 0, downhaul: 0, outhaul: 0, // rig tuning: cm along the boom / track, and -1..1
   autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
   windParticles: true, cameraShake: true,
 };
@@ -83,6 +84,10 @@ function makeSim(start, setup = null, watch = false) {
     // The coach does its own hiking and never uses the no-falls assist.
     assists: watch ? { autoHike: false, noFalls: false } : { autoHike: settings.autoHike, noFalls: settings.noFalls },
     start: setup?.start ?? start,
+    // Lessons sail a standard tune (or their own); free sailing, yours.
+    tune: setup ? setup.tune ?? {} : {
+      linesPos: settings.tuneLines / 100, mastPos: settings.tuneMast / 100, downhaul: settings.downhaul, outhaul: settings.outhaul,
+    },
   });
 }
 
@@ -323,18 +328,26 @@ function frame(now) {
   }
   if (!paused) audio.update(sim);
 
-  // Rumble: the low motor carries the load in the sail, the high motor the
-  // chatter of chop, a fluttering luff and a ventilating fin.
+  // Rumble: the low motor carries the load in the sail and what you'd feel
+  // through your body: a gust filling the sail, hiking at full stretch, and
+  // (pulsing, harder as it nears the limit) the pull tipping you over your
+  // toes before a catapult. The high motor carries the chatter of chop and a
+  // fluttering luff, a buzz as the fin nears spin-out, and a pulse when a
+  // hand is close to losing its grip.
   rumbleTimer -= dt;
   rumbleKick = Math.max(0, rumbleKick - dt * 2.5);
   if (rumbleTimer <= 0 && !paused) {
-    rumbleTimer = 0.1;
+    rumbleTimer = 0.06;
     const tel = sim.telemetry;
+    const f = sim.feel ?? {};
+    const pulse = Math.sin(sim.t * Math.PI * 2 * 5) > 0 ? 1 : 0.3;
     const load = clamp((sim.handForce - 60) / 700, 0, 1) ** 1.4;
     const luff = sim.aero ? clamp(1 - Math.abs(tel.alpha) * 57.3 / 7, 0, 1) * clamp(sim.aero.qMean / 25, 0, 1) : 0;
-    const strong = Math.max(load * 0.55, rumbleKick);
-    const weak = clamp(tel.planing * clamp(tel.speed / 14, 0, 1) * 0.18 + (sim.chopHit ?? 0) * 0.9 + luff * 0.25 + (sim.finVentilated ? 0.7 : 0), 0, 1);
-    input.rumble(strong, weak, 130);
+    const tip = f.pitch > 0 ? (0.25 + 0.65 * Math.min(1, f.pitch)) * pulse : 0;
+    const strong = Math.max(load * 0.45, rumbleKick, tip, (f.lateral ?? 0) * 0.45, (f.gust ?? 0) * 0.6);
+    const weak = clamp(tel.planing * clamp(tel.speed / 14, 0, 1) * 0.18 + (sim.chopHit ?? 0) * 0.9 + luff * 0.25 +
+      (sim.finVentilated ? 0.7 : (f.fin ?? 0) * 0.45) + (f.hand ?? 0) * 0.5 * pulse, 0, 1);
+    input.rumble(strong, weak, 90);
   }
 
   renderer.render(scene, camera);

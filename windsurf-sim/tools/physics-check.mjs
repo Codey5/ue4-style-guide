@@ -6,21 +6,25 @@ import { Autopilot } from './autopilot.mjs';
 
 const DT = 1 / 240;
 
-export function runSteady({ board = 'free135', sail = 7, mass = 75, wind = 16, twa = 100, seconds = 60, gust = 0, pump = false, straps = true, start = 'sailing', alpha }) {
-  const sim = new Sim({ boardId: board, sailArea: sail, sailorMass: mass, wind: { speedKn: wind, gustiness: gust, shifts: 0, chop: 1 }, start, assists: { autoHike: true } });
+export function runSteady({ board = 'free135', sail = 7, mass = 75, wind = 16, twa = 100, seconds = 60, gust = 0, pump = false, straps = true, start = 'sailing', alpha, tune }) {
+  const sim = new Sim({ boardId: board, sailArea: sail, sailorMass: mass, wind: { speedKn: wind, gustiness: gust, shifts: 0, chop: 1 }, start, assists: { autoHike: true }, tune });
   const ap = new Autopilot(sim, twa, { pump, straps, alpha, warmup: twa < 80 || twa > 120 ? 20 : 0 });
-  let falls = 0, sumKn = 0, n = 0, sumP = 0, maxKn = 0;
+  let falls = 0, sumKn = 0, n = 0, sumP = 0, maxKn = 0, sumTrim = 0, front = 0, back = 0;
   const fallTexts = [];
   for (let i = 0; i < seconds / DT; i++) {
     const c = ap.controls(DT);
+    const was = sim.state;
     sim.step(DT, c);
-    if (sim.state === S.FALLING && sim.stateTime < DT * 1.5) { falls++; fallTexts.push(sim.events.at(-1)?.text); }
+    if (sim.state === S.FALLING && was !== S.FALLING) { falls++; fallTexts.push(sim.events.at(-1)?.text); }
     if (sim.state === S.WATER) { sim.reset('sailing', sim.pos); }
-    if (i * DT > seconds * 0.6) { sumKn += sim.telemetry.kn; sumP += sim.telemetry.planing; n++; maxKn = Math.max(maxKn, sim.telemetry.kn); }
+    if (i * DT > seconds * 0.6) {
+      sumKn += sim.telemetry.kn; sumP += sim.telemetry.planing; n++; maxKn = Math.max(maxKn, sim.telemetry.kn);
+      sumTrim += sim.telemetry.trim; front += sim.hands?.front ?? 0; back += sim.hands?.back ?? 0;
+    }
   }
   const t = sim.telemetry;
   return {
-    kn: sumKn / n, maxKn, planing: sumP / n, falls, fallTexts,
+    kn: sumKn / n, maxKn, planing: sumP / n, falls, fallTexts, meanTrim: sumTrim / n / DEG, front: front / n, back: back / n,
     twa: sim.twa / DEG, leeway: t.leeway / DEG, trim: t.trim / DEG, alpha: t.alpha / DEG,
     sheet: ap.sheet, hand: sim.handForce, beta: sim.sailor.beta / DEG, straps: sim.sailor.straps, hooked: sim.sailor.hooked,
     drag: t.drag, rake: sim.rig.rake / DEG, finA: t.finAlpha / DEG, sim,
@@ -58,6 +62,29 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       ['16 kn: 130° keeps at least 90% of the beam-reach speed', polar['16/130'].kn >= 0.9 * polar['16/90'].kn && polar['16/130'].planing > 0.95],
       ['22 kn: 130° is faster than a beam reach', polar['22/130'].kn > polar['22/100'].kn],
       ['22 kn: still planing at 145°', polar['22/145'].planing > 0.95],
+    ];
+    for (const [name, ok] of checks) {
+      console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+      if (!ok) process.exitCode = 1;
+    }
+  }
+  if (!only || only === 'tune') {
+    // Rig tuning, 135 L / 7.0 m², 75 kg: each setting's trade-off, as sailors describe it.
+    console.log('\nRig tuning');
+    const T = (o) => { const r = runSteady(o); console.log(`  ${JSON.stringify(o.tune)} ${o.wind} kn${o.gust ? ' gusty' : ''}: ${fmt(r)} trim ${r.meanTrim.toFixed(1)} hands ${r.front.toFixed(0)}/${r.back.toFixed(0)} N`); return r; };
+    const full12 = T({ wind: 12, tune: { outhaul: -1 } }), flat12 = T({ wind: 12, tune: { outhaul: 1 } });
+    const full16 = T({ wind: 16, tune: { outhaul: -1 } }), norm16 = T({ wind: 16, tune: {} });
+    const dhLo = T({ wind: 22, gust: 0.6, tune: { downhaul: -1 } }), dhHi = T({ wind: 22, gust: 0.6, tune: { downhaul: 1 } });
+    const dhLo12 = T({ wind: 12, tune: { downhaul: -1 } }), dhHi12 = T({ wind: 12, tune: { downhaul: 1 } });
+    const mastBack = T({ wind: 22, tune: { mastPos: -0.1 } }), mastFwd = T({ wind: 22, tune: { mastPos: 0.1 } });
+    const linesFwd = T({ wind: 16, tune: { linesPos: -0.1 } }), linesBack = T({ wind: 16, tune: { linesPos: 0.1 } });
+    const checks = [
+      ['Outhaul: a full sail planes in 12 kn, a flat one doesn\'t', full12.planing > 0.95 && flat12.planing < 0.9],
+      ['Outhaul: a full sail is back-hand heavy once planing', full16.back > norm16.back + 25],
+      ['Downhaul: maximum is faster in a gusty 22 kn', dhHi.kn > dhLo.kn + 0.8 && dhHi.falls === 0],
+      ['Downhaul: light is more powerful in 12 kn', dhLo12.kn > dhHi12.kn + 1],
+      ['Mast foot: back is faster in 22 kn, forward rides nose-down', mastBack.kn > mastFwd.kn + 0.8 && mastFwd.meanTrim < mastBack.meanTrim],
+      ['Harness lines: forward loads the back hand, back loads the front hand', linesFwd.back > linesFwd.front + 40 && linesBack.front > linesBack.back + 40],
     ];
     for (const [name, ok] of checks) {
       console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);

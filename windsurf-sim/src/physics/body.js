@@ -55,7 +55,9 @@ export function boomStations(geo, hooked, boom = 0, center = undefined) {
     front = c - half;
     back = c + half;
   }
-  return { front, back: back + (front + 0.42 - back) * smoothstep(25 * DEG, 65 * DEG, Math.abs(boom)), lineA: 0.33 * L, lineB: 0.43 * L };
+  // The harness lines sit a third of the way along, moved by the rig's tune (geo.linesPos).
+  const lines = geo.linesPos ?? 0;
+  return { front, back: back + (front + 0.42 - back) * smoothstep(25 * DEG, 65 * DEG, Math.abs(boom)), lineA: 0.33 * L + lines, lineB: 0.43 * L + lines };
 }
 
 /**
@@ -73,7 +75,7 @@ export function boomGrips(board, rig, geo, hooked, centerX = undefined) {
     if (Math.abs(b1 - b0) > 0.05) center = x0 + (centerX - b0) / (b1 - b0) * (x1 - x0);
   }
   const st = boomStations(geo, hooked, rig.boom, center);
-  return { f: at(st.front), b: at(st.back), lineA: at(st.lineA), lineB: at(st.lineB) };
+  return { f: at(st.front), b: at(st.back), lineA: at(st.lineA), lineB: at(st.lineB), st };
 }
 
 /** Where along the board the hands centre for a stance: a little ahead of the feet. */
