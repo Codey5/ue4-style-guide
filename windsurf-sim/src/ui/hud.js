@@ -315,6 +315,12 @@ export class Hud {
           add(`${g.LB} let go`, s.straps === 2 ? 'Pop off a chop face' : 'Stand up');
           break;
         }
+        if (sim.inIrons) {
+          add(`${g.RT} ease`, 'Let the sail out: pointing into the wind it can\'t fill');
+          add(`${g.LS} ↑`, 'Rig toward the nose: your feet turn the board away from the wind');
+          add(g.RT, 'Sheet in gently once you\'re across the wind, rig still a little forward');
+          break;
+        }
         if (!planing) {
           add(g.RT, 'Sheet in: angle of attack 15–20°');
           add(`${g.LS} ↑`, 'Bear away to a beam / broad reach');
@@ -339,7 +345,7 @@ export class Hud {
       default:
         break;
     }
-    $('hint-title').textContent = sim.state === S.SAILING ? (sim.lastControls?.pop && !sim.airborne ? 'Crouched' : planing ? 'Planing' : 'Sailing')
+    $('hint-title').textContent = sim.state === S.SAILING ? (sim.lastControls?.pop && !sim.airborne ? 'Crouched' : sim.inIrons ? 'In irons' : planing ? 'Planing' : 'Sailing')
       : sim.state === S.TRICK ? TRICKS[sim.stateData.kind]?.name ?? 'Freestyle' : stateTitle(sim.state);
     $('hints').innerHTML = list.slice(0, 6).join('');
   }

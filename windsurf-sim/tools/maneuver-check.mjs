@@ -134,5 +134,27 @@ const gustRun = (technique) => {
   const r = gustRun('ride');
   report('gust, weight back and sheet eased -> rides it out', !r.fall && r.sim.state === S.SAILING && r.sim.telemetry.planing > 0.95, `${r.sim.telemetry.kn.toFixed(1)} kn | ${lastEvents(r.sim, 2)}`);
 }
+// 11–12. The first minute on a beginner board: sheeting in with the rig
+// upright rounds you up into the wind (in irons); easing the sheet and
+// pushing the rig forward turns you back out. Sheeting in gently with the
+// rig a little forward, you sail off across the wind.
+{
+  const beginner = () => new Sim({ boardId: 'begin210', sailArea: 4.2, sailorMass: 75, wind: { speedKn: 7, gustiness: 0, shifts: 0, chop: 0.3 }, start: 'secure', assists: { autoHike: false } });
+  const ctl = (o) => Object.assign(emptyControls(), o);
+  const sim = beginner();
+  run(sim, 2, () => ctl({}));
+  run(sim, 10, () => ctl({ sheet: 0.7 }));
+  const rounded = Math.abs(sim.twa) / DEG;
+  run(sim, 4, () => ctl({ sheet: 0, rake: 1 }));
+  const out = Math.abs(sim.twa) / DEG;
+  report('beginner board: sheeted in hard rig upright -> into irons; rig forward turns you back out', rounded < 40 && out > 75 && sim.state === S.SAILING && sim.events.some((e) => e.type === 'irons'),
+    `${rounded.toFixed(0)}° off the wind, then ${out.toFixed(0)}° after 4 s of rig forward`);
+  const gentle = beginner();
+  let lo = 180, hi = 0;
+  run(gentle, 2, () => ctl({}));
+  run(gentle, 20, (sm) => { if (sm.t > 6) { lo = Math.min(lo, Math.abs(sm.twa) / DEG); hi = Math.max(hi, Math.abs(sm.twa) / DEG); } return ctl({ sheet: 0.5, rake: 0.35 }); });
+  report('beginner board: sheeted in gently, rig a little forward -> sails off across the wind', lo > 70 && hi < 130 && gentle.telemetry.kn > 2,
+    `${lo.toFixed(0)}–${hi.toFixed(0)}° off the wind at ${gentle.telemetry.kn.toFixed(1)} kn`);
+}
 void MS_TO_KN;
 if (failures) { console.log(`${failures} maneuver check(s) failed`); process.exit(1); }

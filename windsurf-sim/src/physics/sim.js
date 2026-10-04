@@ -48,6 +48,8 @@ const LEGS = 0.4;
  * while the board is still on the water (a full crouch: about 1.5 m/s).
  */
 const POP_T = 0.15, POP_ACC = 10;
+/** Yaw torque (N·m) your feet put into turning a slow board, at full rig rake. */
+const FEET_STEER = 16;
 /** How long holding the pop button takes to crouch fully (s). */
 const CROUCH_T = 0.3;
 /**
@@ -392,6 +394,20 @@ export class Sim {
     // water and your back foot on the board damp the turning.
     if (this.state === S.WATERSTART && this.stateData.phase === 'power') {
       N += sailor.side * ctl.rake * 70 - this.yawRate * 90;
+    }
+
+    // In irons: stopped, pointing into the wind, the sail flapping (told once, after a moment).
+    const irons = this.state === S.SAILING && Math.abs(this.twa) < 38 * DEG && speed < 1;
+    this.ironsT = irons ? (this.ironsT ?? 0) + dt : 0;
+    if (this.ironsT > 2 && !this.inIrons) this.emit('irons', 'In irons: pointing into the wind, the sail can\'t fill. Ease the sheet and push the rig toward the nose: your feet turn the board away from the wind.', 2);
+    this.inIrons = this.ironsT > 2 || (this.inIrons && irons);
+
+    // Slogging, you steer with your feet as much as with the rig: pushing the
+    // board round under you through the mast foot (rig forward bears away),
+    // even in irons with the sail flapping. It fades as the board gets going
+    // and the fin and daggerboard take over.
+    if (this.state === S.SAILING && !this.airborne) {
+      N += sailor.side * ctl.rake * FEET_STEER * (1 - smoothstep(1.2, 3, speed));
     }
 
     // Tacking: the feet push the board round through the wind.

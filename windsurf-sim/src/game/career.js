@@ -36,7 +36,7 @@ export const CHAPTERS = [
     goals: [
       { id: 'climb', text: 'Climb onto the board', hint: "You're in the water beside the board, with the rig lying downwind. Press {A} to climb on.", lesson: 'uphaul', kind: 'state', states: ON_THE_BOARD },
       { id: 'uphaul', text: 'Pull the rig out of the water', hint: 'Hold {LB} to pull up the uphaul rope, hand over hand, with your legs, not your back, until the rig is up.', lesson: 'uphaul', kind: 'state', states: UP },
-      { id: 'go', text: 'Sheet in and get moving', hint: 'Turn the board across the wind with {LS} (rig toward the nose or the tail), then squeeze {RT}: front hand on the boom, then the back hand sheets in.', lesson: 'uphaul', kind: 'distance', m: 20 },
+      { id: 'go', text: 'Sheet in and get moving', hint: 'Turn the board across the wind with {LS} (rig toward the nose or the tail), then squeeze {RT} gently with the rig tilted a little forward ({LS} up). Pull in hard with the rig upright and the board turns into the wind: push the rig forward to turn it back.', lesson: 'uphaul', kind: 'distance', m: 20 },
       { id: 'sail100', text: 'Sail 100 m without falling in', hint: 'Keep the sail trimmed: ease {RT} if it pulls too hard, squeeze it if the front edge of the sail flutters.', lesson: 'uphaul', kind: 'distance', m: 100, noFall: true },
     ],
   },
