@@ -86,7 +86,7 @@ const lastEvents = (sim, n = 6) => sim.events.slice(-n).map((e) => `[${e.t.toFix
 {
   const sim = new Sim({ boardId: 'free135', sailArea: 7.8, wind: { speedKn: 22, gustiness: 0, shifts: 0 }, start: 'sailing' });
   run(sim, 4, () => { const c = emptyControls(); c.sheet = 1; c.hike = 0; return c; });
-  report('overpowered without hiking -> pulled over / sail ripped out', sim.events.some((e) => e.type === 'fall' || e.type === 'grip'), lastEvents(sim, 3));
+  report('overpowered without hiking -> pulled over, sail ripped out or let go', sim.events.some((e) => e.type === 'fall' || e.type === 'grip' || e.type === 'letgo'), lastEvents(sim, 3));
 }
 
 // 7. Sinker: a 95 L board can't be uphauled by an 85 kg sailor.
@@ -155,6 +155,22 @@ const gustRun = (technique) => {
   run(gentle, 20, (sm) => { if (sm.t > 6) { lo = Math.min(lo, Math.abs(sm.twa) / DEG); hi = Math.max(hi, Math.abs(sm.twa) / DEG); } return ctl({ sheet: 0.5, rake: 0.35 }); });
   report('beginner board: sheeted in gently, rig a little forward -> sails off across the wind', lo > 70 && hi < 130 && gentle.telemetry.kn > 2,
     `${lo.toFixed(0)}–${hi.toFixed(0)}° off the wind at ${gentle.telemetry.kn.toFixed(1)} kn`);
+}
+// 13. Overpowered on the beginner board without hiking: you let go with the
+// back hand (the sail opens and stops pulling) and stay on, rather than
+// being dragged in or dropping the rig.
+{
+  const sim = new Sim({ boardId: 'begin210', sailArea: 6.3, sailorMass: 75, wind: { speedKn: 13, gustiness: 0.12, shifts: 0.15, chop: 0.5 }, start: 'sailing', assists: { autoHike: false } });
+  let falls = 0, drops = 0, prev = sim.state;
+  run(sim, 60, (sm) => {
+    if (sm.state === S.FALLING && prev !== S.FALLING) falls++;
+    if (sm.state === S.UPHAUL && prev === S.SAILING) drops++;
+    prev = sm.state;
+    const e = sm.twa - sm.sailor.side * 90 * DEG;
+    return Object.assign(emptyControls(), { sheet: 1, rake: clamp(-sm.sailor.side * (2 * e + 0.8 * sm.yawRate), -1, 1) * 0.6 });
+  });
+  const letgo = sim.events.filter((e) => e.type === 'letgo').length;
+  report('beginner overpowered without hiking -> lets go with the back hand, stays on', letgo > 0 && falls === 0 && drops === 0 && sim.state === S.SAILING, `${letgo} let-go(s), ${falls} falls, ${drops} rig drops`);
 }
 void MS_TO_KN;
 if (failures) { console.log(`${failures} maneuver check(s) failed`); process.exit(1); }

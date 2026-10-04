@@ -160,7 +160,7 @@ export class Sim {
     this.sailor = {
       side, x: this.board.mastFootX - 0.35, leanX: 0, beta: 4 * DEG, betaRate: 0, hang: 0, hangTime: 0, phi: 0, phiRate: 0,
       hooked: false, straps: 0, stamina: 1, gripLost: 0, hookTimer: 0, strapsHoldTime: 0,
-      pumpPhase: 0, fallType: null, crouch: 0, knees: 0,
+      pumpPhase: 0, fallType: null, crouch: 0, knees: 0, backOff: 0, regrab: 1,
     };
     this.twa = side * Math.PI / 2;
     this.pullFelt = undefined;
@@ -923,6 +923,9 @@ export class Sim {
       const leanCmd = ctl.lean * 34 * DEG + s.side * (clamp(s.hang / 900, 0, 1) * 45 * DEG - (s.reachIn ?? 0) * 1.5);
       let sheet = ctl.sheet;
       if (s.gripLost > 0) sheet *= 0.45; // the back hand slips: the sail opens and dumps power
+      // (back hand off the boom: the sail flags out; taking hold again, you sheet back in over a second)
+      if (s.backOff > 0) sheet = 0;
+      else if (s.regrab < 1) sheet = Math.min(sheet, 0.15 + 0.85 * s.regrab);
       // Hooked in with the lines off the balance point, the hands can't hold
       // the boom quite where you want it: a heavy back hand lets the sail
       // open, a heavy front hand lets it sheet in on you.
@@ -1700,7 +1703,10 @@ export class Sim {
       target = clamp(this.betaEq, -12 * DEG, betaMax);
       if (!sailing) target = clamp(target, -5 * DEG, holdingMast ? 10 * DEG : 30 * DEG);
     } else {
-      target = Math.min(betaMax, 4 * DEG + ctl.hike * Math.max(0, betaMax - 4 * DEG));
+      // (you lean back against the pull without thinking, part of the way;
+      // LT hangs you out as far as it takes)
+      const instinct = clamp(this.betaEq * 0.6, 0, 12 * DEG);
+      target = Math.min(betaMax, Math.max(instinct, 4 * DEG + ctl.hike * Math.max(0, betaMax - 4 * DEG)));
     }
     // To hold a boom that's out over the water (or far back) you lean out to it.
     if (sailing && this.bodyGeo.fits) target = Math.max(target, Math.min(this.bodyGeo.betaMin, betaMax));
@@ -1723,6 +1729,21 @@ export class Sim {
     s.betaRate += (tau / I) * dt;
     s.beta += s.betaRate * dt;
     s.hang = damp(s.hang, held, held > s.hang ? 2.5 : 4, dt); // a rig comes over in a second or so, not instantly
+    // Pulled in toward the sail, unhooked: you let go with the back hand, the
+    // sail opens and stops pulling, and you take hold again once you're back
+    // on your feet. (A big gust, or the rig falling to leeward, can still pull
+    // you over: then you let go of the rig altogether.)
+    // (only when you're straining to hold out and still being pulled in, not coming in on purpose)
+    const straining = muscle >= tauMax * 0.95 && tauPull > 0;
+    if (sailing && !s.hooked && straining && s.beta < 2 * DEG && s.betaRate < -0.4 && s.backOff <= 0 && s.side * this.rig.lean > -8 * DEG) {
+      s.backOff = 1.1;
+      s.regrab = 0;
+      if (this.t - (this.letGoAt ?? -99) > 8) this.emit('letgo', 'Too much pull: you let go with the back hand. Lean back (LT) before you sheet in again.', 1);
+      this.letGoAt = this.t;
+    }
+    if (s.backOff > 0) s.backOff = Math.max(0, s.backOff - dt);
+    else s.regrab = Math.min(1, s.regrab + dt);
+
     // A rig leaned further out over the water than you can reach at your lean
     // comes back in toward you.
     s.reachIn = sailing && this.bodyGeo.fits ? Math.max(0, this.bodyGeo.betaMin - s.beta) : 0;
@@ -1785,8 +1806,10 @@ export class Sim {
       // (the rig's own weight, leaned out to leeward, dragging you over)
       const rigOver = s.side * this.rig.lean < -8 * DEG;
       if (s.hooked && speed > 5.5) this.fall('catapult', jumpWhy() ?? 'a gust yanked you up out of your stance by the harness lines and over the boom. Sheet out and sink your weight back the moment a gust hits!');
-      // Slow and unhooked, you let go of the rig rather than get dragged in after it.
-      else if (!s.hooked && speed < 3) {
+      // Slow and unhooked on a board that floats you easily, you let go of the
+      // rig rather than get dragged in after it (on a small board you'd sink:
+      // you go in, and waterstart).
+      else if (!s.hooked && speed < 3 && this.board.volume > 1.4 * this.totalMass) {
         this.dropRig(rigOver ? 'The rig fell to leeward and pulled you off balance, so you let go of it. Keep it upright (left stick). Hold LB to uphaul.'
           : 'Pulled off balance, so you let go of the rig. Lean back (LT) or ease the sheet (RT) sooner. Hold LB to uphaul.');
       } else this.fall('leeward', rigOver ? 'the rig fell to leeward and dragged you over. Keep it upright, or tilted a little to windward (left stick).' : 'too much power for your stance. Hike out (LT) or sheet out (RT).');

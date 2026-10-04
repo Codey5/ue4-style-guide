@@ -538,7 +538,11 @@ export class Sailor {
       const d = ha.clone().sub(sh);
       return d.length() > reach ? sh.clone().addScaledVector(d.normalize(), reach) : ha;
     };
-    const gripF = haF.distanceTo(shL) <= reach * 1.001, gripB = haB.distanceTo(shR) <= reach * 1.001;
+    // Back hand let go of the boom (too much pull): it drops to your side.
+    const backOff = onBoom && st === S.SAILING && s.backOff > 0;
+    if (backOff) haB = shR.clone().add(new THREE.Vector3(0, -0.85 * reach, 0)).addScaledVector(facing, 0.12);
+    this.backOff = backOff || (onBoom && s.regrab < 1);
+    const gripF = haF.distanceTo(shL) <= reach * 1.001, gripB = !backOff && haB.distanceTo(shR) <= reach * 1.001;
     this.lastHands = onBoom ? { F: haF.clone(), B: haB.clone() } : null; // grip points, for tools/pose-check
     haF = clampReach(shL, haF);
     haB = clampReach(shR, haB);

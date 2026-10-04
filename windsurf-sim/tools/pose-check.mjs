@@ -38,7 +38,8 @@ function check(label, sim, controls, update = () => null, duration = 240) {
       rig.group.updateMatrix();
       sailor.update(sim, rig, 4 * DT);
       const hands = sailor.lastHands;
-      if (hands && sim.state === S.SAILING && sim.stateTime > 0.5) {
+      // (not while the back hand is deliberately off the boom, or taking hold again)
+      if (hands && sim.state === S.SAILING && sim.stateTime > 0.5 && !sailor.backOff) {
         frames++;
         // Drawn at the lean the physics balances (within 2°, or at the edge of
         // the reach while hanging on the boom or catching up with the rig),

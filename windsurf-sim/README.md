@@ -174,7 +174,7 @@ All four moves start the same way: hold LB to crouch, then press a button. Each 
 - Finite-wing lift and induced drag, with stall.
 - The fin ventilates (spin-out) when overloaded. It's worse with high trim, the board rolled to windward, chop, or weight on the back foot.
 - At low speed a fin-only board makes big leeway; the beginner board's daggerboard lets it point.
-- Slogging, you steer with your feet as well as the rig: pushing the rig toward the nose turns the board round through the mast foot, even in irons with the sail flapping (the HUD tells you when you're in irons, and how to get out). It fades as the board gets going and the fin and daggerboard take over. Pulled off balance at slow speed and unhooked, you let go of the rig rather than being dragged into the water after it, and uphaul it again; a rig leaned out to leeward pulls you over by its own weight.
+- Slogging, you steer with your feet as well as the rig: pushing the rig toward the nose turns the board round through the mast foot, even in irons with the sail flapping (the HUD tells you when you're in irons, and how to get out). It fades as the board gets going and the fin and daggerboard take over. Without hiking (LT) you still lean back against the pull by instinct, part of the way (up to about 12°); LT hangs you out as far as it takes. Unhooked and pulled in toward the sail, you let go with the back hand: the sail opens and stops pulling, and you take hold again and sheet back in over a second or so. Only if that isn't enough (a big gust, or the rig falling to leeward, which pulls you over by its own weight) do you go further: on a board that floats you easily you let go of the rig and uphaul it again; on a small board you fall in and waterstart.
 
 **Steering with the feet**
 

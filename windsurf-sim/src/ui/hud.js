@@ -323,6 +323,7 @@ export class Hud {
         }
         if (!planing) {
           add(g.RT, 'Sheet in: angle of attack 15–20°');
+          if ((sim.betaEq ?? 0) > 10 * DEG) add(g.LT, 'Lean back against the pull');
           add(`${g.LS} ↑`, 'Bear away to a beam / broad reach');
           add(`${g.RB} hold`, 'Pump to get over the hump');
           add(`${g.RS} ↑`, 'Weight forward, board flat');
