@@ -5,7 +5,7 @@
 // events the physics reports and the GPS. Progress is kept in this browser.
 import { DEG, MS_TO_KN } from '../physics/math.js';
 import { S } from '../physics/states.js';
-import { adviseSail, SAILS } from '../physics/quiver.js';
+import { adviseSail, SAILS, windRange } from '../physics/quiver.js';
 import { GpsLogger } from './gps.js';
 
 const KEY = 'beam-reach-story-v1';
@@ -13,8 +13,8 @@ const KEY = 'beam-reach-story-v1';
 /** Marks on the water (world x, z in metres; the wind blows toward +x, the beach is to the north). */
 export const MARKS = {
   school: { at: [0, 0], name: 'the school buoy' },
-  orange: { at: [0, 140], name: 'the orange buoy' },
-  upwind: { at: [-110, 20], name: 'the upwind buoy' },
+  orange: { at: [0, 85], name: 'the orange buoy' },
+  upwind: { at: [-70, 15], name: 'the upwind buoy' },
 };
 
 const ON_THE_BOARD = [S.UPHAUL, S.SECURE, S.SAILING, S.TACK, S.FLIP, S.TRICK];
@@ -43,10 +43,10 @@ export const CHAPTERS = [
   {
     id: 'there-and-back',
     title: 'There and back',
-    intro: 'Sailing away is the easy part. Today you learn to steer with the rig and to turn round, so you can come back to where you started. Kai has given you a 4.7 m² sail.',
+    intro: 'Sailing away is the easy part. Today you learn to steer with the rig and to turn round, so you can come back to where you started. A little more wind, and Kai has given you a 5.3 m² sail.',
     outro: 'Out and back under your own steam. Tomorrow, a bigger sail and a little more wind.',
-    gear: { boardId: 'begin210', sailArea: 4.7 },
-    wind: { speedKn: 8, gustiness: 0.1, shifts: 0.1, chop: 0.4 },
+    gear: { boardId: 'begin210', sailArea: 5.3 },
+    wind: { speedKn: 9, gustiness: 0.1, shifts: 0.1, chop: 0.4 },
     start: 'secure',
     marks: ['school', 'orange'],
     goals: [
@@ -59,26 +59,26 @@ export const CHAPTERS = [
   {
     id: 'upwind',
     title: 'Upwind',
-    intro: "The wind pushes everything downwind, and nobody can sail straight into it. You zig-zag: close-hauled on one tack, tack, close-hauled on the other. Kai's rule: never sail further downwind than you can sail back. A 5.3 m² sail today.",
+    intro: "The wind pushes everything downwind, and nobody can sail straight into it. You zig-zag: close-hauled on one tack, tack, close-hauled on the other. Kai's rule: never sail further downwind than you can sail back. 11 knots and a 5.8 m² sail today.",
     outro: 'Upwind and back. You can go wherever you like on the water now.',
-    gear: { boardId: 'begin210', sailArea: 5.3 },
-    wind: { speedKn: 10, gustiness: 0.12, shifts: 0.15, chop: 0.5 },
+    gear: { boardId: 'begin210', sailArea: 5.8 },
+    wind: { speedKn: 11, gustiness: 0.12, shifts: 0.15, chop: 0.5 },
     start: 'secure',
     marks: ['school', 'upwind'],
     goals: [
       { id: 'close', text: 'Sail close-hauled for 15 seconds', hint: "Head up until you're about 50° off the wind: rig back, sheet in hard. Any closer and the sail starts to flap.", lesson: 'tack', kind: 'hold', sec: 15, total: true, test: (sim) => sailing(sim) && absTwa(sim) < 60 },
       { id: 'upbuoy', text: 'Reach the upwind buoy', hint: 'Zig-zag toward it: close-hauled, tack ({B}), close-hauled on the other side.', lesson: 'tack', kind: 'visit', points: ['upwind'] },
       { id: 'gybe', text: 'Gybe: turn round downwind', hint: 'Bear away until the wind is right behind you, then press {Y}: let go with the back hand and the sail swings round the front of the mast.', lesson: 'gybe', kind: 'event', types: ['flipdone', 'switch'] },
-      { id: 'home', text: 'Back downwind to the school buoy', hint: 'From the upwind buoy, sail back down to the school buoy. Downwind is easy: just don\'t overshoot.', lesson: 'steering', kind: 'visit', points: ['upwind', 'school'] },
+      { id: 'home', text: 'Back downwind to the school buoy', hint: 'Sail back down to the school buoy. Downwind is easy: just don\'t overshoot.', lesson: 'steering', kind: 'visit', points: ['school'] },
     ],
   },
   {
     id: 'breeze',
     title: 'A proper breeze',
-    intro: 'A proper breeze at last: 13 knots and gusty. Kai swaps you onto the Freeride 155, shorter and livelier than the school board but still wide and stable, with a sail rigged for your weight. The rig pulls hard now: you hold it with your weight, hanging out against it.',
+    intro: 'A proper breeze at last: 14 knots and gusty. Kai swaps you onto the Freeride 155, shorter and livelier than the school board but still wide and stable, with a sail rigged for your weight. The rig pulls hard now: you hold it with your weight, hanging out against it.',
     outro: 'Your first taste of planing. Tomorrow: more wind, the harness and the footstraps.',
-    gear: { boardId: 'free155', byWeight: [[70, 5.8], [82, 6.3], [Infinity, 7.8]] },
-    wind: { speedKn: 13, gustiness: 0.3, shifts: 0.2, chop: 0.6 },
+    gear: { boardId: 'free155', toPlane: true },
+    wind: { speedKn: 14, gustiness: 0.3, shifts: 0.2, chop: 0.6 },
     start: 'secure',
     goals: [
       { id: 'hike', text: 'Lean right out against the pull for 5 seconds', hint: 'Hold {LT} to hang your weight out over the water: the harder the sail pulls, the further you lean.', lesson: 'foreaft', kind: 'hold', sec: 5, test: (sim) => sailing(sim) && sim.sailor.beta > 20 * DEG },
@@ -90,10 +90,10 @@ export const CHAPTERS = [
   {
     id: 'footstraps',
     title: 'Harness and straps',
-    intro: '15 knots, and Kai rigs you a bigger sail. Planing, the rig pulls too hard to hold on your arms for long: hook into the harness and let your weight hold it. And the footstraps keep your feet on the board as it flies.',
+    intro: '16 knots, and Kai rigs you a bigger sail. Planing, the rig pulls too hard to hold on your arms for long: hook into the harness and let your weight hold it. And the footstraps keep your feet on the board as it flies.',
     outro: "Planing hooked in and in the straps. You won't want to go back to the big board.",
     gear: { boardId: 'free155', sailArea: 'advise' },
-    wind: { speedKn: 15, gustiness: 0.15, shifts: 0.15, chop: 0.6 },
+    wind: { speedKn: 16, gustiness: 0.15, shifts: 0.15, chop: 0.6 },
     start: 'secure',
     goals: [
       { id: 'harness', text: 'Sail 15 seconds hooked into the harness', hint: 'Planing on a beam reach, sheet in and come in toward the boom (ease {LT}), then press {A} to hook into the lines. Hang your weight off them.', lesson: 'planing', kind: 'hold', sec: 15, total: true, test: (sim) => sailing(sim) && sim.sailor.hooked },
@@ -184,7 +184,11 @@ export const findChapter = (id) => CHAPTERS.find((c) => c.id === id);
 /** The gear and conditions for a chapter: Kai rigs the sail for your weight once you're off the beginner board. */
 export function chapterSetup(ch, mass) {
   let sailArea = ch.gear.sailArea;
-  if (ch.gear.byWeight) {
+  if (ch.gear.toPlane) {
+    // (the smallest sail that will get you planing in this wind, at your weight)
+    const ok = SAILS.find((x) => windRange(ch.gear.boardId, x.area, mass).plane <= ch.wind.speedKn - 1);
+    sailArea = (ok ?? SAILS[SAILS.length - 1]).area;
+  } else if (ch.gear.byWeight) {
     // (a size for each weight band: [up to kg, m²]…)
     sailArea = ch.gear.byWeight.find(([kg]) => mass <= kg)[1];
   } else if (ch.gear.forMass) {
@@ -345,7 +349,10 @@ function storage() {
   try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; }
 }
 
-/** Which goals and chapters you've done, kept in this browser. */
+/**
+ * The chapters you've finished (kept in this browser). A chapter's goals are
+ * done in order, in one go: a restart starts it afresh.
+ */
 export class Career {
   constructor(store = storage()) {
     this.store = store;
@@ -357,59 +364,64 @@ export class Career {
       const raw = this.store?.getItem(KEY);
       if (raw) {
         const d = JSON.parse(raw);
-        return { goals: d.goals ?? {}, finished: Array.isArray(d.finished) ? d.finished : [] };
+        return { finished: Array.isArray(d.finished) ? d.finished : [], started: !!d.started || !!Object.keys(d.goals ?? {}).length };
       }
     } catch { /* unreadable: start afresh */ }
-    return { goals: {}, finished: [] };
+    return { finished: [], started: false };
   }
 
   save() {
     try { this.store?.setItem(KEY, JSON.stringify(this.data)); } catch { /* storage full or blocked */ }
   }
 
-  goalDone(chId, goalId) { return (this.data.goals[chId] ?? []).includes(goalId); }
   finished(chId) { return this.data.finished.includes(chId); }
   unlocked(i) { return i === 0 || this.finished(CHAPTERS[i - 1].id); }
-  get started() { return Object.keys(this.data.goals).length > 0; }
+  get started() { return this.data.started; }
+  markStarted() {
+    if (this.data.started) return;
+    this.data.started = true;
+    this.save();
+  }
   /** The chapter to play next: the first one not finished (the last one once all are). */
   get next() {
     const i = CHAPTERS.findIndex((c) => !this.finished(c.id));
     return i < 0 ? CHAPTERS.length - 1 : i;
   }
 
-  /** Mark a goal done; true if that finished the chapter. */
-  complete(chId, goalId) {
-    const list = (this.data.goals[chId] ??= []);
-    if (!list.includes(goalId)) list.push(goalId);
-    const ch = findChapter(chId);
-    const all = ch.goals.every((g) => list.includes(g.id));
-    const fresh = all && !this.finished(chId);
-    if (fresh) this.data.finished.push(chId);
+  /** A chapter's goals all done; true the first time. */
+  finish(chId) {
+    if (this.finished(chId)) return false;
+    this.data.finished.push(chId);
     this.save();
-    return fresh;
+    return true;
   }
 
   reset() {
-    this.data = { goals: {}, finished: [] };
+    this.data = { finished: [], started: false };
     this.save();
   }
 }
 
-/** A chapter being sailed: steps its goals against the sim. */
+/** A chapter being sailed: its goals, one after another. */
 export class ChapterRun {
   constructor(chapter, career, sim) {
     this.chapter = chapter;
     this.career = career;
     this.sim = sim;
     this.gps = new GpsLogger();
-    this.goals = chapter.goals.map((g) => ({ goal: g, tracker: new KINDS[g.kind](g), done: career.goalDone(chapter.id, g.id) }));
+    this.goals = chapter.goals.map((g) => ({ goal: g, tracker: new KINDS[g.kind](g), done: false }));
     this.seen = new WeakSet(sim.events);
     this.lastState = sim.state;
-    this.finished = false; // finished during this run
-    this.fresh = 0; // goals done during this run
+    this.finished = false; // finished for the first time in this run
+    this.fresh = 0; // goals done in this run
+    career.markStarted?.();
   }
 
-  /** After each physics step: the goals completed by it. */
+  /**
+   * After each physics step: the goals completed by it. Only the goal
+   * you're on counts (the next one starts once it's done, from the same
+   * moment, so a jump that's high enough for both counts for both).
+   */
   step(dt) {
     const sim = this.sim;
     this.gps.step(sim);
@@ -419,25 +431,22 @@ export class ChapterRun {
     this.lastState = sim.state;
     const ctx = { sim, dt, events, fell, gps: this.gps };
     const done = [];
-    for (const g of this.goals) {
-      if (g.done) continue;
+    for (let g = this.current; g; g = this.current) {
       g.tracker.step(ctx);
-      if (g.tracker.p >= 1) {
-        g.done = true;
-        this.fresh++;
-        done.push(g.goal);
-        if (this.career.complete(this.chapter.id, g.goal.id)) this.finished = true;
-      }
+      if (g.tracker.p < 1) break;
+      g.done = true;
+      this.fresh++;
+      done.push(g.goal);
+      // (the events that did one goal don't do the next)
+      ctx.events = [];
     }
+    if (done.length && this.complete && this.career.finish(this.chapter.id)) this.finished = true;
     return done;
   }
 
   get complete() { return this.goals.every((g) => g.done); }
   /** The goal to work on: the first not done. */
   get current() { return this.goals.find((g) => !g.done) ?? null; }
-  /** The mark to head for, if a goal wants one. */
-  get target() {
-    for (const g of this.goals) if (!g.done && g.tracker.target) return g.tracker.target;
-    return null;
-  }
+  /** The mark to head for, if the goal you're on wants one. */
+  get target() { return this.current?.tracker.target ?? null; }
 }

@@ -718,12 +718,12 @@ export class Sim {
     this.emit('flip', 'Sail flip — clew round the front');
   }
 
-  dropRig() {
+  dropRig(why = 'Dropped the rig. Hold LB to uphaul') {
     this.sailor.hooked = false;
     this.sailor.straps = 0;
     this.setState(S.UPHAUL, { progress: 0 });
     this.rig.up = 0;
-    this.emit('drop', 'Dropped the rig. Hold LB to uphaul');
+    this.emit('drop', why, 2);
   }
 
   fall(type, text) {
@@ -1782,8 +1782,14 @@ export class Sim {
       // Leaned back further than the pull (and a pull up on the boom) can hold.
       this.fall('windward', 'you leaned back with too little pull to hold you and sat down off the back. Ease the lean when the power drops.');
     } else if (s.beta < -24 * DEG) {
+      // (the rig's own weight, leaned out to leeward, dragging you over)
+      const rigOver = s.side * this.rig.lean < -8 * DEG;
       if (s.hooked && speed > 5.5) this.fall('catapult', jumpWhy() ?? 'a gust yanked you up out of your stance by the harness lines and over the boom. Sheet out and sink your weight back the moment a gust hits!');
-      else this.fall('leeward', 'too much power for your stance. Hike out (LT) or sheet out (RT).');
+      // Slow and unhooked, you let go of the rig rather than get dragged in after it.
+      else if (!s.hooked && speed < 3) {
+        this.dropRig(rigOver ? 'The rig fell to leeward and pulled you off balance, so you let go of it. Keep it upright (left stick). Hold LB to uphaul.'
+          : 'Pulled off balance, so you let go of the rig. Lean back (LT) or ease the sheet (RT) sooner. Hold LB to uphaul.');
+      } else this.fall('leeward', rigOver ? 'the rig fell to leeward and dragged you over. Keep it upright, or tilted a little to windward (left stick).' : 'too much power for your stance. Hike out (LT) or sheet out (RT).');
     } else if (s.beta > 86 * DEG || s.hangTime > 1.2 || s.side * this.rig.lean > 58 * DEG) {
       if (this.aero && this.aero.alphaMid < -2 * DEG) this.fall('backwind', 'the wind got on the wrong side of the sail and pushed you in.');
       else if (s.beta > 86 * DEG) this.fall('windward', 'you leaned out with nothing to hang on. Come in (ease LT) when the power drops.');

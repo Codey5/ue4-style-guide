@@ -14,9 +14,9 @@ const knots = (v) => (v > 0 ? (v * KN).toFixed(1) : '–');
 const $ = (id) => document.getElementById(id);
 
 const GLYPHS = {
-  xbox: { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', LS: 'L-stick', RS: 'R-stick', L3: 'L3', MENU: 'Menu' },
-  ps: { A: '✕', B: '○', X: '□', Y: '△', LB: 'L1', RB: 'R1', LT: 'L2', RT: 'R2', LS: 'L-stick', RS: 'R-stick', L3: 'L3', MENU: 'Options' },
-  kb: { A: 'H', B: 'T', X: 'F', Y: 'G', LB: 'U', RB: 'P', LT: 'C / Z', RT: 'E / Q', LS: 'W A S D', RS: 'Arrows', L3: 'X', MENU: 'Esc' },
+  xbox: { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', LS: 'L-stick', RS: 'R-stick', L3: 'L3', R3: 'R3', MENU: 'Menu' },
+  ps: { A: '✕', B: '○', X: '□', Y: '△', LB: 'L1', RB: 'R1', LT: 'L2', RT: 'R2', LS: 'L-stick', RS: 'R-stick', L3: 'L3', R3: 'R3', MENU: 'Options' },
+  kb: { A: 'H', B: 'T', X: 'F', Y: 'G', LB: 'U', RB: 'P', LT: 'C / Z', RT: 'E / Q', LS: 'W A S D', RS: 'Arrows', L3: 'X', R3: 'L', MENU: 'Esc' },
 };
 
 export function pointOfSail(twaAbsDeg) {

@@ -16,22 +16,22 @@ New to it, or to windsurfing? Start the **Story**. The **Lessons** in the menu s
 
 ## Story
 
-A summer at the spot, in ten chapters: from never having stood on a windsurf board to speed week on the sandbar. Kai, who runs the school on the beach, picks the board, the sail and the day for each one, starting on the biggest, steadiest board in barely any wind and building up a little at a time. Each chapter has four goals; finish them all to unlock the next. Goals you've done stay done (they're kept in your browser), so you can stop, restart a chapter or come back any time. The sails are sized for your weight (the Gear tab's weight setting): a school rigs a heavier sailor a bigger sail.
+A summer at the spot, in ten chapters: from never having stood on a windsurf board to speed week on the sandbar. Kai, who runs the school on the beach, picks the board, the sail and the day for each one, starting on the biggest, steadiest board in barely any wind and building up a little at a time. Each chapter has four goals, done in order; a chapter takes a few minutes, and finishing it unlocks the next (finished chapters are kept in your browser). Restarting a chapter starts it afresh. From chapter 4 the sails are sized for your weight (the Gear tab's weight setting): a school rigs a heavier sailor a bigger sail.
 
 | # | Chapter | Gear and wind | Goals |
 | --- | --- | --- | --- |
 | 1 | Day one | Beginner 210 L, 4.2 m², 7 kn | Climb onto the board · Pull the rig out of the water · Sheet in and get moving · Sail 100 m without falling in |
-| 2 | There and back | Beginner 210 L, 4.7 m², 8 kn | Bear away · Head up · Tack · Sail out to the orange buoy and back to the school buoy |
-| 3 | Upwind | Beginner 210 L, 5.3 m², 10 kn | Sail close-hauled for 15 seconds · Reach the upwind buoy · Gybe · Back downwind to the school buoy |
-| 4 | A proper breeze | Freeride 155 L, 5.8 / 6.3 / 7.8 m² (65 / 75 / 90 kg), 13 kn, gusty | Lean right out against the pull · Sail 300 m through the gusts without falling in · Get planing · Hit 10 knots |
-| 5 | Harness and straps | Freeride 155 L, 8.6 / 8.6 / 9.5 m², 15 kn | 15 seconds hooked in · Front foot in the strap · Both feet in the straps · Plane for 20 seconds without dropping off |
+| 2 | There and back | Beginner 210 L, 5.3 m², 9 kn | Bear away · Head up · Tack · Sail out to the orange buoy and back to the school buoy |
+| 3 | Upwind | Beginner 210 L, 5.8 m², 11 kn | Sail close-hauled for 15 seconds · Reach the upwind buoy · Gybe · Back downwind to the school buoy |
+| 4 | A proper breeze | Freeride 155 L, 5.8 / 7.0 / 8.6 m² (65 / 75 / 90 kg: the smallest sail that will plane), 14 kn, gusty | Lean right out against the pull · Sail 300 m through the gusts without falling in · Get planing · Hit 10 knots |
+| 5 | Harness and straps | Freeride 155 L, 7.8 / 8.6 / 8.6 m², 16 kn | 15 seconds hooked in · Front foot in the strap · Both feet in the straps · Plane for 20 seconds without dropping off |
 | 6 | Hooked in | Freeride 135 L, 7.0 / 7.8 / 7.8 m², 17 kn | Plane 30 s hooked in and in the straps · Hit 18 knots · Plane upwind for 10 s · Carve gybe |
 | 7 | Small board | Freeride 115 L, 6.3 / 6.3 / 7.0 m², 18 kn | Waterstart · Plane 30 s without stopping · Hit 20 knots · Carve gybe and plane out of it |
 | 8 | Chop hop | Freeride 115 L, 5.8 / 6.3 / 7.0 m², 20 kn, rough chop | Plane 60 s through the chop without falling in · A 30 cm jump · Half a metre of air · Land three jumps cleanly |
 | 9 | Freestyle | Freeride 115 L, 5.8 / 5.8 / 6.3 m², 18 kn, flat | Duck gybe · Carving 360 · Spock · Helitack |
 | 10 | Speed week | Freemove 95 L, 4.7 / 4.7 / 5.3 m², 24 kn, on the speed strip | Hit 25 knots · 500 m over 22 knots · 5 × 10 s over 22 knots · Hit 27 knots |
 
-While you sail a chapter, a card at the top of the screen lists its goals, ticks each one off as you do it (with a chime and a nudge through the controller), shows your progress on the one you're working on and Kai's hint for it in your controller's own buttons, and points the way to the buoy to head for, which has a yellow ring on the water round it. Pause for a link to the lesson that shows the technique. The goals are spotted the way the game sees everything else: the sailor's state, the events the physics reports (a tack, a waterstart, a jump, a trick) and the GPS. Story sessions are logged by the GPS like free sailing (records count from 10 knots), so a personal best set in speed week counts.
+While you sail a chapter, a card at the top of the screen lists its goals, ticks each one off as you do it (with a chime and a nudge through the controller), shows your progress on the one you're working on and Kai's hint for it in your controller's own buttons, and points the way to the buoy to head for, which has a yellow ring on the water round it: click the right stick (R3, or L on the keyboard) and the camera looks toward it from behind you, again to look back. Pause for a link to the lesson that shows the technique. The goals are spotted the way the game sees everything else: the sailor's state, the events the physics reports (a tack, a waterstart, a jump, a trick) and the GPS. Story sessions are logged by the GPS like free sailing (records count from 10 knots), so a personal best set in speed week counts.
 
 ## Speed sessions
 
@@ -105,6 +105,7 @@ Sticks are relative to the board. Push the left stick where you want the mast ti
 | RB / R1 (hold) | P | Pump |
 | L3 | X | Drop the rig |
 | D-pad ← / → | V | Camera: chase, windward, leeward, overhead, free orbit (mouse drag) |
+| R3 (click) | L | Story: look toward the buoy you're heading for (again to look back) |
 | D-pad ↑ / ↓ | Mouse wheel | Camera distance |
 | View / Share | Tab | Telemetry panel |
 | Menu / Options | Esc | Pause: conditions, gear, controls, technique |
@@ -173,6 +174,7 @@ All four moves start the same way: hold LB to crouch, then press a button. Each 
 - Finite-wing lift and induced drag, with stall.
 - The fin ventilates (spin-out) when overloaded. It's worse with high trim, the board rolled to windward, chop, or weight on the back foot.
 - At low speed a fin-only board makes big leeway; the beginner board's daggerboard lets it point.
+- Slogging, you steer with your feet as well as the rig: pushing the rig toward the nose turns the board round through the mast foot, even in irons with the sail flapping (the HUD tells you when you're in irons, and how to get out). It fades as the board gets going and the fin and daggerboard take over. Pulled off balance at slow speed and unhooked, you let go of the rig rather than being dragged into the water after it, and uphaul it again; a rig leaned out to leeward pulls you over by its own weight.
 
 **Steering with the feet**
 

@@ -344,7 +344,12 @@ function frame(now) {
   } else {
     if (ui.pause) pause();
     if (ui.telemetry) hud.toggleTelemetry();
-    if (ui.camNext) { camRig.cycle(1); hud.flashCamera(camRig.modeName); }
+    if (ui.lookGoal) {
+      const t = story?.target;
+      camRig.lookGoal = !camRig.lookGoal && !!t;
+      hud.flashCamera(camRig.lookGoal ? `Looking toward ${t.name}` : t ? camRig.modeName : 'No buoy to head for right now');
+    }
+    if (ui.camNext) { camRig.lookGoal = false; camRig.cycle(1); hud.flashCamera(camRig.modeName); }
     if (ui.camPrev) { camRig.cycle(-1); hud.flashCamera(camRig.modeName); }
     if (ui.zoom) camRig.zoomBy(ui.zoom);
     if (ui.drag) camRig.drag(ui.drag[0], ui.drag[1]);
@@ -468,6 +473,9 @@ function frame(now) {
   boardGroup.updateMatrixWorld(true);
   rig.update(sim, dt, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);
   sailor.update(sim, rig, dt);
+  rig.updateUphaul(sim, sailor);
+  camRig.goal = story?.target?.at ?? null;
+  if (!camRig.goal) camRig.lookGoal = false;
   camRig.update(dt, sim, sim.waves, view);
   water.update(view.t, camera);
   effects.update(paused ? 0 : dt, sim, boardGroup, sim.waves, { camera, height: renderer.domElement.height, water, t: view.t });

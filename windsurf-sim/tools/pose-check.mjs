@@ -2,7 +2,8 @@
 // stay on the boom whenever the sailor is sailing on it, and that the body is
 // drawn at the lean the physics balances (not bent to fit): every lesson, plus
 // sandbox runs at the extremes of body height, boom height and wind. (The
-// last moment before a fall doesn't count: that's the sailor losing the rig.)
+// last moment before a fall, or before letting go of the rig, doesn't count:
+// that's the sailor losing it.)
 // Run: node tools/pose-check.mjs [lessonId]
 import { Sim, S } from '../src/physics/sim.js';
 import { BOOM_RATIO } from '../src/physics/gear.js';
@@ -29,7 +30,8 @@ function check(label, sim, controls, update = () => null, duration = 240) {
     sim.step(DT, controls());
     t += DT;
     const r = update();
-    if (sim.state === S.FALLING && was !== S.FALLING) pending = [];
+    // (falling in, or letting go of the rig rather than being dragged in after it)
+    if ((sim.state === S.FALLING && was !== S.FALLING) || (sim.state === S.UPHAUL && was === S.SAILING)) pending = [];
     while (pending.length && pending[0].t < t - 0.25) commit(pending.shift());
     if (++frame % 4 === 0) {
       rig.update(sim, 4 * DT, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);

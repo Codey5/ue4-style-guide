@@ -14,6 +14,19 @@ function deadzone(x, y, dz = 0.14) {
   return [x * k, y * k];
 }
 
+/**
+ * Pushing mostly one way, the other axis only counts past a margin that
+ * grows with the push: steering with the rig forward doesn't lean it
+ * sideways by accident (a rig leaned to leeward pulls you over).
+ */
+function axial(x, y, k = 0.35) {
+  const cross = (a, b) => {
+    const m = k * Math.abs(b);
+    return Math.abs(a) <= m ? 0 : Math.sign(a) * (Math.abs(a) - m) / (1 - m);
+  };
+  return [cross(x, y), cross(y, x)];
+}
+
 export const CONTROL_MAP = [
   ['Left stick ↑ / ↓', 'W / S', 'Rake the rig toward the nose (bear away) or tail (head up)'],
   ['Left stick ← / →', 'A / D', 'Lean the rig to port / starboard (windward lean = lift)'],
@@ -30,6 +43,7 @@ export const CONTROL_MAP = [
   ['RB (R1) hold', 'P hold', 'Pump the sail to get onto the plane'],
   ['L3 click', 'X', 'Drop the rig'],
   ['D-pad ← / →', 'V', 'Change camera'],
+  ['R3 click', 'L', 'Story: look toward the buoy you\'re heading for (again to look back)'],
   ['D-pad ↑ / ↓', 'Mouse wheel', 'Camera distance'],
   ['View / Share', 'Tab', 'Telemetry panel'],
   ['Menu / Options', 'Esc', 'Pause, conditions and gear'],
@@ -84,6 +98,7 @@ export class Input {
       case 'KeyG': p.flip = true; break;
       case 'KeyX': p.drop = true; break;
       case 'KeyV': u.camNext = true; break;
+      case 'KeyL': u.lookGoal = true; break;
       case 'Tab': u.telemetry = true; break;
       case 'Escape': u.pause = true; break;
       case 'KeyM': u.mute = true; break;
@@ -134,7 +149,7 @@ export class Input {
     if (gp) {
       const b = (i) => gp.buttons[i] ? gp.buttons[i].pressed : false;
       const v = (i) => gp.buttons[i] ? gp.buttons[i].value : 0;
-      const [lx, ly] = deadzone(gp.axes[0] ?? 0, gp.axes[1] ?? 0);
+      const [lx, ly] = axial(...deadzone(gp.axes[0] ?? 0, gp.axes[1] ?? 0));
       const [rx, ry] = deadzone(gp.axes[2] ?? 0, gp.axes[3] ?? 0);
       const rt = v(BTN.RT), lt = v(BTN.LT);
       const active = Math.abs(lx) + Math.abs(ly) + Math.abs(rx) + Math.abs(ry) + rt + lt > 0.05 ||
@@ -157,6 +172,7 @@ export class Input {
       if (edge(BTN.B)) c.pressed.tack = true;
       if (edge(BTN.Y)) c.pressed.flip = true;
       if (edge(BTN.L3)) c.pressed.drop = true;
+      if (edge(BTN.R3)) ui.lookGoal = true;
       if (edge(BTN.START)) ui.pause = true;
       if (edge(BTN.BACK)) ui.telemetry = true;
       if (edge(BTN.LEFT)) ui.camPrev = true;

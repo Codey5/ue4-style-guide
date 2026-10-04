@@ -210,7 +210,7 @@ export class Menu {
           ${lesson ? `<button class="btn" id="act-chapter-lesson" data-lesson-id="${lesson.id}">Watch Kai: ${lesson.title}</button>` : ''}
           <button class="btn" id="act-story-exit">Exit to free sailing</button>
         </div>
-        <p class="muted">Goals you've done stay done, so you can restart or come back to a chapter any time. The Story tab has every chapter.</p>`;
+        <p class="muted">The goals are done in order. Restart the chapter to start it afresh; the Story tab has every chapter.</p>`;
     } else if (this.tab === 'story') {
       c.innerHTML = this.storyPage();
     } else if (this.tab === 'sail' && this.activeLesson) {
@@ -409,8 +409,8 @@ export class Menu {
       const open = career.unlocked(i), fin = career.finished(ch.id), isNext = i === next && !fin;
       const g = chapterSetup(ch, s.mass);
       const spec = `${boardName(g.boardId)} · ${g.sailArea.toFixed(1)} m² · ${ch.wind.speedKn} kn`;
-      const goals = ch.goals.map((x) => `<li class="${career.goalDone(ch.id, x.id) ? 'done' : ''}">${x.text}</li>`).join('');
-      const label = fin ? 'Sail again' : career.data.goals[ch.id]?.length ? 'Continue' : 'Start';
+      const goals = ch.goals.map((x) => `<li class="${fin ? 'done' : ''}">${x.text}</li>`).join('');
+      const label = fin ? 'Sail again' : 'Start';
       return `<div class="story-row ${fin ? 'done' : ''} ${isNext ? 'next' : ''} ${open ? '' : 'locked'}">
         <span class="n">${i + 1}</span>
         <div><b>${ch.title}</b><div class="spec">${spec}${fin ? ' · done ✓' : ''}</div>
@@ -422,7 +422,7 @@ export class Menu {
       <h2>Story</h2>
       ${banner ? `<div class="story-banner"><b>Chapter ${CHAPTERS.indexOf(banner) + 1} complete</b><p>${this.caption(banner.outro)}</p>
         <div class="actions" style="margin-top:0">${after ? `<button class="btn primary" data-chapter="${after.id}">Chapter ${CHAPTERS.indexOf(after) + 1}: ${after.title}</button>` : ''}<button class="btn" id="act-resume">Keep sailing</button></div></div>` : ''}
-      <p class="muted">A summer at the spot, from your first day on a board to speed week on the sandbar. Kai, who runs the school on the beach, picks the gear and the day for each chapter (the sails are sized for your ${s.mass} kg). Finish a chapter's goals to unlock the next; goals you've done stay done.</p>
+      <p class="muted">A summer at the spot, from your first day on a board to speed week on the sandbar. Kai, who runs the school on the beach, picks the gear and the day for each chapter (the sails are sized for your ${s.mass} kg). Do a chapter's goals in order to finish it and unlock the next; a chapter takes a few minutes, and a restart starts it afresh.</p>
       <p class="story-progress">${done} of ${CHAPTERS.length} chapters done</p>
       <div class="story-list">${rows}</div>
       <div class="actions"><button class="btn" id="act-story-reset">Start the story over</button></div>`;

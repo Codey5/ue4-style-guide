@@ -192,13 +192,40 @@ export class Rig {
     this.harness = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new Array(14).fill(0).map(() => new THREE.Vector3())), lineMat);
     this.harness.frustumCulled = false;
     this.group.add(this.harness);
-    const up = [];
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10;
-      up.push(new THREE.Vector3(0.05 + Math.sin(Math.PI * t) * 0.18, geo.boomHeight * (1 - t) + 0.25 * t, 0));
-    }
-    this.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(up), new THREE.LineBasicMaterial({ color: 0xd9d9d9 })));
+    // The uphaul rope: tied to the front of the boom, its tail to the mast
+    // foot on a bungee. It hangs by the mast, or runs taut to your hands.
+    this.uphaul = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new Array(16).fill(0).map(() => new THREE.Vector3())), new THREE.LineBasicMaterial({ color: 0xd9d9d9 }));
+    this.uphaul.frustumCulled = false;
+    this.group.add(this.uphaul);
+    this.updateUphaul(null, null);
     this.flutterPhase = 0;
+  }
+
+  /** The uphaul rope: hanging from the boom front, or (uphauling) taut from it to the hands. */
+  updateUphaul(sim, sailor) {
+    const geo = this.geo, pos = this.uphaul.geometry.attributes.position, n = pos.count;
+    const top = new THREE.Vector3(0.06, geo.boomHeight, 0), foot = new THREE.Vector3(0.05, 0.12, 0);
+    const pts = [];
+    if (sim && sailor?.pose && sim.state === S.UPHAUL) {
+      // Taut from the boom to the hands, then the tail falls to the mast foot.
+      this.group.updateMatrix();
+      const inv = this.group.matrix.clone().invert();
+      const hf = sailor.pose.haL.clone().applyMatrix4(inv), hb = sailor.pose.haR.clone().applyMatrix4(inv);
+      const [h1, h2] = hf.distanceTo(top) < hb.distanceTo(top) ? [hf, hb] : [hb, hf];
+      for (let i = 0; i < 6; i++) pts.push(top.clone().lerp(h1, i / 5));
+      for (let i = 1; i < 4; i++) pts.push(h1.clone().lerp(h2, i / 3));
+      for (let i = 1; i < n - 8; i++) {
+        const t = i / (n - 9);
+        pts.push(h2.clone().lerp(foot, t).add(new THREE.Vector3(0, -Math.sin(Math.PI * t) * 0.15, 0)));
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        pts.push(new THREE.Vector3(0.05 + Math.sin(Math.PI * t) * 0.18, geo.boomHeight * (1 - t) + 0.25 * t, 0));
+      }
+    }
+    for (let i = 0; i < n; i++) pos.setXYZ(i, pts[i].x, pts[i].y, pts[i].z);
+    pos.needsUpdate = true;
   }
 
   /** Point on the windward boom tube, rig-local. */
@@ -347,19 +374,30 @@ function ik(root, end, l1, l2, pole) {
   return root.clone().add(dir.clone().multiplyScalar(a)).add(poleDir.multiplyScalar(h));
 }
 
+/**
+ * A body segment from joint to joint: a tube with rounded ends that reaches
+ * both joints (a capsule stretched to length would squash its ends and fall
+ * short of them: a thick torso by a third of its length).
+ */
 class Limb {
   constructor(radius, material, parent) {
-    this.mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, 1, 4, 10), material);
-    this.mesh.castShadow = true;
+    this.mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 1, 12, 1, true), material);
+    this.capA = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 8), material);
+    this.capB = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 8), material);
+    for (const m of [this.mesh, this.capA, this.capB]) { m.castShadow = true; parent.add(m); }
     this.radius = radius;
-    parent.add(this.mesh);
   }
   set(a, b) {
     const d = new THREE.Vector3().subVectors(b, a);
     const len = Math.max(d.length(), 1e-3);
-    this.mesh.position.copy(a).addScaledVector(d, 0.5);
-    this.mesh.quaternion.setFromUnitVectors(UP, d.divideScalar(len));
-    this.mesh.scale.set(1, Math.max(len - this.radius * 2, 0.01), 1);
+    const r = Math.min(this.radius, len / 2);
+    d.divideScalar(len);
+    // (the ends' centres a radius inside the joints, so the rounded ends finish at them)
+    this.capA.position.copy(a).addScaledVector(d, r);
+    this.capB.position.copy(b).addScaledVector(d, -r);
+    this.mesh.position.copy(a).addScaledVector(d, len / 2);
+    this.mesh.quaternion.setFromUnitVectors(UP, d);
+    this.mesh.scale.set(1, Math.max(len - 2 * r, 0.001), 1);
   }
 }
 
@@ -412,7 +450,17 @@ export class Sailor {
     const onBoom = !(st === S.SECURE || st === S.UPHAUL || st === S.CLIMB || (st === S.TACK && !sim.stateData.switched));
     const hooked = s.hooked && st === S.SAILING;
     let hands, lines = null;
-    if (!onBoom) {
+    if (st === S.UPHAUL) {
+      // On the uphaul rope, an arm's length out toward the boom (hand over
+      // hand up it as the rig comes up), or on the rope by the boom once it's close.
+      const top = toBoard(new THREE.Vector3(0.06, rig.geo.boomHeight, 0));
+      const sit = pose.sit ?? 0;
+      const sh = new THREE.Vector3(0.5 * (pose.feetF[0] + pose.feetB[0]) + 0.05, pose.feetF[1] + H * (0.8 - 0.35 * sit), side * 0.12);
+      const d = top.clone().sub(sh), dist = d.length();
+      const reachOut = Math.min(dist, BODY.reach * H * 0.92);
+      d.normalize();
+      hands = { f: sh.clone().addScaledVector(d, reachOut).toArray(), b: sh.clone().addScaledVector(d, Math.max(0.05, reachOut - 0.13)).toArray() };
+    } else if (!onBoom) {
       // On the mast and the uphaul.
       const up = sim.rig.up ?? 1;
       hands = {

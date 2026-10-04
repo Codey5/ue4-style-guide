@@ -49,7 +49,7 @@ export class StoryUi {
       const vx = t.at[0] - sim.pos[0], vz = t.at[1] - sim.pos[2];
       const fwd = vx * Math.cos(sim.yaw) - vz * Math.sin(sim.yaw), right = vx * Math.sin(sim.yaw) + vz * Math.cos(sim.yaw);
       $('story-arrow').setAttribute('transform', `rotate(${(Math.atan2(right, fwd) * RAD).toFixed(0)})`);
-      this.set('story-target-t', `${t.name[0].toUpperCase()}${t.name.slice(1)}: ${Math.round(Math.hypot(vx, vz))} m`);
+      this.set('story-target-t', LessonUi.caption(`${t.name[0].toUpperCase()}${t.name.slice(1)}: ${Math.round(Math.hypot(vx, vz))} m · {R3} to look toward it`, glyphs));
     }
     const lesson = cur?.goal.lesson ? ' · stuck? Pause for Kai\'s lesson on it' : '';
     this.set('story-foot', LessonUi.caption(run.complete ? `${glyphs.MENU} for the next chapter` : `${glyphs.MENU} pause, restart${lesson}`, glyphs));

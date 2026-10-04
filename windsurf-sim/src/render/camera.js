@@ -42,9 +42,11 @@ export class CameraRig {
     const p = view.pos;
     const speed = Math.hypot(sim.vel[0], sim.vel[2]);
     // Follow the course over ground when moving, the heading when slow.
-    const course = speed > 1.5 ? Math.atan2(-sim.vel[2], sim.vel[0]) : view.yaw;
+    // Looking toward a goal: from behind you, along the line to it.
+    const g = this.lookGoal ? this.goal : null;
+    const course = g ? Math.atan2(-(g[1] - p[2]), g[0] - p[0]) : speed > 1.5 ? Math.atan2(-sim.vel[2], sim.vel[0]) : view.yaw;
     if (this.yaw === null) this.yaw = course;
-    this.yaw += wrapAngle(course - this.yaw) * (1 - Math.exp(-dt * 1.6));
+    this.yaw += wrapAngle(course - this.yaw) * (1 - Math.exp(-dt * (g ? 3.5 : 1.6)));
     // Ride the chop gently: don't copy every bounce of the board.
     this.boardY = this.boardY === undefined ? p[1] : damp(this.boardY, p[1], 2.2, dt);
     const fwd = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
@@ -54,7 +56,12 @@ export class CameraRig {
     const center = new THREE.Vector3(p[0], this.boardY + 1.2, p[2]);
     const z = this.zoom;
     let offset, lookOffset = new THREE.Vector3();
-    switch (CAMERA_MODES[this.mode].id) {
+    switch (g ? 'goal' : CAMERA_MODES[this.mode].id) {
+      case 'goal':
+        // (a little to windward and above, so the sail doesn't hide the mark)
+        offset = fwd.clone().multiplyScalar(-8 * z).addScaledVector(windward, 1.6 * z).add(new THREE.Vector3(0, 3 * z, 0));
+        lookOffset = fwd.clone().multiplyScalar(6);
+        break;
       case 'chase':
         offset = fwd.clone().multiplyScalar(-6.5 * z).addScaledVector(windward, 2.2 * z).add(new THREE.Vector3(0, 1.5 * z, 0));
         lookOffset = fwd.clone().multiplyScalar(2.5);
