@@ -1,0 +1,16 @@
+{
+  "name": "Tangent",
+  "short_name": "Tangent",
+  "description": "Tap to break orbit and slingshot from planet to planet.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#1d1030",
+  "theme_color": "#1d1030",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
