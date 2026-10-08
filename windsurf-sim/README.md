@@ -187,6 +187,7 @@ All four moves start the same way: hold LB to crouch, then press a button. Each 
 **The sailor**
 
 - Set your weight, height, boom height and harness line length in the Gear menu. The body is built from standard anthropometric proportions (segment lengths and masses), and the physics balances exactly the body you see: the lean in the HUD is the lean that's drawn.
+- The sailor is drawn as one continuous body over a skeleton that's set every frame from the joints the physics poses: a wetsuit with teal panels, a waist harness with its spreader bar and hook (where the lines are drawn to), neoprene booties, and a white helmet, sunglasses and chin strap. It bends at the hips, knees, shoulders and elbows like a body (the skin blends between the bones at each joint) and its proportions scale with your height; the head turns to look ahead past the mast.
 - The default sailor is 183 cm and 75 kg, with the boom between chest and shoulder height (0.74 × your height, 135 cm) and 32" harness lines (0.45 × your height).
 - The sail's heeling moment about the board's centreline is fought by your weight times how far your centre of mass is out from that centreline, worked out from the posed body (feet in the straps, hook in the lines, hands on the boom), plus core and leg strength (which scale with body mass) and foot pressure on the rails.
 - How far out you can hang is geometry. Unhooked, it's your arms' reach to the boom; hooked in, it's the harness lines. Leaning the rig to windward brings the boom out over the water so you can hang further out, but past about 15° the sail loses more drive than you gain. Longer lines let you hang further out. A higher boom lets you lean further on straight arms but needs longer lines. Your hands slide back along the boom as you move back toward the straps; with the sail eased right out they stay forward, where the boom is still in reach.
@@ -273,5 +274,5 @@ The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the fra
 - Real swell and breaking waves.
 - Race courses (a slalom course against a ghost of your best lap would build on the GPS).
 - Remappable controls.
-- A detailed sailor animation rig: the sailor is a simple figure posed with inverse kinematics, the same body the physics balances. Leaning back, it's drawn as far back as its arms (or harness lines) reach toward the lean the physics balances.
+- Facial animation, fingers, and cloth on the sailor: the body is posed with inverse kinematics from the same joints the physics balances (leaning back, it's drawn as far back as its arms or harness lines reach toward the lean the physics balances).
 

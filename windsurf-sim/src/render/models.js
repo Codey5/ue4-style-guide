@@ -1,5 +1,6 @@
 // Board, rig and sailor models, posed every frame from the simulation state.
 import * as THREE from 'three';
+import { Figure } from './figure.js';
 import { DEG, clamp, lerp, smoothstep } from '../physics/math.js';
 import { rigAxes } from '../physics/sail.js';
 import { S } from '../physics/states.js';
@@ -374,59 +375,15 @@ function ik(root, end, l1, l2, pole) {
   return root.clone().add(dir.clone().multiplyScalar(a)).add(poleDir.multiplyScalar(h));
 }
 
-/**
- * A body segment from joint to joint: a tube with rounded ends that reaches
- * both joints (a capsule stretched to length would squash its ends and fall
- * short of them: a thick torso by a third of its length).
- */
-class Limb {
-  constructor(radius, material, parent) {
-    this.mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 1, 12, 1, true), material);
-    this.capA = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 8), material);
-    this.capB = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 8), material);
-    for (const m of [this.mesh, this.capA, this.capB]) { m.castShadow = true; parent.add(m); }
-    this.radius = radius;
-  }
-  set(a, b) {
-    const d = new THREE.Vector3().subVectors(b, a);
-    const len = Math.max(d.length(), 1e-3);
-    const r = Math.min(this.radius, len / 2);
-    d.divideScalar(len);
-    // (the ends' centres a radius inside the joints, so the rounded ends finish at them)
-    this.capA.position.copy(a).addScaledVector(d, r);
-    this.capB.position.copy(b).addScaledVector(d, -r);
-    this.mesh.position.copy(a).addScaledVector(d, len / 2);
-    this.mesh.quaternion.setFromUnitVectors(UP, d);
-    this.mesh.scale.set(1, Math.max(len - 2 * r, 0.001), 1);
-  }
-}
-
-const JOINTS = ['pelvis', 'chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'haL', 'haR', 'kneeF', 'kneeB', 'footF', 'footB'];
+// (front: a point the chest faces, so the body knows which way it's turned)
+const JOINTS = ['pelvis', 'chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'haL', 'haR', 'kneeF', 'kneeB', 'footF', 'footB', 'front'];
 
 export class Sailor {
   constructor(height = 1.8) {
     this.group = new THREE.Group();
     this.h = height;
-    const k = height / 1.78;
-    const suit = new THREE.MeshStandardMaterial({ color: 0x1d2328, roughness: 0.7 });
-    const panel = new THREE.MeshStandardMaterial({ color: 0x168a9a, roughness: 0.7 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0xc59474, roughness: 0.75 });
-    const harness = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.6 });
-    const g = this.group;
-    this.torso = new Limb(0.15 * k, suit, g);
-    this.neck = new Limb(0.05, skin, g);
-    this.upperL = new Limb(0.048, panel, g); this.upperR = new Limb(0.048, panel, g);
-    this.foreL = new Limb(0.04, suit, g); this.foreR = new Limb(0.04, suit, g);
-    this.thighF = new Limb(0.075, suit, g); this.thighB = new Limb(0.075, suit, g);
-    this.shinF = new Limb(0.055, suit, g); this.shinB = new Limb(0.055, suit, g);
-    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.105 * k, 16, 12), skin);
-    this.cap = new THREE.Mesh(new THREE.SphereGeometry(0.11 * k, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.6 }));
-    this.handL = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), skin);
-    this.handR = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), skin);
-    this.belt = new THREE.Mesh(new THREE.CylinderGeometry(0.17 * k, 0.165 * k, 0.16, 16), harness);
-    this.hook = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.01, 6, 10), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.3 }));
-    this.feet = [0, 1].map(() => new THREE.Mesh(new THREE.BoxGeometry(0.27 * k, 0.07, 0.1), suit));
-    for (const m of [this.head, this.cap, this.handL, this.handR, this.belt, this.hook, ...this.feet]) { m.castShadow = true; g.add(m); }
+    this.figure = new Figure(height);
+    this.group.add(this.figure.root);
     this.pose = null;
     this.fallPose = null;
   }
@@ -548,7 +505,7 @@ export class Sailor {
     haB = clampReach(shR, haB);
 
     const arm = 0.5 * BODY.reach * H;
-    Object.assign(p, { pelvis, chest, neck, head, shL, shR, haL: haF, haR: haB, footF: feetF, footB: feetB });
+    Object.assign(p, { pelvis, chest, neck, head, shL, shR, haL: haF, haR: haB, footF: feetF, footB: feetB, front: chest.clone().addScaledVector(facing, 0.3) });
     p.elL = ik(shL, haF, arm, arm, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
     p.elR = ik(shR, haB, arm, arm, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
     p.kneeF = ik(pelvis, feetF, 0.25 * H, 0.25 * H, facing.clone().add(new THREE.Vector3(0.4, 0.1, 0)));
@@ -629,8 +586,11 @@ export class Sailor {
       const footF = pelvis.clone().add(new THREE.Vector3(0.15, -0.65, 0)).addScaledVector(windward, 0.12);
       const clampReach = (sh, ha) => { const d = ha.clone().sub(sh); return d.length() > reach ? sh.clone().addScaledVector(d.normalize(), reach) : ha; };
       haL = clampReach(shL, haL); haR = clampReach(shR, haR);
+      const chest = pelvis.clone().lerp(neck, 0.7);
       Object.assign(p, {
-        pelvis, chest: pelvis.clone().lerp(neck, 0.7), neck, head, shL, shR, haL, haR, footF, footB,
+        pelvis, chest, neck, head, shL, shR, haL, haR, footF, footB,
+        // (facing the rig, hands up on it)
+        front: chest.clone().add(haL.clone().add(haR).multiplyScalar(0.5).sub(chest).normalize().multiplyScalar(0.3)),
         elL: ik(shL, haL, 0.5 * BODY.reach * H, 0.5 * BODY.reach * H, new THREE.Vector3(0, -1, 0)), elR: ik(shR, haR, 0.5 * BODY.reach * H, 0.5 * BODY.reach * H, new THREE.Vector3(0, -1, 0)),
         kneeF: ik(pelvis, footF, 0.25 * H, 0.25 * H, new THREE.Vector3(1, 0, 0)), kneeB: ik(pelvis, footB, 0.25 * H, 0.25 * H, new THREE.Vector3(0, 1, 0)),
       });
@@ -645,8 +605,10 @@ export class Sailor {
     const haR = shR.clone().add(new THREE.Vector3(0.1, -0.35, side * 0.15));
     const footF = pelvis.clone().add(new THREE.Vector3(-0.5, -0.45, side * 0.2));
     const footB = pelvis.clone().add(new THREE.Vector3(-0.65, -0.5, side * -0.05));
+    const chest = pelvis.clone().lerp(neck, 0.7);
     Object.assign(p, {
-      pelvis, chest: pelvis.clone().lerp(neck, 0.7), neck, head, shL, shR, haL, haR, footF, footB,
+      pelvis, chest, neck, head, shL, shR, haL, haR, footF, footB,
+      front: chest.clone().add(new THREE.Vector3(0.05, 0.12, -side * 0.3)), // (facing the board, head up)
       elL: ik(shL, haL, 0.31, 0.3, new THREE.Vector3(0, 1, 0)), elR: ik(shR, haR, 0.31, 0.3, new THREE.Vector3(0, -1, 0)),
       kneeF: ik(pelvis, footF, 0.44, 0.42, new THREE.Vector3(0, -1, 0)), kneeB: ik(pelvis, footB, 0.44, 0.42, new THREE.Vector3(0, -1, 0)),
     });
@@ -672,30 +634,18 @@ export class Sailor {
       snap('shL', 'elL', 'haL', 'haL', target.grip.L);
       snap('shR', 'elR', 'haR', 'haR', target.grip.R);
     }
-    this.torso.set(p.pelvis, p.neck);
-    this.neck.set(p.neck, p.head);
-    this.upperL.set(p.shL, p.elL); this.foreL.set(p.elL, p.haL);
-    this.upperR.set(p.shR, p.elR); this.foreR.set(p.elR, p.haR);
-    this.thighF.set(p.pelvis, p.kneeF); this.shinF.set(p.kneeF, p.footF);
-    this.thighB.set(p.pelvis, p.kneeB); this.shinB.set(p.kneeB, p.footB);
-    this.head.position.copy(p.head);
-    this.cap.position.copy(p.head).add(new THREE.Vector3(0, 0.01, 0));
-    this.cap.quaternion.setFromUnitVectors(UP, p.head.clone().sub(p.neck).normalize());
-    this.handL.position.copy(p.haL); this.handR.position.copy(p.haR);
-    const beltPos = p.pelvis.clone().lerp(p.neck, 0.22);
-    this.belt.position.copy(beltPos);
-    this.belt.quaternion.setFromUnitVectors(UP, p.neck.clone().sub(p.pelvis).normalize());
-    const facing = new THREE.Vector3(0.2, 0, -sim.sailor.side).normalize();
-    this.hook.position.copy(beltPos).addScaledVector(facing, 0.18);
-    this.hook.lookAt(this.hook.position.clone().add(facing));
-    this.feet[0].position.copy(p.footF).y -= 0.04; this.feet[1].position.copy(p.footB).y -= 0.04;
-    this.feet[0].rotation.y = sim.sailor.straps ? 0.9 * sim.sailor.side : 0.2 * sim.sailor.side;
-    this.feet[1].rotation.y = sim.sailor.side * 1.3;
+    // The stance's feet: the front foot along the board (more so in the strap), the back one across it.
+    const side = sim.sailor.side;
+    const toe = (a) => new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
+    const onBoard = !(sim.state === S.WATER || sim.state === S.WATERSTART || sim.state === S.FALLING);
+    // (looking ahead past the mast while on the board)
+    const lookAt = onBoard ? new THREE.Vector3(sim.board.length * 0.5 + 3, p.head.y, p.head.z) : null;
+    this.figure.update(p, { onBoard, toes: [toe(sim.sailor.straps ? 0.9 * side : 0.2 * side), toe(1.3 * side)], lookAt });
   }
 
   /** Harness hook position in the board frame (for the lines). */
   get hookLocal() {
-    return this.hook.position;
+    return this.figure.hookPos;
   }
 }
 
