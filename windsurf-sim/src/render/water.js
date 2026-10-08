@@ -260,7 +260,9 @@ void main() {
   col = mix(col, foamCol, clamp(foam + trail + shoreFoam * 0.6 + streak + breakers * 0.85 + lap * 0.5, 0.0, 1.0));
   float fog = 1.0 - exp(-uFogDensity * uFogDensity * camDist * camDist);
   // Far off, the sea fades into the sky at the horizon behind it (warm toward the sun).
-  vec3 haze = skyBase(normalize(vec3(-V.x, 0.0, -V.z)));
+  // (straight down there's no horizon to fade to: keep it a valid direction)
+  vec2 hv = -V.xz / max(length(V.xz), 1e-4);
+  vec3 haze = skyBase(vec3(hv.x, 0.0, hv.y));
   col = mix(col, mix(uFogColor, haze, 0.75), fog);
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>

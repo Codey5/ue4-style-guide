@@ -7,6 +7,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { createEnvironment, createRenderer, createScene, setEnvironment, World } from './render/scene.js';
 import { Water } from './render/water.js';
 import { buildBoard, Rig, Sailor } from './render/models.js';
@@ -69,13 +70,25 @@ const renderer = createRenderer(canvas);
 const env = createEnvironment(settings.light);
 const { scene, skyUniforms, sun, applyLight } = createScene(env);
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 6000);
-// The glow: whatever is brighter than white (the sun, its glitter on the
-// water, sunlit spray) bleeds a little light around it, as it does in a lens.
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+// The frame is drawn off-screen in high precision, so that whatever is
+// brighter than white (the sun, its glitter on the water, sunlit spray) can
+// bleed a little light around it, as it does in a lens (the glow, which can
+// be turned off), then tone-mapped and its edges smoothed (FXAA). No
+// multisampling: multisampled float buffers are heavy at high resolution
+// and badly supported on some GPUs.
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.35, 1.6);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+composer.addPass(new FXAAPass());
+// If the browser resets the graphics anyway, draw straight to the screen from then on.
+let direct = false;
+canvas.addEventListener('webglcontextrestored', () => {
+  if (direct) return;
+  direct = true;
+  sim.emit('gfx', 'The graphics reset, so the game now draws more simply (no glow). Reload the page to try the full look again.', 2);
+});
 const camRig = new CameraRig(camera);
 
 let sim = makeSim('secure');
@@ -162,6 +175,7 @@ function applyOptions() {
   input.rumbleEnabled = settings.rumble;
   input.invertRake = settings.invertRake;
   windFx.enabled = settings.windParticles;
+  bloom.enabled = settings.bloom;
   setEnvironment(env, settings.light);
   applyLight(renderer);
   water.uniforms.uFogDensity.value = env.fogDensity;
@@ -550,8 +564,8 @@ function frame(now) {
     input.rumble(strong, weak, 90);
   }
 
-  if (settings.bloom) composer.render(dt);
-  else renderer.render(scene, camera);
+  if (direct) renderer.render(scene, camera);
+  else composer.render(dt);
   // (handles for the headless checks and screenshots)
   window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig };
 }

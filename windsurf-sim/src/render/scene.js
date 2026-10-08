@@ -147,7 +147,9 @@ void main() {
 `;
 
 export function createRenderer(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  // (no multisampling on the canvas: the frame is drawn off-screen and
+  // smoothed there, then copied up; see main.js)
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
