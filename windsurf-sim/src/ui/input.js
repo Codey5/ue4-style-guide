@@ -45,7 +45,7 @@ export const CONTROL_MAP = [
   ['D-pad ← / →', 'V', 'Change camera'],
   ['R3 click', 'L', 'Story: look toward the buoy you\'re heading for (again to look back)'],
   ['D-pad ↑ / ↓', 'Mouse wheel', 'Camera distance'],
-  ['View / Share', 'Tab', 'Telemetry panel'],
+  ['View / Share', 'Tab', 'Detailed HUD: telemetry, stance, every bar and every control for now'],
   ['Menu / Options', 'Esc', 'Pause, conditions and gear'],
 ];
 

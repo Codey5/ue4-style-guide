@@ -3,7 +3,11 @@ import * as THREE from 'three';
 import { Sim, S, BEACH_Z } from './physics/sim.js';
 import { clamp } from './physics/math.js';
 import { BOOM_RATIO, LINES_RATIO } from './physics/gear.js';
-import { createEnvironment, createRenderer, createScene, World } from './render/scene.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createEnvironment, createRenderer, createScene, setEnvironment, World } from './render/scene.js';
 import { Water } from './render/water.js';
 import { buildBoard, Rig, Sailor } from './render/models.js';
 import { Effects } from './render/effects.js';
@@ -32,6 +36,7 @@ const defaults = {
   tuneLines: 0, tuneMast: 0, downhaul: 0, outhaul: 0, // rig tuning: cm along the boom / track, and -1..1
   autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
   windParticles: true, cameraShake: true, gpsPanel: true,
+  light: 'golden', bloom: true,
 };
 function loadSettings() {
   try {
@@ -61,9 +66,16 @@ export const boomHeightFor = (st) => Math.round(st.height * BOOM_RATIO + st.boom
 export const linesFor = (st) => Math.round((st.height * LINES_RATIO) / 2.54 + st.linesRel);
 const canvas = document.getElementById('view');
 const renderer = createRenderer(canvas);
-const env = createEnvironment();
-const { scene, skyUniforms, sun } = createScene(env);
+const env = createEnvironment(settings.light);
+const { scene, skyUniforms, sun, applyLight } = createScene(env);
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 6000);
+// The glow: whatever is brighter than white (the sun, its glitter on the
+// water, sunlit spray) bleeds a little light around it, as it does in a lens.
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.35, 1.6);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 const camRig = new CameraRig(camera);
 
 let sim = makeSim('secure');
@@ -150,6 +162,9 @@ function applyOptions() {
   input.rumbleEnabled = settings.rumble;
   input.invertRake = settings.invertRake;
   windFx.enabled = settings.windParticles;
+  setEnvironment(env, settings.light);
+  applyLight(renderer);
+  water.uniforms.uFogDensity.value = env.fogDensity;
   camRig.shakeEnabled = settings.cameraShake;
   audio.volume = settings.volume;
   audio.setMuted(audio.muted);
@@ -308,6 +323,8 @@ camRig.update(0.016, sim, sim.waves, { pos: sim.pos, yaw: sim.yaw, t: sim.t });
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false);
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
@@ -482,11 +499,14 @@ function frame(now) {
   skyUniforms.uTime.value = view.t;
   world.update(view.t, sim.waves, story?.target ?? null);
   windFx.update(paused ? 0 : dt, camera, sim.wind, view.t, sim.waves.height(camera.position.x, camera.position.z, view.t));
-  sun.position.set(sim.pos[0] + env.sunDir.x * 40, env.sunDir.y * 40, sim.pos[2] + env.sunDir.z * 40);
+  sun.position.set(sim.pos[0] + env.sunDir.x * 60, env.sunDir.y * 60, sim.pos[2] + env.sunDir.z * 60);
   sun.target.position.set(sim.pos[0], 0, sim.pos[2]);
   sun.target.updateMatrixWorld();
 
   const shown = usedControls ?? controls;
+  // (in the story: a button to look toward the mark you're heading for)
+  const tg = story && !story.complete ? story.target : null;
+  hud.extra = tg ? [[hud.glyphs(input).R3, camRig.lookGoal ? 'Camera back' : `Look toward ${tg.name}`]] : [];
   hud.update(dt, sim, input, shown);
   // (in the story, only once speed is what the chapter's about)
   const gpsOn = gps && !lesson && settings.gpsPanel && (!story || story.chapter.goals.some((g) => g.kind === 'gps'));
@@ -530,7 +550,8 @@ function frame(now) {
     input.rumble(strong, weak, 90);
   }
 
-  renderer.render(scene, camera);
+  if (settings.bloom) composer.render(dt);
+  else renderer.render(scene, camera);
   // (handles for the headless checks and screenshots)
   window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig };
 }

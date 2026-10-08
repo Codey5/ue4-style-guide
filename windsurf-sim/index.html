@@ -52,6 +52,10 @@ body {
 }
 .speed { top: max(14px, env(safe-area-inset-top, 0px)); left: 16px; min-width: 168px; max-width: 292px; }
 .speed .sog { display: flex; align-items: baseline; gap: 6px; }
+.sog-row { display: flex; align-items: flex-end; gap: 14px; }
+.tws-box { border-left: 1px solid var(--hair); padding-left: 14px; padding-bottom: 2px; }
+.speed .sog.small b { font-size: 40px; }
+.speed .sog.small span { font-size: 15px; }
 .speed .sog b { font: 900 64px/0.9 var(--display); letter-spacing: -0.01em; }
 .speed .sog span { font: 700 18px/1 var(--display); color: var(--ink-dim); letter-spacing: 0.04em; }
 .speed .row { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; font: 12px var(--mono); color: var(--ink-dim); }
@@ -61,17 +65,25 @@ body {
 .chip.hot { color: #10202a; background: var(--signal); border-color: transparent; }
 .chip.alarm { color: #fff; background: var(--bad); border-color: transparent; }
 .chip.air { color: #10202a; background: var(--ink); border-color: transparent; }
+#hud:not(.detail) .chip:not(.on):not(.hot):not(.alarm):not(.air) { display: none; }
+#hud:not(.detail) .chips:not(:has(.on, .hot, .alarm:not([hidden]), .air:not([hidden]))) { display: none; }
 
-.wind { top: max(14px, env(safe-area-inset-top, 0px)); right: 16px; width: 188px; text-align: center; }
-.wind svg { width: 132px; height: 132px; display: block; margin: 2px auto 4px; }
-.wind .tws { display: flex; justify-content: center; align-items: baseline; gap: 5px; }
-.wind .tws b { font: 900 30px/1 var(--display); }
-.wind .tws span { font: 700 13px var(--display); color: var(--ink-dim); letter-spacing: 0.05em; }
-.wind .pos { font: 700 12px var(--ui); margin-top: 3px; color: var(--ink); }
+.wind { top: max(14px, env(safe-area-inset-top, 0px)); right: 16px; width: 150px; text-align: center; padding: 8px 10px; }
+.wind svg { width: 112px; height: 112px; display: block; margin: 0 auto 2px; }
+.wind .pos { font: 700 12px var(--ui); color: var(--ink); }
 .wind .tack { font: 11px var(--mono); color: var(--ink-dim); }
 
-.balance { left: 50%; transform: translateX(-50%); bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: min(560px, calc(100vw - 32px)); }
-.meter { position: relative; height: 18px; border-radius: 5px; overflow: hidden;
+.balance { left: 50%; transform: translateX(-50%); bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: min(440px, calc(100vw - 32px)); }
+#hud.detail .balance, #hud.lesson-on .balance { width: min(560px, calc(100vw - 32px)); }
+.bal-head { display: flex; align-items: center; gap: 10px; min-height: 14px; }
+.bal-warn { font: 700 10px/1 var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--bad); }
+.bal-head .arms { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+.segs { display: flex; gap: 2px; }
+.segs i { width: 7px; height: 9px; border-radius: 2px; background: rgba(233,242,245,.14); }
+.segs i.on { background: var(--good); }
+.segs.low i.on { background: var(--warn); }
+.segs.heavy i.on { background: var(--bad); }
+.meter { position: relative; height: 16px; margin-top: 7px; border-radius: 5px; overflow: hidden;
   background: linear-gradient(90deg, rgba(255,90,74,.75) 0 9%, rgba(255,171,58,.45) 9% 22%, rgba(95,209,143,.32) 22% 78%, rgba(255,171,58,.45) 78% 91%, rgba(255,90,74,.75) 91% 100%); }
 .meter .needle { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: var(--ink); border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.5); left: 50%; }
 .arrow-true line { stroke: var(--wind); } .arrow-true path { fill: var(--wind); }
@@ -95,6 +107,14 @@ body {
 .stance { left: 16px; bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: 132px; }
 .stance svg { display: block; width: 100%; height: 150px; }
 .hints { right: 16px; bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: 256px; }
+/* Most of the time: just the one or two things worth doing next, as buttons. */
+#hud:not(.detail) .hints { background: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0; width: auto; max-width: 340px; }
+#hud:not(.detail) .hints ul { justify-items: end; gap: 6px; margin: 0; }
+#hud:not(.detail) .hints li { display: flex; gap: 10px; align-items: center; background: var(--glass); border: 1px solid var(--hair); border-radius: 9px; padding: 6px 13px 6px 6px; font-size: 14px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+#hud:not(.detail) .hints .key { min-width: 24px; padding: 6px 7px; font-size: 13px; }
+/* The detailed HUD (View / Tab): telemetry, stance, every bar and every control for now. Lessons show the stance and bars they talk about. */
+#hud:not(.detail) .detail-only { display: none !important; }
+#hud:not(.detail):not(.lesson-on) .detail-lesson { display: none !important; }
 .hints ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; }
 .hints li { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 8px; align-items: center; font-size: 12px; }
 .key { font: 700 11px/1 var(--mono); text-align: center; padding: 4px 3px; border-radius: 4px; background: rgba(233,242,245,.1); border: 1px solid var(--hair); color: var(--signal); white-space: nowrap; }
@@ -105,12 +125,15 @@ body {
 .toast.p3 { border-color: var(--bad); font-weight: 700; }
 .toast.fade { opacity: 0; }
 
-.telemetry { position: absolute; left: 16px; top: 190px; width: 250px; font: 11px/1.5 var(--mono); }
-.telemetry dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; margin: 6px 0 0; column-gap: 10px; }
+.telemetry { position: absolute; left: 16px; top: 176px; width: 470px; font: 11px/1.45 var(--mono); columns: 2; column-gap: 18px; }
+.telemetry > .label { column-span: all; }
+.telemetry dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; margin: 6px 0 0; column-gap: 10px; break-inside: avoid; }
+.telemetry h3 { break-after: avoid; }
 .telemetry dt { color: var(--ink-dim); }
 .telemetry dd { margin: 0; text-align: right; }
 .telemetry h3 { margin: 8px 0 0; font: 700 10px var(--ui); letter-spacing: .14em; text-transform: uppercase; color: var(--signal); }
-.gps { right: 16px; top: calc(max(14px, env(safe-area-inset-top, 0px)) + 244px); width: 188px; }
+.gps { right: 16px; top: calc(max(14px, env(safe-area-inset-top, 0px)) + 172px); width: 188px; }
+#hud.detail .gps { top: calc(max(14px, env(safe-area-inset-top, 0px)) + 190px); }
 .gps .label .num { float: right; font: 11px var(--mono); color: var(--ink); letter-spacing: 0; }
 .gps-grid { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); column-gap: 8px; row-gap: 3px; margin-top: 6px; font: 12px var(--mono); }
 .gps-grid .h { font: 700 9px/1.6 var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
@@ -141,20 +164,30 @@ body {
 .lesson-dots li.now { background: var(--signal); }
 .lesson-foot { margin-top: 8px; font-size: 11px; color: var(--ink-dim); }
 #hud.lesson-on .toasts, #hud.story-on .toasts { top: 32%; }
-.story-goals { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
-.story-goals li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; font-size: 13px; color: var(--ink-dim); }
-.story-goals li::before { content: '○'; color: var(--ink-dim); }
-.story-goals li.done { color: var(--ink-dim); text-decoration: line-through; text-decoration-color: rgba(233,242,245,.3); }
-.story-goals li.done::before { content: '✓'; color: var(--good); text-decoration: none; }
-.story-goals li.now { color: var(--ink); font-weight: 700; }
-.story-goals li.now::before { content: '●'; color: var(--signal); }
-.story-goals .p { font: 11px var(--mono); color: var(--signal); white-space: nowrap; }
-.story-goals .bar { grid-column: 2 / -1; height: 3px; border-radius: 2px; background: rgba(233,242,245,.12); overflow: hidden; }
-.story-goals .bar i { display: block; height: 100%; background: var(--signal); }
-.story-hint { font-size: 14px; }
-.story-hint .kai { color: var(--wind); font-weight: 700; }
-.story-target { margin-top: 8px; }
-.story-target .gps-arrow path { fill: var(--signal); }
+.story { width: min(560px, calc(100vw - 32px - 2 * 190px)); min-width: min(380px, calc(100vw - 32px)); }
+.goal-dots { list-style: none; display: flex; gap: 6px; margin: 0; padding: 0; }
+.goal-dots li { width: 8px; height: 8px; border-radius: 50%; background: rgba(233,242,245,.2); }
+.goal-dots li.done { background: var(--good); }
+.goal-dots li.now { background: var(--signal); box-shadow: 0 0 0 3px rgba(255,197,49,.22); }
+.story-now { display: flex; align-items: center; gap: 10px; margin-top: 9px; font: 700 16px/1.3 var(--ui); }
+.story-now::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--signal); flex: none; }
+.story-now.complete::before { background: var(--good); }
+.story-goal { text-wrap: balance; }
+.story-p { margin-left: auto; font: 700 13px var(--mono); color: var(--signal); white-space: nowrap; }
+.story-arrow { width: 16px; height: 16px; flex: none; }
+.story-arrow path { fill: var(--signal); }
+.story-bar { height: 3px; margin-top: 9px; border-radius: 2px; background: rgba(233,242,245,.12); overflow: hidden; }
+.story-bar i { display: block; height: 100%; width: 0; background: var(--signal); transition: width .3s; }
+#hud.story-on .toasts { top: 150px; }
+/* Kai, your instructor, talking you through the chapter. */
+.kai { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(max(14px, env(safe-area-inset-bottom, 0px)) + 66px);
+  width: max-content; max-width: min(640px, calc(100vw - 32px - 2 * 280px)); min-width: min(360px, calc(100vw - 32px)); display: flex; align-items: center; gap: 12px;
+  background: var(--glass-solid); border: 1px solid var(--hair); border-radius: 34px 12px 12px 34px; padding: 6px 16px 6px 6px; transition: opacity .8s; }
+.kai.quiet { opacity: .6; }
+.kai-face { width: 52px; height: 52px; flex: none; }
+.kai-text { margin: 0; font-size: 15px; line-height: 1.4; text-wrap: pretty; }
+.kai-text .key { display: inline-block; padding: 1px 5px; margin: 0 1px; }
+.kai-text b { color: var(--wind); }
 #hud.lesson-on .hints, #hud.lesson-on .cam { display: none; }
 .padviz { right: 16px; bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: 256px; }
 .padsvg { display: block; width: 100%; height: auto; margin-top: 4px; }
@@ -293,25 +326,29 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
   .lesson-row, .story-row { grid-template-columns: minmax(0, 1fr); }
   .story-row .n { display: none; }
   .speed .sog b { font-size: 44px; }
-  .wind { width: 140px; }
-  .wind svg { width: 96px; height: 96px; }
+  .wind { width: 110px; }
+  .wind svg { width: 84px; height: 84px; }
+  .kai { bottom: 140px; }
+  .story { width: calc(100vw - 32px); min-width: 0; top: auto; bottom: 230px; }
   .bars { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .small-note { display: block; }
 }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 </style>
 <!--BUILD:HEAD-END-->
-<script type="importmap">{ "imports": { "three": "./node_modules/three/build/three.module.js" } }</script>
+<script type="importmap">{ "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/" } }</script>
 </head>
 <body>
 <!--BUILD:BODY-START-->
 <canvas id="view" aria-label="Windsurfing simulator view"></canvas>
 
 <div id="hud" hidden>
-  <section class="pod speed" aria-label="Speed">
-    <div class="label">Speed over ground</div>
-    <div class="sog"><b class="num" id="sog">0.0</b><span>KN</span></div>
-    <div class="row"><span>MAX <span class="num" id="max">0.0</span></span><span>HDG <span class="num" id="hdg">000</span>°</span></div>
+  <section class="pod speed" aria-label="Speed and wind">
+    <div class="sog-row">
+      <div><div class="label">Speed over ground</div><div class="sog"><b class="num" id="sog">0.0</b><span>KN</span></div></div>
+      <div class="tws-box"><div class="label">Wind</div><div class="sog small"><b class="num" id="tws">0</b><span>KN</span></div></div>
+    </div>
+    <div class="row"><span>MAX <span class="num" id="max">0.0</span></span><span class="detail-only">HDG <span class="num" id="hdg">000</span>°</span></div>
     <div class="chips">
       <span class="chip" id="chip-plane">Planing</span>
       <span class="chip" id="chip-hook">Hooked in</span>
@@ -322,8 +359,7 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
     <div class="row jumprow" id="jumprow" hidden><span>JUMP <span class="num" id="jump-last">0.00</span> m · <span class="num" id="jump-air">0.0</span> s</span><span>BEST <span class="num" id="jump-best">0.00</span> m</span></div>
   </section>
 
-  <section class="pod wind" aria-label="Wind">
-    <div class="label">Wind</div>
+  <section class="pod wind" aria-label="Wind direction">
     <svg viewBox="-60 -60 120 120" aria-hidden="true">
       <circle r="54" fill="none" stroke="rgba(233,242,245,.18)" stroke-width="1"/>
       <g id="dial-ticks"></g>
@@ -331,9 +367,8 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
       <g id="arrow-true" class="arrow-true"><line x1="0" y1="-52" x2="0" y2="-30" stroke-width="5" stroke-linecap="round"/><path d="M-7,-36 L0,-26 L7,-36 Z"/></g>
       <g id="arrow-app" class="arrow-app"><line x1="0" y1="-52" x2="0" y2="-34" stroke-width="3" stroke-linecap="round"/><path d="M-5,-38 L0,-30 L5,-38 Z"/></g>
     </svg>
-    <div class="tws"><b class="num" id="tws">0</b><span>KN TRUE</span></div>
     <div class="pos" id="pos-sail">Beam reach</div>
-    <div class="tack"><span id="tack">Starboard tack</span> · AWA <span class="num" id="awa">0</span>°</div>
+    <div class="tack detail-only"><span id="tack">Starboard tack</span> · AWA <span class="num" id="awa">0</span>°</div>
   </section>
 
   <div class="cam" id="cam-name">Chase camera</div>
@@ -348,16 +383,21 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <section class="pod stance" aria-label="Stance">
+  <section class="pod stance detail-lesson" aria-label="Stance">
     <div class="label">Stance</div>
     <svg viewBox="-50 -125 100 250" id="stance-svg" aria-hidden="true"></svg>
   </section>
 
   <section class="pod balance" id="balance" aria-label="Balance">
-    <div class="label" style="display:flex;justify-content:space-between"><span>Balance</span><span id="bal-text" class="num">lean 0°</span></div>
-    <div class="meter" style="margin-top:6px"><div class="needle" id="bal-needle"></div></div>
-    <div class="ends"><span>◀ sail pulling you in</span><span>falling back ▶</span></div>
-    <div class="bars">
+    <div class="bal-head">
+      <span class="label">Balance</span>
+      <span class="bal-warn" id="bal-warn"></span>
+      <span id="bal-text" class="label num detail-only">lean 0°</span>
+      <span class="arms" title="Forearms: how much grip you have left"><span class="label">Arms</span><span class="segs" id="arms-segs"></span></span>
+    </div>
+    <div class="meter"><div class="needle" id="bal-needle"></div></div>
+    <div class="ends detail-lesson"><span>◀ sail pulling you in</span><span>falling back ▶</span></div>
+    <div class="bars detail-lesson">
       <div class="bar sheet"><span class="label">Sheet</span><span class="v num" id="v-sheet">0</span><div class="track"><div class="fill" id="f-sheet"></div></div></div>
       <div class="bar hike"><span class="label">Hike</span><span class="v num" id="v-hike">0</span><div class="track"><div class="fill" id="f-hike"></div></div></div>
       <div class="bar pull" title="Load in your front and back hand"><span class="label">Hands</span><span class="v num" id="v-pull">0 · 0 N</span><div class="track split"><div class="fill" id="f-handF"></div><div class="fill" id="f-handB"></div></div></div>
@@ -373,17 +413,37 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
   </section>
 
   <section class="pod lesson story" id="story" hidden aria-live="polite">
-    <div class="lesson-head"><span class="label" id="story-eyebrow">Chapter</span><span class="lesson-mode you" id="story-mode">Story</span></div>
-    <ul class="story-goals" id="story-goals"></ul>
-    <p class="lesson-step story-hint" id="story-hint"></p>
-    <div class="gps-strip story-target" id="story-target" hidden><svg viewBox="-10 -10 20 20" class="gps-arrow" aria-hidden="true"><path id="story-arrow" d="M0,-8 L5.5,5 L0,2 L-5.5,5 Z"/></svg><span id="story-target-t"></span></div>
-    <div class="lesson-foot" id="story-foot"></div>
+    <div class="lesson-head"><span class="label" id="story-eyebrow">Chapter</span><ol class="goal-dots" id="story-dots" aria-hidden="true"></ol></div>
+    <div class="story-now" id="story-now"><span class="story-goal" id="story-goal"></span><span class="story-p num" id="story-p"></span><svg viewBox="-10 -10 20 20" class="story-arrow" id="story-arrow-svg" aria-hidden="true"><path id="story-arrow" d="M0,-8 L5.5,5 L0,2 L-5.5,5 Z"/></svg></div>
+    <div class="story-bar" id="story-bar-wrap"><i id="story-bar"></i></div>
+  </section>
+
+  <section class="kai" id="kai" hidden aria-live="polite">
+    <svg class="kai-face" viewBox="0 0 48 48" aria-hidden="true">
+      <defs><clipPath id="kai-clip"><circle cx="24" cy="24" r="23"/></clipPath></defs>
+      <g clip-path="url(#kai-clip)">
+        <rect width="48" height="48" fill="#2a7f93"/>
+        <path d="M3 50 C6 38 15 34 24 34 C33 34 42 38 45 50 Z" fill="#13232d"/>
+        <path d="M17 36 Q24 41 31 36" stroke="#69d4ea" stroke-width="2.2" fill="none"/>
+        <rect x="20" y="29" width="8" height="7" fill="#c98f66"/>
+        <ellipse cx="24" cy="23.5" rx="9" ry="10.5" fill="#d9a27a"/>
+        <path d="M15.5 26 Q24 36 32.5 26 L32.5 29 Q24 37.5 15.5 29 Z" fill="#8a5a3c" opacity=".55"/>
+        <path d="M14.5 19 Q24 8 33.5 19 Z" fill="#1d2b36"/>
+        <path d="M13 18.6 L35 18.6 L41 21 L13 21 Z" fill="#ffc531"/>
+        <rect x="15.6" y="21.6" width="7.4" height="4.2" rx="2" fill="#0d1a22"/>
+        <rect x="25" y="21.6" width="7.4" height="4.2" rx="2" fill="#0d1a22"/>
+        <path d="M23 23 L25 23" stroke="#0d1a22" stroke-width="1.2"/>
+        <path d="M20.5 29.5 Q24 32 27.5 29.5" stroke="#5b2f1e" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      </g>
+      <circle cx="24" cy="24" r="23" fill="none" stroke="#ffc531" stroke-width="2"/>
+    </svg>
+    <p class="kai-text" id="kai-text"></p>
   </section>
 
   <section class="pod padviz" id="padviz" hidden aria-label="Controller inputs"></section>
 
   <section class="pod hints" aria-label="What you can do now">
-    <div class="label" id="hint-title">Now</div>
+    <div class="label detail-only" id="hint-title">Now</div>
     <ul id="hints"></ul>
   </section>
 </div>

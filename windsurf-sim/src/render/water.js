@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { GUST_ADVECT, GUST_EVOLVE, GUST_SCALE } from '../physics/environment.js';
 import { SHELTER_GLSL } from '../physics/spot.js';
+import { SKY_GLSL } from './scene.js';
 
 export const NOISE_GLSL = /* glsl */ `
 float hash3(ivec3 p) {
@@ -71,10 +72,7 @@ void main() {
 
 const fragmentShader = /* glsl */ `
 uniform float uTime;
-uniform vec3 uSunDir;
-uniform vec3 uSunColor;
-uniform vec3 uSkyTop;
-uniform vec3 uSkyHorizon;
+${SKY_GLSL}
 uniform vec3 uDeep;
 uniform vec3 uShallow;
 uniform vec3 uFogColor;
@@ -98,11 +96,8 @@ float gustFactor(vec2 xz) {
   return 1.0 + 0.42 * uGustiness * clamp(fbm3(q), -1.2, 1.2);
 }
 vec3 skyColor(vec3 dir) {
-  float t = clamp(dir.y, 0.0, 1.0);
-  vec3 c = mix(uSkyHorizon, uSkyTop, pow(t, 0.55));
   float sun = max(dot(dir, uSunDir), 0.0);
-  c += uSunColor * pow(sun, 350.0) * 6.0 + uSunColor * pow(sun, 8.0) * 0.15;
-  return c;
+  return skyBase(dir) + uSunColor * pow(sun, 350.0) * 6.0;
 }
 // How much of a pattern with wavelength lambda survives at this pixel size:
 // the procedural equivalent of mip-mapping. Detail smaller than a few pixels
@@ -198,67 +193,75 @@ void main() {
   vec3 H = normalize(uSunDir + V);
   float shin = mix(2400.0, 700.0, clamp(rough, 0.0, 1.0));
   float shinEff = max(shin / (1.0 + lost * lost * shin * 0.6), 160.0);
-  col += uSunColor * pow(max(dot(N, H), 0.0), shinEff) * (1.4 + rough * 0.6) * pow(shinEff / shin, 0.7);
+  float nh = max(dot(N, H), 0.0);
+  float low = 1.0 - smoothstep(0.15, 0.7, uSunDir.y); // a low sun lays a long, bright path
+  col += uSunColor * pow(nh, shinEff) * (2.2 + rough * 0.8 + 3.0 * low) * pow(shinEff / shin, 0.7);
+  // ...and the path itself: the sheen of a thousand facets too small to see.
+  col += uSunColor * pow(nh, 90.0) * (0.12 + 0.35 * low) * fresnel * 4.0;
   // Whitecaps: the tops of the chop breaking. They sit on the crests where
   // the wave trains stack up, spill down the front (downwind) face, and lie
   // across the wind along the crest, travelling downwind with the waves.
   // Only some crests break at a time; more of them as the wind gets up
   // (the first white horses at Bft 3-4, many by Bft 5).
   float capWind = smoothstep(3.5, 10.0, uWindSpeed * g) * smoothstep(0.25, 0.7, shel);
-  float crest = smoothstep(0.2, 0.6, hp / max(ampSum, 1e-3));
+  float crestN = hp / max(ampSum, 1e-3);
+  float crest = smoothstep(0.0, 0.35, crestN);
   float front = smoothstep(0.15, -0.45, slopeDown / max(kAmp, 1e-4));
   float c0 = uWaveA[0].w / uWaveA[0].z; // the dominant chop's speed
   float alongWave = along - c0 * uTime;
   float breakN = noise3(vec3(alongWave / 2.2, across / 9.0, uTime / 2.5)) * 0.65 +
     noise3(vec3(alongWave / 0.9, across / 3.5, uTime / 1.3) + 7.3) * 0.35;
   // A few per cent of the sea breaking at Bft 5, more as it blows harder.
-  float more = 0.3 * capWind + 0.15 * smoothstep(9.0, 16.0, uWindSpeed * g);
+  float more = 0.46 * capWind + 0.15 * smoothstep(9.0, 16.0, uWindSpeed * g);
   float breaking = smoothstep(0.62 - more, 0.8 - more, breakN);
-  // Foam is lace, not paint: solid white only where it's actively breaking,
-  // and around that a web of bubble walls torn into streaks running down the
-  // face with the spill. Close up its edges are crisp; finer than a few
-  // pixels the web averages out into a softer white.
-  float kf = keep(1.2, fp);
-  float streaks = noise3(vec3(alongWave / 1.4, across / 0.16, uTime * 0.25)) * keep(0.5, fp);
-  float bubbles = noise3(vec3(alongWave * 3.1, across * 2.3, uTime * 0.7)) * kf;
-  float density = capWind * breaking * crest * mix(0.5, 1.0, front);
-  float tex = smoothstep(-0.35, 0.35, 0.6 * streaks + 0.4 * bubbles);
-  float soft = clamp(fp * 0.8, 0.06, 0.35);
-  float blot = smoothstep(0.3 - soft, 0.3 + soft, density * (0.45 + 0.9 * tex));
-  float wn = noise3(vec3(alongWave / 0.55, across / 0.8, uTime * 0.3) + 2.7) * 0.7 +
-    noise3(vec3(alongWave / 0.2, across / 0.3, uTime * 0.6) + 9.1) * 0.3 * keep(0.3, fp);
-  float wall = 0.035 + 0.14 * density + 0.06 * tex;
-  float softW = clamp(fp * 1.2, 0.015, 0.25);
-  float web = mix(min(1.0, wall * 2.4), 1.0 - smoothstep(wall - softW, wall + softW, abs(wn)), keep(0.8, fp));
-  // The lip where it's just breaking: solid, brightest.
-  float lip = smoothstep(0.82, 1.0, density * (0.7 + 0.5 * tex)) * smoothstep(0.5, 0.85, hp / max(ampSum, 1e-3));
-  float core = lip;
-  // Far off, the white horses blur into a flecked, paler sea.
+  float density = capWind * breaking * crest * mix(0.45, 1.0, front);
+  // The foam's grain runs with the wind: spilling water tears into streaks
+  // down the face (long along the wind, a hand's width across), and finer
+  // streaks within those. Finer than a few pixels it averages out to an even
+  // white instead of sparkling.
+  float s1 = noise3(vec3(alongWave / 0.9, across / 0.16, uTime * 0.35)) * keep(0.5, fp);
+  float s2 = noise3(vec3(alongWave / 0.35, across / 0.07, uTime * 0.6) + 3.7) * keep(0.25, fp);
+  float iso = noise3(vec3(alongWave / 0.45, across / 0.6, uTime * 0.5) + 8.2) * keep(0.6, fp);
+  float iso2 = noise3(vec3(alongWave / 0.17, across / 0.2, uTime * 0.9) + 2.4) * keep(0.25, fp);
+  float tex = 0.5 + 0.5 * (0.25 * s1 + 0.15 * s2 + 0.4 * iso + 0.2 * iso2);
+  // (soft-edged: foam thins out into the water, it has no outline)
+  float soft = clamp(fp * 1.5, 0.16, 0.4);
+  // The breaking lip along the front of the crest: solid, brightest...
+  float lipD = density * smoothstep(0.2, 0.55, crestN) * mix(0.3, 1.0, front);
+  float lip = smoothstep(0.32 - soft, 0.32 + soft, lipD * (0.5 + 0.9 * tex));
+  // ...and the foam spilling down the face from it: mottled, broken into
+  // clumps and streaks with the darker water showing through.
+  float mottle = smoothstep(0.32, 0.72, tex);
+  float spill = smoothstep(0.48 - soft, 0.48 + soft, density * (0.12 + 1.0 * mottle)) * (0.55 + 0.45 * mottle);
   float kc = keep(2.5, fp);
-  float foam = mix(0.05 * capWind * capWind, blot * max(web, core) * clamp(0.7 + 0.2 * tex + 0.25 * lip, 0.0, 1.0), kc);
-  // The foam a breaker leaves behind as the crest runs on: fainter, on its back.
+  // Far off, the white horses blur into a flecked, paler sea.
+  float foam = mix(0.05 * capWind * capWind, max(spill, lip), kc);
+  // What a breaker leaves behind as the crest runs on: a fading web on its
+  // back, drawn out downwind into streaks.
   float trailN = noise3(vec3((alongWave + 1.4) / 2.2, across / 9.0, uTime / 2.5 - 0.35)) * 0.65 +
     noise3(vec3((alongWave + 1.4) / 0.9, across / 3.5, uTime / 1.3 - 0.4) + 7.3) * 0.35;
-  float trailD = capWind * smoothstep(0.62 - more, 0.8 - more, trailN) *
-    smoothstep(-0.25, 0.25, hp / max(ampSum, 1e-3)) * (1.0 - front);
-  // ...torn into a thinning web of bubble walls, not a sheet.
-  float trailMask = smoothstep(0.35 - soft, 0.35 + soft, trailD * (0.4 + 0.8 * tex));
-  float wallT = 0.03 + 0.08 * trailD;
-  float trailWeb = mix(min(1.0, wallT * 2.4), 1.0 - smoothstep(wallT - softW, wallT + softW, abs(wn)), keep(0.8, fp));
-  float trail = trailMask * max(trailWeb * (0.55 + 0.3 * tex), 0.04 + 0.07 * tex) * kc; // a milky film between the walls
-  // In a gale (Bft 7 and up) the foam gets blown into thin streaks along the wind.
-  float gale = smoothstep(12.5, 17.0, uWindSpeed * g) * smoothstep(0.25, 0.7, shel);
-  float streakN = noise3(vec3((along - drift) / 30.0, across / 0.45, uTime * 0.015));
-  float streak = smoothstep(0.55, 0.8, streakN) * gale * keep(1.5, fp);
+  float trailD = capWind * smoothstep(0.62 - more, 0.8 - more, trailN) * smoothstep(-0.15, 0.3, crestN) * (1.0 - front);
+  float t1 = 0.5 + 0.5 * (0.35 * noise3(vec3(alongWave / 2.4, across / 0.14, uTime * 0.12) + 5.1) * keep(0.4, fp) + 0.45 * iso + 0.2 * iso2);
+  float trail = smoothstep(0.38 - soft, 0.38 + soft, trailD * (0.15 + 1.0 * t1)) * (0.1 + 0.3 * smoothstep(0.45, 0.8, t1)) * kc;
+  // Foam lines: in a breeze the foam is blown into long thin streaks along
+  // the wind, a few metres apart, more and brighter the harder it blows.
+  float lines = smoothstep(6.0, 12.0, uWindSpeed * g) * smoothstep(0.25, 0.7, shel);
+  float ln = noise3(vec3((along - drift * 0.4) / 22.0, across / 0.5, uTime * 0.01));
+  float lnBreak = 0.5 + 0.5 * noise3(vec3((along - drift * 0.4) / 2.5, across / 0.4, uTime * 0.03) + 11.0);
+  float streak = smoothstep(0.6, 0.85, ln) * smoothstep(0.5, 0.85, lnBreak) * lines * keep(1.2, fp) * 0.3;
   float shoreFoam = smoothstep(uShoreZ + 6.0, uShoreZ + 1.0, vWorld.z) * (0.5 + 0.5 * sin(uTime * 0.8 + xz.x * 0.05));
   // The chop breaking on the sandbar's windward edge, and lapping its lee edge.
   float hw = uBar2.y;
   float breakers = barNear * smoothstep(-hw - 15.0, -hw - 8.0, barSD.y) * (1.0 - smoothstep(-hw - 1.0, -hw + 1.0, barSD.y)) *
     smoothstep(0.4, 0.75, noise3(vec3(barSD.x / 3.0, barSD.y / 1.5, uTime * 0.9)) * 0.5 + 0.5) * smoothstep(0.08, 0.35, uHs);
   float lap = barNear * (1.0 - smoothstep(0.3, 1.6, abs(barSD.y - hw))) * (0.35 + 0.25 * sin(uTime * 1.3 + barSD.x * 0.4));
-  col = mix(col, vec3(0.94, 0.97, 0.99), clamp(foam + trail + shoreFoam * 0.6 + streak * 0.3 + breakers * 0.85 + lap * 0.5, 0.0, 1.0));
+  // (foam is lit: the sun's colour on its tops, the sky's in its shade)
+  vec3 foamCol = mix(uSkyHorizon * 0.85, vec3(0.95), 0.6) + uSunColor * 0.25 * max(uSunDir.y, 0.15);
+  col = mix(col, foamCol, clamp(foam + trail + shoreFoam * 0.6 + streak + breakers * 0.85 + lap * 0.5, 0.0, 1.0));
   float fog = 1.0 - exp(-uFogDensity * uFogDensity * camDist * camDist);
-  col = mix(col, uFogColor, fog);
+  // Far off, the sea fades into the sky at the horizon behind it (warm toward the sun).
+  vec3 haze = skyBase(normalize(vec3(-V.x, 0.0, -V.z)));
+  col = mix(col, mix(uFogColor, haze, 0.75), fog);
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -300,13 +303,15 @@ export class Water {
       uCenter: { value: new THREE.Vector3() },
       uWaveA: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
       uWaveB: { value: Array.from({ length: 8 }, () => new THREE.Vector2()) },
-      uSunDir: { value: env.sunDir.clone() },
-      uSunColor: { value: env.sunColor.clone() },
-      uSkyTop: { value: env.skyTop.clone() },
-      uSkyHorizon: { value: env.skyHorizon.clone() },
+      // (the environment's own objects: a change of light reaches the water too)
+      uSunDir: { value: env.sunDir },
+      uSunColor: { value: env.sunColor },
+      uSkyTop: { value: env.skyTop },
+      uSkyHorizon: { value: env.skyHorizon },
+      uSkyGlow: { value: env.skyGlow },
       uDeep: { value: new THREE.Color(0x0b3a52) },
       uShallow: { value: new THREE.Color(0x2a9a9a) },
-      uFogColor: { value: env.fogColor.clone() },
+      uFogColor: { value: env.fogColor },
       uFogDensity: { value: env.fogDensity },
       uWindDir: { value: new THREE.Vector2(1, 0) },
       uWindSpeed: { value: 8 },

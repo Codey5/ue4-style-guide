@@ -4,17 +4,92 @@ import * as THREE from 'three';
 import { BEACH_Z } from '../physics/sim.js';
 import { SANDBAR, barPoint } from '../physics/spot.js';
 
-export function createEnvironment() {
-  const sunDir = new THREE.Vector3(-0.35, 0.55, 0.75).normalize();
-  return {
-    sunDir,
-    sunColor: new THREE.Color(1.0, 0.94, 0.82),
-    skyTop: new THREE.Color(0x2f6fb5),
-    skyHorizon: new THREE.Color(0xbcd6e8),
-    fogColor: new THREE.Color(0xb7d0e2),
-    fogDensity: 0.0011,
+/**
+ * Times of day. The sun is out over the sea (sailing out you look into it,
+ * with the glitter path ahead; sailing in, the beach is lit). Colours are
+ * linear and the sun's can go past 1: the glow pass picks up what's brighter
+ * than white.
+ */
+export const LIGHTS = {
+  golden: {
+    name: 'Golden hour', az: -22, el: 12,
+    sun: [1.0, 0.72, 0.45], sunI: 3.4, exposure: 0.95,
+    skyTop: 0x1d4c8c, skyHorizon: 0x98b3cb, skyGlow: [1.0, 0.62, 0.34],
+    cloudLit: [1.2, 0.9, 0.7], cloudShade: [0.4, 0.44, 0.56],
+    hemiSky: 0x9cb6d2, hemiGround: 0x3b4a50, hemiI: 0.95, fog: 0xb4bcc4, fogDensity: 0.00085,
+  },
+  afternoon: {
+    name: 'Afternoon', az: -28, el: 30,
+    sun: [1.0, 0.9, 0.76], sunI: 3.0, exposure: 1.0,
+    skyTop: 0x2464b8, skyHorizon: 0xbcd6ea, skyGlow: [0.95, 0.88, 0.78],
+    cloudLit: [1.12, 1.08, 1.02], cloudShade: [0.6, 0.66, 0.76],
+    hemiSky: 0xc4dbf2, hemiGround: 0x2c5a6e, hemiI: 1.1, fog: 0xb8d0e2, fogDensity: 0.0011,
+  },
+  midday: {
+    name: 'Midday', az: -30, el: 58,
+    sun: [1.0, 0.96, 0.88], sunI: 2.8, exposure: 1.0,
+    skyTop: 0x2f6fb5, skyHorizon: 0xbcd6e8, skyGlow: [0.82, 0.88, 0.94],
+    cloudLit: [1.05, 1.05, 1.05], cloudShade: [0.7, 0.75, 0.82],
+    hemiSky: 0xcfe3f5, hemiGround: 0x2c5a6e, hemiI: 1.2, fog: 0xb7d0e2, fogDensity: 0.0011,
+  },
+};
+export const LIGHT_IDS = Object.keys(LIGHTS);
+
+export function createEnvironment(id = 'golden') {
+  const env = {
+    sunDir: new THREE.Vector3(), sunColor: new THREE.Color(), skyTop: new THREE.Color(), skyHorizon: new THREE.Color(),
+    skyGlow: new THREE.Color(), cloudLit: new THREE.Color(), cloudShade: new THREE.Color(), fogColor: new THREE.Color(),
+    hemiSky: new THREE.Color(), hemiGround: new THREE.Color(), fogDensity: 0.0011, sunI: 3, hemiI: 1, exposure: 1,
   };
+  setEnvironment(env, id);
+  return env;
 }
+
+/** Switch the time of day in place (every shader and light holds these same objects). */
+export function setEnvironment(env, id) {
+  const L = LIGHTS[id] ?? LIGHTS.golden;
+  const az = L.az * Math.PI / 180, el = L.el * Math.PI / 180;
+  env.id = LIGHTS[id] ? id : 'golden';
+  env.sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+  env.sunColor.setRGB(...L.sun);
+  env.skyTop.set(L.skyTop);
+  env.skyHorizon.set(L.skyHorizon);
+  env.skyGlow.setRGB(...L.skyGlow);
+  env.cloudLit.setRGB(...L.cloudLit);
+  env.cloudShade.setRGB(...L.cloudShade);
+  env.fogColor.set(L.fog);
+  env.hemiSky.set(L.hemiSky);
+  env.hemiGround.set(L.hemiGround);
+  env.fogDensity = L.fogDensity;
+  env.sunI = L.sunI;
+  env.hemiI = L.hemiI;
+  env.exposure = L.exposure;
+  return env;
+}
+
+/**
+ * The sky's colour in a direction, shared by the sky dome and the water's
+ * reflections so the two meet seamlessly at the horizon: blue overhead, pale
+ * at the horizon, warmed toward the sun (most of all low down, at golden hour).
+ */
+export const SKY_GLSL = /* glsl */ `
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform vec3 uSkyTop;
+uniform vec3 uSkyHorizon;
+uniform vec3 uSkyGlow;
+vec3 skyBase(vec3 d) {
+  float t = clamp(d.y, 0.0, 1.0);
+  vec3 col = mix(uSkyHorizon, uSkyTop, pow(t, 0.5));
+  float toSun = max(dot(d, uSunDir), 0.0);
+  vec2 h = d.xz / max(length(d.xz), 1e-4), hs = uSunDir.xz / max(length(uSunDir.xz), 1e-4);
+  float az = max(dot(h, hs), 0.0);
+  // The warm band along the horizon under the sun, and the haze around it.
+  col = mix(col, uSkyGlow, exp(-t * 9.0) * (0.08 + 0.92 * pow(az, 6.0)) * 0.75);
+  col += uSkyGlow * pow(toSun, 12.0) * 0.35;
+  return col;
+}
+`;
 
 const skyVertex = /* glsl */ `
 varying vec3 vDir;
@@ -25,10 +100,9 @@ void main() {
 }
 `;
 const skyFragment = /* glsl */ `
-uniform vec3 uSunDir;
-uniform vec3 uSunColor;
-uniform vec3 uSkyTop;
-uniform vec3 uSkyHorizon;
+${SKY_GLSL}
+uniform vec3 uCloudLit;
+uniform vec3 uCloudShade;
 uniform float uTime;
 uniform vec2 uWindDir;
 uniform float uWindSpeed;
@@ -46,19 +120,26 @@ float clouds(vec2 p) {
 }
 void main() {
   vec3 d = normalize(vDir);
-  float t = clamp(d.y, 0.0, 1.0);
-  vec3 col = mix(uSkyHorizon, uSkyTop, pow(t, 0.5));
-  if (d.y < 0.0) col = uSkyHorizon * 0.92;
-  float sun = max(dot(d, uSunDir), 0.0);
-  col += uSunColor * (pow(sun, 900.0) * 18.0 + pow(sun, 12.0) * 0.22);
-  // Fair-weather cumulus drifting downwind.
+  vec3 col = skyBase(d);
+  if (d.y < 0.0) col = mix(uSkyHorizon, uSkyGlow, 0.3) * 0.92;
+  float toSun = max(dot(d, uSunDir), 0.0);
+  // Fair-weather cumulus drifting downwind: lit on the side toward the sun,
+  // grey-blue underneath, and the thin edges near the sun glowing.
+  float cover = 0.0;
   if (d.y > 0.01) {
     vec2 uv = d.xz / (d.y + 0.08) * 1.4 - uWindDir * uTime * uWindSpeed * 0.0009;
-    float c = smoothstep(0.58, 0.82, clouds(uv * 0.9));
-    float shade = clouds(uv * 0.9 + uSunDir.xz * 0.05);
-    vec3 cloudCol = mix(vec3(1.0), vec3(0.72, 0.77, 0.84), smoothstep(0.55, 0.9, shade));
-    col = mix(col, cloudCol, c * smoothstep(0.01, 0.12, d.y) * 0.9);
+    float raw = clouds(uv * 0.9);
+    float c = smoothstep(0.56, 0.84, raw);
+    vec2 sd = uSunDir.xz / max(length(uSunDir.xz), 1e-3);
+    float toward = clouds(uv * 0.9 + sd * 0.07);
+    float shade = clamp((toward - raw) * 5.0 + 0.45, 0.0, 1.0) * smoothstep(0.55, 0.95, raw);
+    vec3 cc = mix(uCloudLit, uCloudShade, shade);
+    cc += uSunColor * pow(toSun, 10.0) * (1.0 - c) * 2.5;
+    cover = c * smoothstep(0.01, 0.12, d.y) * 0.94;
+    col = mix(col, cc, cover);
   }
+  // The sun: a disc bright enough to glow, and its halo (dimmed behind cloud).
+  col += uSunColor * (pow(toSun, 1600.0) * 40.0 + pow(toSun, 90.0) * 0.5) * (1.0 - 0.85 * cover);
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -69,7 +150,7 @@ export function createRenderer(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -83,7 +164,8 @@ export function createScene(env) {
 
   const skyUniforms = {
     uSunDir: { value: env.sunDir }, uSunColor: { value: env.sunColor }, uSkyTop: { value: env.skyTop },
-    uSkyHorizon: { value: env.skyHorizon }, uTime: { value: 0 }, uWindDir: { value: new THREE.Vector2(1, 0) },
+    uSkyHorizon: { value: env.skyHorizon }, uSkyGlow: { value: env.skyGlow }, uCloudLit: { value: env.cloudLit },
+    uCloudShade: { value: env.cloudShade }, uTime: { value: 0 }, uWindDir: { value: new THREE.Vector2(1, 0) },
     uWindSpeed: { value: 8 },
   };
   const sky = new THREE.Mesh(
@@ -94,18 +176,30 @@ export function createScene(env) {
   sky.frustumCulled = false;
   scene.add(sky);
 
-  const hemi = new THREE.HemisphereLight(0xcfe3f5, 0x2c5a6e, 1.15);
+  const hemi = new THREE.HemisphereLight(env.hemiSky, env.hemiGround, env.hemiI);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
+  const sun = new THREE.DirectionalLight(env.sunColor, env.sunI);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera;
-  sc.left = -9; sc.right = 9; sc.top = 9; sc.bottom = -9; sc.near = 1; sc.far = 80;
+  // (wide enough for the long shadow of the rig when the sun is low)
+  sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 100;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.02;
   scene.add(sun, sun.target);
 
-  return { scene, sky, skyUniforms, sun };
+  const applyLight = (renderer) => {
+    scene.fog.color.copy(env.fogColor);
+    scene.fog.density = env.fogDensity;
+    scene.background.copy(env.fogColor);
+    hemi.color.copy(env.hemiSky);
+    hemi.groundColor.copy(env.hemiGround);
+    hemi.intensity = env.hemiI;
+    sun.color.copy(env.sunColor);
+    sun.intensity = env.sunI;
+    if (renderer) renderer.toneMappingExposure = env.exposure;
+  };
+  return { scene, sky, skyUniforms, sun, hemi, applyLight };
 }
 
 /** Static scenery plus wind-reactive flags. */
@@ -195,7 +289,7 @@ export class World {
     const wetSand = new THREE.MeshStandardMaterial({ color: 0xb59f72, roughness: 0.6 });
     const dune = new THREE.MeshStandardMaterial({ color: 0xcdb889, roughness: 1 });
     const grass = new THREE.MeshStandardMaterial({ color: 0x7c8f4e, roughness: 1 });
-    const hill = new THREE.MeshStandardMaterial({ color: 0x6b7d72, roughness: 1, flatShading: true });
+    const hill = new THREE.MeshStandardMaterial({ color: 0x587a58, roughness: 1, flatShading: true });
 
     // Beach: a gently sloping band that dips under the water line.
     const beach = new THREE.Mesh(new THREE.PlaneGeometry(5000, 90, 200, 6), sand);

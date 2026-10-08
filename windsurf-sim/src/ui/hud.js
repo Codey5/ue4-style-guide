@@ -1,6 +1,7 @@
-// Heads-up display: GPS-style speed, wind instrument, balance strip, stance
-// diagram, context hints with the right button glyphs, event toasts and the
-// telemetry panel for those who want the numbers.
+// Heads-up display: GPS-style speed and the wind, the wind instrument, the
+// balance strip with your grip left, the one or two things worth doing next
+// (in your own controller's buttons) and event toasts. The detailed HUD adds
+// the stance diagram, every bar, every control for now and the telemetry.
 import { DEG, MS_TO_KN, RAD, clamp } from '../physics/math.js';
 import { S, TRICKS } from '../physics/sim.js';
 import { stance } from '../physics/body.js';
@@ -35,8 +36,11 @@ export class Hud {
     this.toasts = $('toasts');
     this.lastEvent = 0;
     this.textTimer = 0;
-    this.telemetryOn = false;
+    this.detail = false;
+    this.extra = []; // prompts from outside the sim (look toward the buoy)
     this.camTimer = 0;
+    $('arms-segs').innerHTML = '<i></i>'.repeat(10);
+    this.segs = [...$('arms-segs').children];
     // Dial ticks every 30°.
     const ticks = $('dial-ticks');
     let html = '';
@@ -68,9 +72,11 @@ export class Hud {
     this.camTimer = 2.5;
   }
 
+  /** The detailed HUD: telemetry, stance, every bar and every control. */
   toggleTelemetry() {
-    this.telemetryOn = !this.telemetryOn;
-    $('telemetry').hidden = !this.telemetryOn;
+    this.detail = !this.detail;
+    this.root.classList.toggle('detail', this.detail);
+    $('telemetry').hidden = !this.detail;
   }
 
   pushEvents(sim) {
@@ -119,7 +125,10 @@ export class Hud {
       needle = clamp(0.5 - (bal.muscle / bal.tauMax) * 0.45, 0, 1);
     }
     $('bal-needle').style.left = `${(needle * 100).toFixed(1)}%`;
-    $('balance').classList.toggle('alarm', !!bal?.saturated && sim.state === S.SAILING);
+    const alarm = !!bal?.saturated && sim.state === S.SAILING;
+    $('balance').classList.toggle('alarm', alarm);
+    const warn = alarm ? (needle < 0.5 ? 'Pulled over' : 'Falling back') : '';
+    if (warn !== this.lastWarn) { $('bal-warn').textContent = warn; this.lastWarn = warn; }
     const pull = sim.handForce ?? 0;
     $('f-sheet').style.width = `${(controls.sheet * 100).toFixed(0)}%`;
     $('f-hike').style.width = `${(controls.hike * 100).toFixed(0)}%`;
@@ -129,6 +138,15 @@ export class Hud {
     $('f-handB').style.width = `${clamp((hands?.back ?? 0) / 500, 0, 1) * 50}%`;
     $('f-handB').parentElement.parentElement.classList.toggle('heavy', (sim.feel?.hand ?? 0) > 0.4);
     $('f-arms').style.width = `${(sim.sailor.stamina * 100).toFixed(0)}%`;
+    // Grip left, in ten segments: amber when it's running low, red while a hand is overloaded.
+    const lit = Math.round(sim.sailor.stamina * 10);
+    const segKey = `${lit}${sim.sailor.stamina < 0.35 ? 'l' : ''}${(sim.feel?.hand ?? 0) > 0.4 ? 'h' : ''}`;
+    if (segKey !== this.lastSegs) {
+      this.lastSegs = segKey;
+      this.segs.forEach((el, i) => el.classList.toggle('on', i < lit));
+      $('arms-segs').classList.toggle('low', sim.sailor.stamina < 0.35);
+      $('arms-segs').classList.toggle('heavy', (sim.feel?.hand ?? 0) > 0.4);
+    }
 
     this.textTimer -= dt;
     if (this.textTimer > 0) return;
@@ -141,7 +159,7 @@ export class Hud {
     $('tws').textContent = (Math.hypot(local[0], local[2]) * MS_TO_KN).toFixed(0);
     const abs = Math.abs(twaDeg);
     $('pos-sail').textContent = pointOfSail(abs);
-    $('tack').textContent = twaDeg >= 0 ? 'Starboard tack' : 'Port tack';
+    $('tack').textContent = twaDeg >= 0 ? 'Stbd tack' : 'Port tack';
     $('awa').textContent = Math.abs(awa).toFixed(0);
     const planing = tel.planing > 0.92 && tel.speed > 4.5;
     $('chip-plane').className = `chip ${planing ? 'on' : ''}`;
@@ -168,9 +186,9 @@ export class Hud {
     $('v-hike').textContent = (controls.hike * 100).toFixed(0);
     $('v-pull').textContent = hands ? `${hands.front.toFixed(0)} · ${hands.back.toFixed(0)} N` : `${pull.toFixed(0)} N`;
     $('v-arms').textContent = `${(sim.sailor.stamina * 100).toFixed(0)}%`;
-    this.drawStance(sim);
+    if (this.detail || this.root.classList.contains('lesson-on')) this.drawStance(sim);
     this.drawHints(sim, input);
-    if (this.telemetryOn) this.drawTelemetry(sim);
+    if (this.detail) this.drawTelemetry(sim);
   }
 
   /**
@@ -194,6 +212,8 @@ export class Hud {
     for (const c of CATEGORIES) {
       const pb = book.bests[c.key];
       const mine = pb && pb.date >= since && Math.abs(pb.v - sess[c.key]) < 0.01;
+      // (just the peaks, and any new best, unless you've asked for the detail)
+      if (!this.detail && !mine && c.key !== 's2' && c.key !== 's10') continue;
       html += `<span class="k">${c.label}</span><span class="v${mine ? ' new' : ''}">${knots(sess[c.key])}</span><span class="pb">${pb ? knots(pb.v) : '–'}</span>`;
     }
     if (html !== this.lastGps) { $('gps-rows').innerHTML = html; this.lastGps = html; }
@@ -269,45 +289,48 @@ export class Hud {
     const s = sim.sailor;
     const tel = sim.telemetry;
     const list = [];
-    const add = (key, text) => list.push(`<li><span class="key">${key}</span><span>${text}</span></li>`);
+    // (each with the few words it gets when only the next thing or two is shown)
+    const add = (key, text, short = text) => list.push({ key, text, short });
+    let show = 2;
     const planing = tel.planing > 0.92 && tel.speed > 4.5;
     switch (sim.state) {
       case S.WATER:
-        add(`${g.LB} hold`, 'Waterstart: lift the rig, steer, sheet in');
-        add(g.A, 'Climb on and uphaul');
+        add(`${g.LB} hold`, 'Waterstart: lift the rig, steer, sheet in', 'Waterstart');
+        add(g.A, 'Climb on and uphaul', 'Climb on');
         break;
       case S.WATERSTART:
-        add(g.LS, 'Steer: rig forward bears away');
-        add(g.RT, 'Sheet in to get lifted out');
+        add(g.RT, 'Sheet in to get lifted out', 'Sheet in to rise');
+        add(g.LS, 'Steer: rig forward bears away', 'Steer');
         add(`${g.LB} release`, 'Drop the rig');
         break;
       case S.UPHAUL:
-        add(`${g.LB} hold`, 'Pull the rig up by the uphaul');
+        add(`${g.LB} hold`, 'Pull the rig up by the uphaul', 'Pull the rig up');
         break;
       case S.SECURE:
-        add(g.RT, 'Grab the boom and sheet in');
-        add(g.LS, 'Turn the board: rig to the nose or tail');
-        add(g.B, 'Tack: step round the mast');
-        add(g.Y, 'Swap sides (when downwind)');
+        add(g.RT, 'Grab the boom and sheet in', 'Sheet in');
+        add(g.LS, 'Turn the board: rig to the nose or tail', 'Turn the board');
+        add(g.B, 'Tack: step round the mast', 'Tack');
+        add(g.Y, 'Swap sides (when downwind)', 'Swap sides');
         break;
       case S.TACK:
-        add(g.LS, 'Rig back until the nose crosses the wind');
-        add(g.RT, 'Sheet in on the new side');
+        add(g.LS, 'Rig back until the nose crosses the wind', 'Rig back');
+        add(g.RT, 'Sheet in on the new side', 'Sheet in');
         break;
       case S.FLIP:
-        add(g.RS, 'Keep carving on the inside rail');
+        add(g.RS, 'Keep carving on the inside rail', 'Keep carving');
         break;
       case S.TRICK: {
         const k = sim.stateData.kind;
-        if (k === 'duck') { add(g.RS, 'Keep carving on the inside rail'); add(g.RT, 'Catch the boom on the new side'); }
-        else if (k === 'heli') { add(g.LS, 'Rig back: the board luffs through the wind'); add(g.RT, 'Then the sail spins round the mast'); }
-        else if (k === 'c360') { add(g.RS, 'Sink the rail toward the sail'); add(g.RT, 'Let the sail flag, catch it coming round'); }
-        else { add(`${g.RS} ↑`, 'Weight on the nose: it pivots on it'); add(g.RT, 'Sheet in once round'); }
+        if (k === 'duck') { add(g.RS, 'Keep carving on the inside rail', 'Keep carving'); add(g.RT, 'Catch the boom on the new side', 'Catch the boom'); }
+        else if (k === 'heli') { add(g.LS, 'Rig back: the board luffs through the wind', 'Rig back'); add(g.RT, 'Then the sail spins round the mast', 'Spin the sail'); }
+        else if (k === 'c360') { add(g.RS, 'Sink the rail toward the sail', 'Sink the rail'); add(g.RT, 'Let the sail flag, catch it coming round', 'Catch the sail'); }
+        else { add(`${g.RS} ↑`, 'Weight on the nose: it pivots on it', 'Weight on the nose'); add(g.RT, 'Sheet in once round', 'Sheet in once round'); }
         break;
       }
       case S.SAILING:
         // Crouched: the freestyle moves (and the pop, letting go).
         if (sim.lastControls?.pop && !sim.airborne) {
+          show = 5; // (crouched, the moves are a menu: show them all)
           add(`${g.LB}+${g.Y}`, 'Duck gybe: carving downwind');
           add(`${g.LB}+${g.X}`, 'Carving 360: flat out');
           add(`${g.LB}+${g.A}`, 'Spock: unhooked, weight forward');
@@ -316,31 +339,31 @@ export class Hud {
           break;
         }
         if (sim.inIrons) {
-          add(`${g.RT} ease`, 'Let the sail out: pointing into the wind it can\'t fill');
-          add(`${g.LS} ↑`, 'Rig toward the nose: your feet turn the board away from the wind');
-          add(g.RT, 'Sheet in gently once you\'re across the wind, rig still a little forward');
+          add(`${g.RT} ease`, 'Let the sail out: pointing into the wind it can\'t fill', 'Let the sail out');
+          add(`${g.LS} ↑`, 'Rig toward the nose: your feet turn the board away from the wind', 'Rig to the nose');
+          add(g.RT, 'Sheet in gently once you\'re across the wind, rig still a little forward', 'Then sheet in gently');
           break;
         }
         if (!planing) {
-          add(g.RT, 'Sheet in: angle of attack 15–20°');
-          if ((sim.betaEq ?? 0) > 10 * DEG) add(g.LT, 'Lean back against the pull');
-          add(`${g.LS} ↑`, 'Bear away to a beam / broad reach');
-          add(`${g.RB} hold`, 'Pump to get over the hump');
-          add(`${g.RS} ↑`, 'Weight forward, board flat');
-          add(g.B, 'Tack (head up first)');
+          add(g.RT, 'Sheet in: angle of attack 15–20°', 'Sheet in');
+          if ((sim.betaEq ?? 0) > 10 * DEG) add(g.LT, 'Lean back against the pull', 'Lean back');
+          add(`${g.LS} ↑`, 'Bear away to a beam / broad reach', 'Bear away');
+          add(`${g.RB} hold`, 'Pump to get over the hump', 'Pump');
+          add(`${g.RS} ↑`, 'Weight forward, board flat', 'Weight forward');
+          add(g.B, 'Tack (head up first)', 'Tack');
         } else if (sim.airborne && (sim.airTime ?? 0) > 0.12) {
-          add(`${g.RS} ↓`, 'Weight back: nose up, land tail first');
-          add(g.RT, 'Stay sheeted in: the sail holds you up');
-          add(g.LS, 'Rig upright, a touch to windward');
+          add(`${g.RS} ↓`, 'Weight back: nose up, land tail first', 'Nose up');
+          add(g.RT, 'Stay sheeted in: the sail holds you up', 'Stay sheeted in');
+          add(g.LS, 'Rig upright, a touch to windward', 'Rig upright');
         } else {
           if (!s.hooked) add(g.A, 'Hook in');
-          else add(g.A, 'Unhook (before a gybe)');
-          if (s.straps < 2) add(g.X, s.straps === 0 ? 'Front foot into the strap' : 'Back foot into the strap');
-          else add(`${g.X} hold`, 'Feet out for a gybe');
-          add(`${g.LB} hold`, s.straps === 2 ? 'Crouch: pop off a chop, or a trick' : 'Crouch for a trick');
-          add(g.LT, 'Hike out against the pull');
-          add(g.RS, 'Rail: carve with toes / heels');
-          add(g.Y, 'Flip the sail at dead downwind');
+          else add(g.A, 'Unhook (before a gybe)', 'Unhook');
+          if (s.straps < 2) add(g.X, s.straps === 0 ? 'Front foot into the strap' : 'Back foot into the strap', s.straps === 0 ? 'Front foot in' : 'Back foot in');
+          else add(`${g.X} hold`, 'Feet out for a gybe', 'Feet out');
+          add(`${g.LB} hold`, s.straps === 2 ? 'Crouch: pop off a chop, or a trick' : 'Crouch for a trick', s.straps === 2 ? 'Crouch to jump' : 'Crouch');
+          add(g.LT, 'Hike out against the pull', 'Hike out');
+          add(g.RS, 'Rail: carve with toes / heels', 'Carve');
+          add(g.Y, 'Flip the sail at dead downwind', 'Flip the sail');
         }
         break;
       default:
@@ -348,7 +371,9 @@ export class Hud {
     }
     $('hint-title').textContent = sim.state === S.SAILING ? (sim.lastControls?.pop && !sim.airborne ? 'Crouched' : sim.inIrons ? 'In irons' : planing ? 'Planing' : 'Sailing')
       : sim.state === S.TRICK ? TRICKS[sim.stateData.kind]?.name ?? 'Freestyle' : stateTitle(sim.state);
-    $('hints').innerHTML = list.slice(0, 6).join('');
+    const shown = list.slice(0, this.detail ? 6 : show).concat(this.extra.map(([key, text]) => ({ key, text, short: text })));
+    const html = shown.map((x) => `<li><span class="key">${x.key}</span><span>${this.detail ? x.text : x.short}</span></li>`).join('');
+    if (html !== this.lastHints) { $('hints').innerHTML = html; this.lastHints = html; }
   }
 
   drawTelemetry(sim) {

@@ -1,13 +1,14 @@
 // Spray off the leeward rail, the foam wake and wipeout splashes.
 // Spray is fine droplets, drawn as short motion streaks with a bright head,
-// plus a little mist; the wind carries both downwind. The wake is a strip of
+// soft sheets of it thrown out from the rail and up off the tail at speed,
+// and a little mist; the wind carries it all downwind. The wake is a strip of
 // aerated foam lying on the same displaced chop the water draws, breaking up
 // as it ages (faster in rough water).
 import * as THREE from 'three';
 import { clamp } from '../physics/math.js';
 import { NOISE_GLSL } from './water.js';
 
-const DROP = 0, MIST = 1;
+const DROP = 0, MIST = 1, SHEET = 2; // (a sheet falls like a drop but draws soft, like mist)
 const FOAM = new THREE.Color(0xf2f7fa);
 
 const pointsVS = /* glsl */ `
@@ -22,8 +23,11 @@ void main() {
   gl_Position = projectionMatrix * mv;
   float px = aSize * uScale / max(-mv.z, 0.05);
   gl_PointSize = clamp(px, 1.5, 256.0);
-  // (a droplet smaller than a pixel fades rather than staying a pixel big)
-  vAlpha = aAlpha * min(1.0, px / 1.5);
+  // (a droplet smaller than a pixel fades rather than staying a pixel big,
+  // and spray right in front of the lens fades instead of blotting it)
+  vAlpha = aAlpha * min(1.0, px / 1.5) * smoothstep(1.0, 3.5, -mv.z);
+  // (soft spray blown up big right in front of the camera fades out too)
+  if (aKind > 1.5) vAlpha *= 1.0 - smoothstep(12.0, 36.0, px);
   vKind = aKind;
 }
 `;
@@ -35,7 +39,7 @@ void main() {
   vec2 d = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(d, d);
   // Droplets are small hard dots; mist is a soft puff with no visible edge.
-  float a = mix(1.0 - smoothstep(0.3, 1.0, r2), exp(-4.0 * r2) * (1.0 - r2), vKind) * vAlpha;
+  float a = (vKind > 0.5 ? exp(-4.0 * r2) * (1.0 - r2) : 1.0 - smoothstep(0.3, 1.0, r2)) * vAlpha;
   if (a < 0.004) discard;
   gl_FragColor = vec4(uColor, a);
   #include <tonemapping_fragment>
@@ -81,14 +85,16 @@ void main() {
   float across = vWake.x, age = vWake.y, k = vWake.z;
   // Densest down the middle, ragged at the edges.
   float n = noise3(vec3(vBase * 1.7, uTime * 0.35)) * 0.6 + noise3(vec3(vBase * 4.6, uTime * 0.8) + 3.1) * 0.4;
-  float edge = 1.0 - smoothstep(0.3 + 0.3 * n, 1.0, abs(across));
-  // Fresh foam is solid white; as it ages only the densest patches survive.
-  float cut = -0.9 + age * 1.5;
-  float breakup = smoothstep(cut, cut + 0.22, n);
-  // Aerated foam: bright clumps with darker gaps between them.
+  float edge = 1.0 - smoothstep(0.15 + 0.45 * n, 1.0, abs(across));
+  // Fresh foam is dense; as it ages only the densest patches survive.
+  float cut = -0.75 + age * 1.5;
+  float breakup = smoothstep(cut, cut + 0.25, n);
+  // Aerated foam: bright clumps with darker gaps between them, and streaks
+  // running back along the track from the churn under the tail.
   float f = noise3(vec3(vBase * 5.5, uTime * 0.9)) * 0.6 + noise3(vec3(vBase * 13.0, uTime * 1.6) + 5.7) * 0.4;
-  float lace = mix(0.3, 1.0, smoothstep(-0.25 - 0.3 * (1.0 - age), 0.25, f));
-  float a = k * edge * breakup * lace * 0.9 * pow(1.0 - age, 1.4) * smoothstep(0.0, 0.008, age);
+  float lace = mix(0.25, 1.0, smoothstep(-0.35 - 0.2 * (1.0 - age), 0.45, f));
+  float streaks = 0.55 + 0.45 * smoothstep(-0.3, 0.4, noise3(vec3(across * 3.2, age * 26.0, uTime * 0.2) + 1.3));
+  float a = k * edge * breakup * lace * streaks * 0.5 * pow(1.0 - age, 1.4) * smoothstep(0.0, 0.01, age);
   if (a < 0.004) discard;
   gl_FragColor = vec4(uColor, a);
   #include <tonemapping_fragment>
@@ -98,7 +104,7 @@ void main() {
 
 export class Effects {
   constructor(scene) {
-    this.max = 1800;
+    this.max = 3200;
     this.pos = new Float32Array(this.max * 3);
     this.vel = new Float32Array(this.max * 3);
     this.life = new Float32Array(this.max);
@@ -118,7 +124,7 @@ export class Effects {
     pg.setAttribute('aSize', new THREE.BufferAttribute(this.size, 1));
     pg.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1));
     pg.setAttribute('aKind', new THREE.BufferAttribute(this.kindF, 1));
-    this.pointUniforms = { uScale: { value: 600 }, uColor: { value: FOAM.clone() } };
+    this.pointUniforms = { uScale: { value: 600 }, uColor: { value: FOAM.clone().multiplyScalar(1.1) } };
     this.points = new THREE.Points(pg, new THREE.ShaderMaterial({
       uniforms: this.pointUniforms, vertexShader: pointsVS, fragmentShader: pointsFS, transparent: true, depthWrite: false,
     }));
@@ -166,6 +172,8 @@ export class Effects {
     this.wake.renderOrder = 1;
     scene.add(this.wake);
     this.emitAcc = 0;
+    this.sheetAcc = 0;
+    this.roosterAcc = 0;
     this.time = 0;
   }
 
@@ -280,11 +288,30 @@ export class Effects {
         const out = 1.0 + speed * (0.1 + Math.random() * 0.14);
         const v = lee.clone().multiplyScalar(out).addScaledVector(fwd, speed * (0.25 + Math.random() * 0.35));
         v.y = 0.6 + Math.random() * (0.5 + speed * 0.1);
-        if (Math.random() < 0.08) {
-          this.spawn([w.x, w.y + 0.05, w.z], [v.x * 0.6, v.y * 0.5, v.z * 0.6], 0.7 + Math.random() * 0.6, MIST, 0.25 + Math.random() * 0.25, 0.14);
+        if (Math.random() < 0.06) {
+          this.spawn([w.x, w.y + 0.05, w.z], [v.x * 0.6, v.y * 0.5, v.z * 0.6], 0.6 + Math.random() * 0.5, MIST, 0.14 + Math.random() * 0.16, 0.12);
         } else {
           this.spawn([w.x, w.y, w.z], [v.x, v.y, v.z], 0.3 + Math.random() * 0.45, DROP, 0.005 + Math.random() * 0.012, 0.8);
         }
+      }
+      // Planing, the rail throws sheets of spray out and back, and above
+      // about 16 knots the tail kicks up a rooster tail behind the fin.
+      this.sheetAcc += clamp((speed - 4) * 28, 0, 340) * p * air * dt;
+      while (this.sheetAcc > 1) {
+        this.sheetAcc -= 1;
+        const x = (sim.hull?.cp ?? 0) + 0.05 + Math.random() * 0.5;
+        const w = new THREE.Vector3(x, 0.02, -side * b.width * 0.3).applyMatrix4(m);
+        const v = lee.clone().multiplyScalar(1.2 + speed * (0.08 + Math.random() * 0.1)).addScaledVector(fwd, speed * (0.35 + Math.random() * 0.3));
+        v.y = 0.8 + Math.random() * (0.6 + speed * 0.08);
+        this.spawn([w.x, w.y, w.z], [v.x, v.y, v.z], 0.3 + Math.random() * 0.4, SHEET, 0.035 + Math.random() * 0.06, 0.22 + Math.random() * 0.16);
+      }
+      this.roosterAcc += clamp((speed - 7) * 30, 0, 280) * p * air * dt;
+      while (this.roosterAcc > 1) {
+        this.roosterAcc -= 1;
+        const w = new THREE.Vector3(b.transomX + 0.05, 0.02, (Math.random() - 0.5) * 0.25).applyMatrix4(m);
+        const v = fwd.clone().multiplyScalar(speed * (0.35 + Math.random() * 0.25)).addScaledVector(lee, (Math.random() - 0.3) * 1.2);
+        v.y = 1.2 + Math.random() * (0.8 + speed * 0.1);
+        this.spawn([w.x, w.y, w.z], [v.x, v.y, v.z], 0.35 + Math.random() * 0.45, SHEET, 0.03 + Math.random() * 0.06, 0.25 + Math.random() * 0.16);
       }
       // Wake: sample the tail every 0.3 m of travel (or a moment, when slow).
       const tail = new THREE.Vector3(b.transomX + 0.1, 0, 0).applyMatrix4(m);
@@ -325,6 +352,11 @@ export class Effects {
       if (mist) {
         this.size[i] = this.size0[i] * (1 + 1.8 * age);
         this.alpha[i] = this.alpha0[i] * Math.sin(Math.PI * Math.min(1, age * 1.2 + 0.05));
+        this.sAlpha[i * 2] = this.sAlpha[i * 2 + 1] = 0;
+      } else if (this.kind[i] === SHEET) {
+        // (spreading and thinning as it flies)
+        this.size[i] = this.size0[i] * (1 + 1.2 * age);
+        this.alpha[i] = this.alpha0[i] * Math.min(1, (1 - age) * 3) * Math.min(1, age * 8 + 0.2);
         this.sAlpha[i * 2] = this.sAlpha[i * 2 + 1] = 0;
       } else {
         const fade = Math.min(1, (1 - age) * 4);

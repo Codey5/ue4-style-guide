@@ -7,6 +7,10 @@ import { adviseSail, windRange } from '../physics/quiver.js';
 import { CATEGORIES } from '../game/gps.js';
 import { CHAPTERS, chapterSetup } from '../game/career.js';
 import { LessonUi } from './lessonui.js';
+import { LIGHTS } from '../render/scene.js';
+
+/** The times of day, in order through the day. */
+const DAY = ['midday', 'afternoon', 'golden'];
 
 const $ = (id) => document.getElementById(id);
 
@@ -92,14 +96,14 @@ const TECHNIQUE = `
 <p>To hook in, sheet in and come in toward the boom (ease LT) so the lines reach the hook. In the straps the lines sit over your feet and you hang furthest out; hooked in with your feet still forward, you can't.</p>
 <p>Hang out with too little wind in the sail (a lull, or LT held in light air) and your weight pulls the rig over on top of you: ease LT when the power drops.</p>
 <h3>Leaning back against the pull</h3>
-<p>The sail doesn't only pull you out to the side. The rig is pinned at the mast foot and its drive tips it forward; you hold it back through your hands or the harness, so it tips you forward too, over your front foot. You balance that by leaning back, hips back over the tail, until your weight behind your feet matches the pull. The stance panel shows it: the grey bar is where your feet can press (back heel to front toes), the line is where they press, the ring is your centre of mass, and "back" is how far you're leaning back.</p>
+<p>The sail doesn't only pull you out to the side. The rig is pinned at the mast foot and its drive tips it forward; you hold it back through your hands or the harness, so it tips you forward too, over your front foot. You balance that by leaning back, hips back over the tail, until your weight behind your feet matches the pull. The stance panel (in the detailed HUD: View / Tab) shows it: the grey bar is where your feet can press (back heel to front toes), the line is where they press, the ring is your centre of mass, and "back" is how far you're leaning back.</p>
 <p>Weight forward (right stick up) presses through the front foot and hangs more of your weight on the boom into the mast foot: the nose goes down, for control in chop. Weight back sinks your hips over the tail and frees the board up. On a broad reach the pull swings forward: hang out less and sink back over the back foot.</p>
 <p>Walk back along the board before stepping into the front strap, so the step is short. A step moves your feet, not your body: step a long way back while leaning hard against the pull and it drags you forward over your toes.</p>
 <h3>Gusts and catapults</h3>
-<p>Hooked in, the harness lines can't give. When a gust hits, its extra pull tips you over your front foot faster than you can lean back, and the lines launch you over the boom: a catapult. The stance panel goes amber, then red. As a gust reaches you, sink your weight back (right stick down) and ease the sheet (RT) to spill the extra power, then sheet back in as it passes. Gusts show as dark patches on the water upwind, so get ready before they arrive.</p>
+<p>Hooked in, the harness lines can't give. When a gust hits, its extra pull tips you over your front foot faster than you can lean back, and the lines launch you over the boom: a catapult. The stance panel (detailed HUD) goes amber, then red. As a gust reaches you, sink your weight back (right stick down) and ease the sheet (RT) to spill the extra power, then sheet back in as it passes. Gusts show as dark patches on the water upwind, so get ready before they arrive.</p>
 <p>Unhooked, your arms give first: the rig rakes forward, and if the pull keeps dragging you forward you let go with the back hand. In a lull, ease your lean back or you sit down off the tail.</p>
 <h3>Tuning the rig</h3>
-<p>Set up on the beach, in the Gear menu. <b>Harness lines</b> belong over the sail's draft: then both hands go light and the harness takes the pull (watch the Hands bar). Forward of it the back hand pulls and tires; behind it the front hand does and the sail sheets in on you. Gusts blow the draft back, so a rig balanced in a lull goes back-hand heavy in a gust.</p>
+<p>Set up on the beach, in the Gear menu. <b>Harness lines</b> belong over the sail's draft: then both hands go light and the harness takes the pull (watch the Hands bar in the detailed HUD: View / Tab). Forward of it the back hand pulls and tires; behind it the front hand does and the sail sheets in on you. Gusts blow the draft back, so a rig balanced in a lull goes back-hand heavy in a gust.</p>
 <p><b>Downhaul</b> sets how much the top of the sail twists open under load: more for a windy, gusty day (steadier and faster), less in light wind for power. <b>Outhaul</b> sets the depth: loose and full to plane early, tight and flat for less drag and a draft that stays forward. <b>Mast foot</b> forward keeps the nose down for control; back frees the board up for speed.</p>
 <h3>Feel it through the controller</h3>
 <p>With rumble on, the low motor carries the sail's load and thumps as a gust fills the sail; it pulses, harder and harder, as the pull tips you toward your toes before a catapult. The high motor buzzes as the fin nears a spin-out, pulses when a hand is about to lose its grip, and ticks as a batten pops through.</p>
@@ -265,7 +269,8 @@ export class Menu {
           ${slider('gust', 'Gustiness', 0, 1, 0.05, s.gustiness, `${Math.round(s.gustiness * 100)}%`)}
           ${slider('shifts', 'Wind shifts', 0, 1, 0.05, s.shifts, `${Math.round(s.shifts * 100)}%`)}
           ${slider('chop', 'Chop', 0.2, 2, 0.1, s.chop, `${s.chop.toFixed(1)}×`)}
-          <p class="muted">Changes apply immediately. The wind blows side-shore, along the beach.</p>
+          ${slider('light', 'Time of day', 0, DAY.length - 1, 1, Math.max(0, DAY.indexOf(s.light)), LIGHTS[s.light]?.name ?? LIGHTS.golden.name)}
+          <p class="muted">Changes apply immediately. The wind blows side-shore, along the beach. The sun is out over the sea: sailing out you look into its glitter on the water.</p>
         </div>`;
     } else if (this.tab === 'gear') {
       const total = s.mass + (BOARDS.find((x) => x.id === s.boardId)?.mass ?? 8) + 9;
@@ -291,7 +296,7 @@ export class Menu {
         ${slider('tmast', 'Mast foot', -10, 10, 1, s.tuneMast ?? 0, mastLabel(s))}
         ${slider('downhaul', 'Downhaul', -1, 1, 0.5, s.downhaul ?? 0, haulLabel('downhaul', s.downhaul ?? 0))}
         ${slider('outhaul', 'Outhaul', -1, 1, 0.5, s.outhaul ?? 0, haulLabel('outhaul', s.outhaul ?? 0))}
-        <p class="muted">Harness lines balanced over the sail's draft leave both hands light (watch the Hands bar). Too far forward and the back hand pulls; too far back and the front hand does, and the sail sheets in on you. The mast foot forward keeps the nose down for control and pointing; back frees the board up for speed. More downhaul twists the top of the sail open: less low-end power, but faster and steadier when it's windy and gusty. A tight outhaul flattens the sail: less power and drag, the draft forward; a loose one is fuller, for planing early, but draggy and back-hand heavy at speed.</p>
+        <p class="muted">Harness lines balanced over the sail's draft leave both hands light (watch the Hands bar in the detailed HUD: View / Tab). Too far forward and the back hand pulls; too far back and the front hand does, and the sail sheets in on you. The mast foot forward keeps the nose down for control and pointing; back frees the board up for speed. More downhaul twists the top of the sail open: less low-end power, but faster and steadier when it's windy and gusty. A tight outhaul flattens the sail: less power and drag, the draft forward; a loose one is fuller, for planing early, but draggy and back-hand heavy at speed.</p>
         <h3>Assists</h3>
         ${toggle('autohike', 'Auto-hike: the game balances your body against the pull (LT is ignored)', s.autoHike)}
         ${toggle('nofalls', 'No falls: you never get pulled over or fall back', s.noFalls)}
@@ -311,6 +316,7 @@ export class Menu {
         ${toggle('particles', 'Wind particles: specks drifting with the wind', s.windParticles)}
         ${toggle('shake', 'Camera sway over chop', s.cameraShake)}
         ${toggle('gpspanel', 'GPS panel: your session\'s speeds and records while free sailing', s.gpsPanel)}
+        ${toggle('bloom', 'Glow: the sun and its sparkle on the water bleed light like they do in a camera (turn off if the game runs slowly)', s.bloom)}
         ${slider('volume', 'Volume', 0, 1, 0.05, s.volume, `${Math.round(s.volume * 100)}%`)}`;
     } else {
       c.innerHTML = `<h2>Technique</h2>${TECHNIQUE}`;
@@ -362,6 +368,7 @@ export class Menu {
     range('gust', 'gustiness', (v) => `${Math.round(v * 100)}%`, (v) => { s.gustiness = v; h.conditions(); });
     range('shifts', 'shifts', (v) => `${Math.round(v * 100)}%`, (v) => { s.shifts = v; h.conditions(); });
     range('chop', 'chop', (v) => `${v.toFixed(1)}×`, (v) => { s.chop = v; h.conditions(); });
+    range('light', 'light', (v) => LIGHTS[DAY[v]].name, (v) => { s.light = DAY[v]; h.options(); });
     range('sail', 'sail', (v) => `${SAILS[v].area.toFixed(1)} m²`, (v) => { s.sailArea = SAILS[v].area; h.gear(); });
     range('mass', 'mass', (v) => `${v} kg`, (v) => { s.mass = v; h.gear(); });
     range('height', 'height', (v) => `${v} cm`, (v) => {
@@ -388,6 +395,7 @@ export class Menu {
     on('particles', 'change', (e) => { s.windParticles = e.target.checked; h.options(); });
     on('shake', 'change', (e) => { s.cameraShake = e.target.checked; h.options(); });
     on('gpspanel', 'change', (e) => { s.gpsPanel = e.target.checked; h.options(); });
+    on('bloom', 'change', (e) => { s.bloom = e.target.checked; h.options(); });
     // Re-render the rule-of-thumb line when the weight changes.
     on('mass', 'change', () => this.render());
   }
