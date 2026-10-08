@@ -128,9 +128,12 @@ export class Rig {
     const gripMat = new THREE.MeshStandardMaterial({ color: 0x202326, roughness: 0.9 });
     for (const sideZ of [-1, 1]) {
       const pts = [];
+      // (the curve the hands hold, closing in to the clew at the end of the boom)
+      const closing = (x) => 0.2 * Math.pow(Math.sin(Math.PI * clamp(x / L, 0, 1)), 0.7) + 0.02;
       for (let i = 0; i <= 16; i++) {
         const x = -0.06 + (i / 16) * (L + 0.08);
-        pts.push(new THREE.Vector3(x, geo.boomHeight + (x / L) * 0.06, sideZ * tubeOffset(geo, x)));
+        const p = boomLocal(geo, x, -sideZ);
+        pts.push(new THREE.Vector3(x, p[1], sideZ * Math.min(tubeOffset(geo, x), closing(x))));
       }
       const curve = new THREE.CatmullRomCurve3(pts);
       const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.017, 8), boomMat);

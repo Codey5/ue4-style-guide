@@ -32,9 +32,9 @@ export function rigFrame(board, rig) {
 export const rigToBoard = (f, p) => add(f.o, add(add(scale(f.X, p[0]), scale(f.Y, p[1])), scale(f.Z, p[2])));
 
 /** Half-width of the wishbone boom x metres back from the mast. */
-export const tubeOffset = (geo, x) => 0.2 * Math.pow(Math.sin(Math.PI * clamp(x / geo.boomLength, 0, 1)), 0.7) + 0.02;
+export const tubeOffset = (geo, x) => 0.2 * Math.pow(Math.sin(Math.PI * clamp(x / (geo.tubeLength ?? geo.boomLength), 0, 1)), 0.7) + 0.02;
 /** Point on the windward boom tube, rig frame. */
-export const boomLocal = (geo, x, side) => [x, geo.boomHeight + (x / geo.boomLength) * 0.06, -side * tubeOffset(geo, x)];
+export const boomLocal = (geo, x, side) => [x, geo.boomHeight + (x / (geo.tubeLength ?? geo.boomLength)) * 0.06, -side * tubeOffset(geo, x)];
 
 /**
  * Where the hands hold the boom, and where the harness lines are tied on

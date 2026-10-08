@@ -13,18 +13,39 @@ export function buildSailGeometry(def, boomHeight = BOOM_HEIGHT) {
   const hb = boomHeight;
   const head = def.luff + 0.02;
   const B = def.boom;
-  const raw = (h) => {
+  const N = 400;
+  const areaOf = (f) => {
+    let a = 0;
+    for (let i = 0; i < N; i++) a += f(tack + ((i + 0.5) / N) * (head - tack)) * ((head - tack) / N);
+    return a;
+  };
+  // The force model's planform: a slim outline stretched to the sail's area
+  // (what the aerodynamics, the gear chart and the coach were calibrated on).
+  const slim = (h) => {
     if (h <= tack || h >= head) return 0;
     if (h <= hb) return B * Math.pow((h - tack) / (hb - tack), 0.55);
     const t = (h - hb) / (head - hb);
     return B * (1 - Math.pow(t, 1.6)) * (1 - 0.05 * t) + 0.1 * t;
   };
-  // Scale the chord so the outline has exactly the nominal sail area.
-  const N = 400;
-  let a = 0;
-  for (let i = 0; i < N; i++) a += raw(tack + ((i + 0.5) / N) * (head - tack)) * ((head - tack) / N);
-  const k = def.area / a;
-  const chordAt = (h) => raw(h) * k;
+  const kSlim = def.area / areaOf(slim);
+  const aeroChord = (h) => slim(h) * kSlim;
+  // The sail as drawn, cut like a real one: the boom the length on the sail's
+  // chart, a full foot sweeping from the tack out to the clew, and above the
+  // boom as much roach (fullness in the leech, `p`) as makes up the area.
+  // Its centre of effort is within 3 cm of the force model's on a 6.3 m²
+  // sail and about 10 cm off at either end of the range.
+  const cut = (p) => (h) => {
+    if (h <= tack || h >= head) return 0;
+    if (h <= hb) return B * Math.pow((h - tack) / (hb - tack), 0.3);
+    const t = (h - hb) / (head - hb);
+    return B * (1 - Math.pow(t, p)) * (1 - 0.05 * t) + 0.1 * t;
+  };
+  let lo = 1, hi = 12;
+  for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (areaOf(cut(m)) < def.area) lo = m; else hi = m; }
+  const drawn = cut(lo);
+  // (and if even the fullest roach falls short, the outline is scaled to the area)
+  const kDrawn = def.area / areaOf(drawn);
+  const chordAt = (h) => drawn(h) * kDrawn;
 
   const edges = [tack, hb, hb + 0.3 * (head - hb), hb + 0.62 * (head - hb), head];
   const strips = [];
@@ -34,7 +55,7 @@ export function buildSailGeometry(def, boomHeight = BOOM_HEIGHT) {
     const n = 60;
     for (let i = 0; i < n; i++) {
       const h = h0 + ((i + 0.5) / n) * (h1 - h0);
-      const c = chordAt(h);
+      const c = aeroChord(h);
       const dA = c * ((h1 - h0) / n);
       area += dA; mh += h * dA; mc += c * CE_CHORD * dA;
     }
@@ -49,6 +70,8 @@ export function buildSailGeometry(def, boomHeight = BOOM_HEIGHT) {
   for (const s of strips) { ceH += s.h * s.area; ceX += s.x * s.area; }
   return {
     def, tack, boomHeight: hb, head, boomLength: chordAt(hb - 1e-4), chordAt, strips,
+    // (the wishbone's curve where you hold it, as the hands and lines were calibrated on)
+    tubeLength: aeroChord(hb - 1e-4),
     ceHeight: ceH / def.area, ceChord: ceX / def.area,
     aspect: (def.luff * def.luff) / def.area,
   };
