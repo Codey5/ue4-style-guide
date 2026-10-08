@@ -504,6 +504,7 @@ function frame(now) {
   boardGroup.updateMatrixWorld(true);
   rig.update(sim, dt, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);
   sailor.update(sim, rig, dt);
+  rig.drapeAround(sim, sailor);
   rig.updateUphaul(sim, sailor);
   camRig.goal = story?.target?.at ?? null;
   if (!camRig.goal) camRig.lookGoal = false;

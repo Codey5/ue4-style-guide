@@ -15,7 +15,7 @@ import {
 import { Wind, Waves } from './environment.js';
 import { barCoords, barPoint, onBar } from './spot.js';
 import { BOARDS, BOOM_RATIO, DEFAULT_SAILOR, LINES_RATIO, findBoard, findSail } from './gear.js';
-import { buildSailGeometry, sailForces } from './sail.js';
+import { buildSailGeometry, rigAxes, sailForces } from './sail.js';
 import { foilPolar, planingSolve } from './hull.js';
 import {
   bodyContext, boomGrips, comDistAt, comDistPhi, comFwdAt, leanFor, leverAt, leverTable, phiForFwd, pitchTable, poseBody, reachLimit,
@@ -899,15 +899,20 @@ export class Sim {
     const r = this.rig, s = this.sailor, st = this.state;
     const rateRake = 115 * DEG * dt;
     const boomOpen = (sheet) => (3 + 92 * Math.pow(1 - clamp(sheet, 0, 1), 1.25)) * DEG;
-    const flagAngle = () => {
+    const flagAngle = (tipped = false) => {
       // Boom angle at which the sail streams like a flag in the apparent wind
-      // (board motion only; the rig's own motion is ignored here).
+      // (board motion only; the rig's own motion is ignored here). With the
+      // rig thrown well forward (the sail let go in a carving 360) the boom
+      // turns about a tipped mast, so it's the wind across the mast that
+      // counts, at the middle of the sail wherever that's gone.
       const R = boardMatrix(this.yaw, this.pitch, this.roll);
-      const ce = add(this.pos, mulMV(R, [this.board.mastFootX - 0.6, 2.2, 0]));
+      const ax = tipped ? rigAxes(r.rake, r.lean, 0) : null;
+      const ceB = tipped ? add([this.board.mastFootX, 0, 0], add(scale(ax.m, 2.2), scale(ax.ap, 0.6))) : [this.board.mastFootX - 0.6, 2.2, 0];
+      const ce = add(this.pos, mulMV(R, ceB));
       const rC = sub(ce, this.pos);
       const vCe = add(this.vel, [this.yawRate * rC[2], 0, -this.yawRate * rC[0]]);
-      const awB = mulMtV(R, sub(this.wind.sample(ce[0], 2.3, ce[2], this.t), vCe));
-      return Math.atan2(-awB[2], -awB[0]);
+      const awB = mulMtV(R, sub(this.wind.sample(ce[0], tipped ? Math.max(0.5, ce[1]) : 2.3, ce[2], this.t), vCe));
+      return tipped ? Math.atan2(dot(awB, ax.qp), dot(awB, ax.ap)) : Math.atan2(-awB[2], -awB[0]);
     };
     if (st === S.SAILING) {
       // Hooked in and hanging off the harness lines in the straps, the stance
@@ -966,7 +971,9 @@ export class Sim {
         r.rake = servo(r.rake, (-26 + ctl.rake * 8) * DEG, 5, 115 * DEG, dt);
         r.boom = servo(r.boom, r.side * 6 * DEG, 6, 200 * DEG, dt);
       } else {
-        r.rake = servo(r.rake, (18 + ctl.rake * 10) * DEG, 5, 115 * DEG, dt);
+        // (held back until you've stepped back behind the mast, then forward to bear away)
+        const back = smoothstep(0.3, 0.65, this.stateTime - (this.stateData.switchTime ?? 0));
+        r.rake = servo(r.rake, lerp(-10, 18 + ctl.rake * 10, back) * DEG, 5, 115 * DEG, dt);
         let open = boomOpen(Math.max(ctl.sheet, 0.25));
         const fa = flagAngle();
         if (Math.sign(fa) === r.side) open = Math.min(open, Math.abs(fa));
@@ -1044,8 +1051,8 @@ export class Sim {
    *           new tack without stepping round the front of the mast.
    *   c360  — carving 360: a full carved circle on the rail, through
    *           downwind and back up through the wind, with the sail let go.
-   *   spock — the board spins a full turn on its nose, the rig held still
-   *           above it.
+   *   spock — the board spins a full turn on its nose, you and the rig
+   *           turning with it.
    */
   startTrick(kind, twa, speed) {
     const s = this.sailor, p = this.hull?.planing ?? 0, at = Math.abs(twa) / DEG;
@@ -1157,7 +1164,8 @@ export class Sim {
         const e = smoothstep(0.08, 0.8, t);
         r.boom = lerp(d.d0, -0.85 * d.d0, e);
       } else r.boom = servo(r.boom, r.side * boomOpen(ctl.sheet), 6, 160 * DEG, dt);
-      r.rake = servo(r.rake, 10 * DEG, 6, 140 * DEG, dt);
+      // (raked well forward as it goes over, so the boom passes high over your head)
+      r.rake = servo(r.rake, (t < 0.8 ? 30 : 10) * DEG, 6, 140 * DEG, dt);
       r.lean = servo(r.lean, ctl.lean * 20 * DEG, 5, 115 * DEG, dt);
     } else if (d.kind === 'heli') {
       if (d.phase === 'luff') {
@@ -1174,17 +1182,21 @@ export class Sim {
       r.lean = servo(r.lean, 0, 5, 115 * DEG, dt);
     } else if (d.kind === 'c360') {
       // Powered into the turn; the back hand lets go through downwind and up
-      // through the wind (the sail streams like a flag); then you catch it again.
+      // through the wind (the sail streams like a flag, the rig held up by
+      // the mast and thrown forward so the boom swings high over your head);
+      // then you catch it again.
       const free = d.turned > 75 * DEG && d.turned < 300 * DEG;
-      const fa = flagAngle();
+      const fa = flagAngle(free);
       const target = free ? r.boom + wrapAngle(fa - r.boom) : r.side * boomOpen(ctl.sheet);
       r.boom = servo(r.boom, target, free ? 10 : 6, (free ? 300 : 160) * DEG, dt);
       if (!free) r.boom = wrapAngle(r.boom);
-      r.rake = servo(r.rake, (free ? 0 : 15) * DEG, 4, 115 * DEG, dt);
-      r.lean = servo(r.lean, r.side * 12 * DEG, 4, 115 * DEG, dt);
+      // (thrown forward while it's free, back up to catch it as you come up through the wind)
+      const rake = d.turned < 75 * DEG ? 15 : free ? lerp(36, 5, smoothstep(240 * DEG, 300 * DEG, d.turned)) : 5;
+      r.rake = servo(r.rake, rake * DEG, 4, 115 * DEG, dt);
+      r.lean = servo(r.lean, r.side * (free ? -12 : 12) * DEG, 4, 115 * DEG, dt); // (let go, it leans into the turn, away from you)
     } else {
-      // Held still above the spinning board.
-      r.boom = d.boom0 - d.turn * d.turned;
+      // Held as it was going in, turning with you as the board spins under you both.
+      r.boom = servo(r.boom, d.boom0, 6, 200 * DEG, dt);
       r.rake = servo(r.rake, 12 * DEG, 5, 115 * DEG, dt);
       r.lean = servo(r.lean, 0, 5, 115 * DEG, dt);
     }

@@ -2,7 +2,7 @@
 // harness hook attach to the rig, the posed joints and the centre of mass.
 // The physics balances the sail's pull with this geometry and the renderer
 // draws this exact pose, so the lean you see is the lean holding the rig.
-import { DEG, add, addScaled, clamp, cross, dot, len, norm, scale, smoothstep, sub } from './math.js';
+import { DEG, add, addScaled, clamp, cross, dot, len, lerp, norm, scale, smoothstep, sub } from './math.js';
 import { rigAxes } from './sail.js';
 import { deckY } from './shape.js';
 import { S } from './states.js';
@@ -93,14 +93,36 @@ export function stance(board, sailor, state, stateData = {}, stateTime = 0) {
     feetB = [board.mastFootX - 0.5, 0, side * 0.1];
     sit = state === S.UPHAUL ? 0.3 * (1 - (stateData.progress ?? 0)) + 0.06 : 0.06;
   } else if (state === S.TACK) {
-    const k = stateData.switched ? 1 : clamp(stateTime / 0.6, 0, 1);
-    feetF = [board.mastFootX + 0.12 * k, 0, side * (0.16 - 0.1 * k)];
-    feetB = [board.mastFootX - 0.25 + 0.2 * k, 0, side * 0.12];
+    // The footwork round the front of the mast (x from the mast foot; z out
+    // to the side you're on). Up to the mast, the front foot past it; at the
+    // switch the back foot steps round the front of the mast to the new side
+    // and the other follows it across; then both step back behind the mast
+    // into your stance as the rig goes forward.
+    const M = board.mastFootX;
+    if (!stateData.switched) {
+      const k = smoothstep(0, 0.6, stateTime);
+      feetF = [M - 0.12 + 0.3 * k, 0, side * (0.1 - 0.03 * k)];
+      feetB = [M - 0.7 + 0.6 * k, 0, side * (0.08 + 0.08 * k)];
+    } else {
+      const u = stateTime - (stateData.switchTime ?? 0);
+      // the new front foot: round in front of the mast (a curve from where
+      // it was), then back
+      const a = smoothstep(0, 0.3, u), c = smoothstep(0.35, 0.75, u);
+      const curve = (p0, p1, p2) => (1 - a) * (1 - a) * p0 + 2 * (1 - a) * a * p1 + a * a * p2;
+      feetF = [M + curve(-0.1, 0.5, 0.3) - 0.42 * c, 0, side * (curve(-0.16, 0, 0.12) - 0.04 * c)];
+      // the new back foot: across just in front of the mast foot, then back
+      const b1 = smoothstep(0.15, 0.4, u), b2 = smoothstep(0.4, 0.85, u);
+      feetB = [M + 0.18 - 0.1 * b1 - 0.78 * b2, 0, side * (-0.07 + 0.23 * b1 - 0.09 * b2)];
+    }
     sit = 0.08;
-  } else if (state === S.TRICK && (stateData.kind === 'heli' || stateData.kind === 'spock')) {
-    // Up by the mast, low, while the board pivots under you.
-    feetF = [board.mastFootX - 0.2, 0, side * 0.06];
-    feetB = [board.mastFootX - 0.6, 0, side * 0.08];
+  } else if (state === S.TRICK && (stateData.kind === 'spock' || (stateData.kind === 'heli' && stateData.phase === 'spin'))) {
+    // Up by the mast on the windward side, low, while the board pivots under
+    // you (in a helitack once the rig has come forward off the luff).
+    const k = stateData.kind === 'heli' ? smoothstep(0.25, 0.6, stateTime - (stateData.spinT ?? 0)) : 1;
+    const x = stateData.kind === 'heli' ? Math.min(sailor.x, board.mastFootX - 0.9) : board.mastFootX - 0.4;
+    const out = stateData.kind === 'spock' ? 0.06 : 0;
+    feetF = [lerp(x + 0.28, board.mastFootX - 0.2, k), 0, side * (0.14 + out)];
+    feetB = [lerp(x - 0.3, board.mastFootX - 0.6, k), 0, side * (0.16 + out)];
     sit = stateData.kind === 'heli' ? 0.12 : 0.22;
   } else {
     const strapZF = 0.29 * board.width, strapZB = 0.2 * board.width;
@@ -111,6 +133,14 @@ export function stance(board, sailor, state, stateData = {}, stateTime = 0) {
     } else if (sailor.straps === 1) {
       feetF = [board.frontStrapX, 0, side * strapZF];
       feetB = [sailor.x - 0.32, 0, side * 0.04];
+      sit = 0.1;
+    } else if (state === S.TRICK && stateData.kind === 'heli') {
+      // Luffing up into a helitack: back from the mast and out on the
+      // windward side, so the rig raked back over the tail comes down
+      // beside you, not onto you.
+      const x = Math.min(sailor.x, board.mastFootX - 0.9);
+      feetF = [x + 0.28, 0, side * 0.15];
+      feetB = [x - 0.3, 0, side * 0.16];
       sit = 0.1;
     } else {
       feetF = [sailor.x + 0.26, 0, side * 0.03];
@@ -144,7 +174,7 @@ export function stance(board, sailor, state, stateData = {}, stateTime = 0) {
  */
 export const reachPhi = (phi) => clamp(phi, -10 * DEG, 4 * DEG);
 
-export function bodyContext({ H, stance: st, side, leanX = 0, hooked = false, hands = null, lines = null, lineLength = 0.45 * H, onBoom = false, phi = 0 }) {
+export function bodyContext({ H, stance: st, side, leanX = 0, hooked = false, hands = null, lines = null, lineLength = 0.45 * H, onBoom = false, phi = 0, clear = false }) {
   const base = scale(add(st.feetF, st.feetB), 0.5);
   // Lean out to windward; how far back toward the tail is the balance's job (phi).
   const leanDir = [0, 0, side];
@@ -156,7 +186,7 @@ export function bodyContext({ H, stance: st, side, leanX = 0, hooked = false, ha
     if (dot(d, d) > 0.01) across = norm(d);
   }
   return {
-    H, side, hooked, onBoom, hands, lines, lineLength, sit: st.sit, feetF: st.feetF, feetB: st.feetB, base, phi,
+    H, side, hooked, onBoom, hands, lines, lineLength, sit: st.sit, feetF: st.feetF, feetB: st.feetB, base, phi, clear,
     leanDir, facing: scale(leanDir, -1), across, half: scale(across, BODY.shoulder * H),
     reach: BODY.reach * H, hookFacing: norm([0.2, 0, -side]),
   };
@@ -207,11 +237,35 @@ export function bodyFrom(ctx, pelvis, neck) {
   return { pelvis, neck, mid, axis, shF: add(mid, ctx.half), shB: sub(mid, ctx.half), hook, com };
 }
 
+/** Closest distance between segments p1-q1 and p2-q2. */
+export function segSegDist(p1, q1, p2, q2) {
+  const d1 = sub(q1, p1), d2 = sub(q2, p2), r = sub(p1, p2);
+  const a = dot(d1, d1), e = dot(d2, d2), f = dot(d2, r);
+  let s = 0, t = 0;
+  if (a > 1e-9 && e > 1e-9) {
+    const c = dot(d1, r), b = dot(d1, d2), den = a * e - b * b;
+    s = den > 1e-9 ? clamp((b * f - c * e) / den, 0, 1) : 0;
+    t = (b * s + f) / e;
+    if (t < 0) { t = 0; s = clamp(-c / a, 0, 1); } else if (t > 1) { t = 1; s = clamp((b - c) / a, 0, 1); }
+  }
+  return len(sub(addScaled(p1, d1, s), addScaled(p2, d2, t)));
+}
+/** How close the boom between your hands may come to the middle of your torso (its depth, the tube, a little air). */
+export const BOOM_CLEAR = 0.18;
+
 /** How far (m) the boom is beyond the arms, or the hook beyond the harness lines. <= 0 fits. */
 export function overreach(ctx, body) {
   if (!ctx.hands) return -1;
   const r = ctx.reach * 0.97;
   let e = Math.max(len(sub(body.shF, ctx.hands.f)), len(sub(body.shB, ctx.hands.b))) - r;
+  // ...nor (drawn) so close that the boom runs into your chest or your
+  // head: the balance's lever barely notices the few centimetres, the eye does.
+  // (from the boom's head, a hand or two in front of the front hand, to the back hand)
+  if (ctx.clear) {
+    const boomHead = addScaled(ctx.hands.f, sub(ctx.hands.f, ctx.hands.b), 0.4);
+    const top = addScaled(body.neck, body.axis, 0.07 * ctx.H);
+    e = Math.max(e, BOOM_CLEAR - segSegDist(boomHead, ctx.hands.b, body.pelvis, top));
+  }
   if (ctx.hooked && ctx.lines) {
     // The loop slides over the hook: hook-to-ends distances can't add up to more than the loop.
     e = Math.max(e, (len(sub(body.hook, ctx.lines.a)) + len(sub(body.hook, ctx.lines.b)) - ctx.lineLength) / 2);

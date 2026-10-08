@@ -598,7 +598,7 @@ export const LESSONS = [
         done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > 15,
       },
       {
-        say: 'Spock. Weight on your front foot ({RS} up) so the nose bites, then {LB} + {A}: the board spins a full turn on its nose, the rig held still above it. Sheet in and go.',
+        say: 'Spock. Weight on your front foot ({RS} up) so the nose bites, then {LB} + {A}: the board spins a full turn on its nose, you and the rig turning with it. Sheet in and go.',
         retryOnFall: 'Fell in! Keep the weight on the nose through the spin. Again.',
         run: (x) => {
           const sim = x.sim, m = x.m;

@@ -5,7 +5,7 @@ import { DEG, clamp, lerp, smoothstep } from '../physics/math.js';
 import { rigAxes } from '../physics/sail.js';
 import { S } from '../physics/states.js';
 import { boardShape, deckY } from '../physics/shape.js';
-import { BODY, bodyContext, boomGrips, boomLocal, boomStations, overreach, poseBody, reachLimit, reachPhi, stance, tubeOffset } from '../physics/body.js';
+import { BODY, bodyContext, boomGrips, boomLocal, boomStations, overreach, poseBody, reachLimit, reachPhi, segSegDist, stance, tubeOffset } from '../physics/body.js';
 
 export { deckY };
 
@@ -232,6 +232,109 @@ export class Rig {
     pos.needsUpdate = true;
   }
 
+  /** The membrane's normals and the battens, after the sail's vertices move. */
+  syncSail() {
+    const pos = this.sailPos;
+    this.sailGeo.attributes.position.needsUpdate = true;
+    this.sailGeo.computeVertexNormals();
+    // Battens follow the membrane rows.
+    const bp = this.battens.geometry.attributes.position.array;
+    let o = 0;
+    for (const fr of this.battenRows) {
+      const v = Math.round(fr * SAIL_NV);
+      for (let u = 0; u < SAIL_NU; u++) {
+        const k0 = (v * (SAIL_NU + 1) + u) * 3, k1 = k0 + 3;
+        bp[o++] = pos[k0]; bp[o++] = pos[k0 + 1]; bp[o++] = pos[k0 + 2] + 0.003;
+        bp[o++] = pos[k1]; bp[o++] = pos[k1 + 1]; bp[o++] = pos[k1 + 2] + 0.003;
+      }
+    }
+    this.battens.geometry.attributes.position.needsUpdate = true;
+  }
+
+  /**
+   * Cloth gives: where the sailor's body is in the way (the pose just drawn),
+   * the sail is pushed out round it, to whichever side is nearer, and the
+   * cloth around eases over the bulge, instead of the body showing through.
+   */
+  drapeAround(sim, sailor) {
+    if (!sailor?.pose || sim.state === S.FALLING) return;
+    if (this.drape(sailor.pose)) this.syncSail();
+  }
+
+  /** Push the sail's vertices out of the body (capsules, board frame), with a soft edge. */
+  drape(pose) {
+    const inv = this.group.matrix.clone().invert();
+    // (the cloth goes round the far side of you: you're on one side of the
+    // sail, even when it's bulging back toward you before the battens pop)
+    const chestZ = pose.chest.clone().applyMatrix4(inv).z;
+    const away = Math.abs(chestZ) > 0.05 ? -Math.sign(chestZ) : 0;
+    const caps = bodyCapsules(pose).filter((c) => c.name !== 'forearm').map((c) => ({
+      a: c.a.clone().applyMatrix4(inv), b: c.b.clone().applyMatrix4(inv), r: c.r + 0.03,
+    }));
+    const pos = this.sailPos, NU = SAIL_NU + 1, n = pos.length / 3;
+    const disp = this.dispBuf ??= new Float32Array(n);
+    disp.fill(0);
+    const p = new THREE.Vector3(), ab = new THREE.Vector3(), w = new THREE.Vector3();
+    const inside = (x, y, z, c) => {
+      p.set(x, y, z);
+      ab.subVectors(c.b, c.a);
+      const t = clamp(w.subVectors(p, c.a).dot(ab) / Math.max(ab.lengthSq(), 1e-9), 0, 1);
+      return c.r - p.distanceTo(w.copy(c.a).addScaledVector(ab, t));
+    };
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      for (const c of caps) {
+        if (inside(x, y, z, c) <= 0) continue;
+        // The least move across the sail (rig-local z) that clears it, either way.
+        const out = (dir) => {
+          let lo = 0, hi = 2 * c.r;
+          for (let k = 0; k < 12; k++) { const m = (lo + hi) / 2; if (inside(x, y, z + dir * m, c) > 0) lo = m; else hi = m; }
+          return dir * hi;
+        };
+        const up = out(1), down = out(-1);
+        const d = away ? (away > 0 ? up : down) : Math.abs(up) < Math.abs(down) ? up : down;
+        if (Math.abs(d) > Math.abs(disp[i])) disp[i] = d;
+        any = true;
+      }
+    }
+    if (!any) return false;
+    // Ease the cloth around over the bulge (twice), never undoing a push.
+    const tmp = this.dispTmp ??= new Float32Array(n);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < n; i++) {
+        const u = i % NU, v = (i - u) / NU;
+        let sum = disp[i] * 2, wsum = 2;
+        for (const [du, dv] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const uu = u + du, vv = v + dv;
+          if (uu < 0 || uu >= NU || vv < 0 || vv > SAIL_NV) continue;
+          sum += disp[vv * NU + uu]; wsum++;
+        }
+        const avg = sum / wsum;
+        tmp[i] = Math.abs(disp[i]) >= Math.abs(avg) && Math.sign(disp[i]) === Math.sign(avg) ? disp[i] : (disp[i] === 0 ? avg * 0.8 : disp[i]);
+      }
+      disp.set(tmp);
+    }
+    // (not the luff: the sleeve stays on the mast)
+    for (let i = 0; i < n; i++) if (i % NU > 0) pos[i * 3 + 2] += disp[i];
+    // Where a limb goes right through the sail (no way round it across the
+    // cloth), the cloth lies over it: pushed straight out of it.
+    for (let i = 0; i < n; i++) {
+      if (i % NU === 0) continue;
+      for (const c of caps) {
+        p.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        ab.subVectors(c.b, c.a);
+        const t = clamp(w.subVectors(p, c.a).dot(ab) / Math.max(ab.lengthSq(), 1e-9), 0, 1);
+        const axis = w.copy(c.a).addScaledVector(ab, t);
+        const d = p.distanceTo(axis);
+        if (d >= c.r - 0.005 || d < 1e-6) continue;
+        p.sub(axis).multiplyScalar((c.r - 0.005) / d).add(axis);
+        pos[i * 3] = p.x; pos[i * 3 + 1] = p.y; pos[i * 3 + 2] = p.z;
+      }
+    }
+    return true;
+  }
+
   /** Point on the windward boom tube, rig-local. */
   boomPoint(x, side) {
     return new THREE.Vector3(...boomLocal(this.geo, x, side));
@@ -327,22 +430,8 @@ export class Rig {
         pos[kk + 2] = -x * sa + z * ca;
       }
     }
-    this.sailGeo.attributes.position.needsUpdate = true;
-    this.sailGeo.computeVertexNormals();
+    this.syncSail();
     const side = r.side;
-
-    // Battens follow the membrane rows.
-    const bp = this.battens.geometry.attributes.position.array;
-    let o = 0;
-    for (const fr of this.battenRows) {
-      const v = Math.round(fr * SAIL_NV);
-      for (let u = 0; u < SAIL_NU; u++) {
-        const k0 = (v * (SAIL_NU + 1) + u) * 3, k1 = k0 + 3;
-        bp[o++] = pos[k0]; bp[o++] = pos[k0 + 1]; bp[o++] = pos[k0 + 2] + 0.003;
-        bp[o++] = pos[k1]; bp[o++] = pos[k1 + 1]; bp[o++] = pos[k1 + 2] + 0.003;
-      }
-    }
-    this.battens.geometry.attributes.position.needsUpdate = true;
 
     // Harness lines: a loop under the windward boom tube, or taut to the hook.
     const lines = boomStations(geo, true);
@@ -407,10 +496,36 @@ export class Sailor {
     if (st === S.SECURE || st === S.UPHAUL || st === S.CLIMB) {
       beta = st === S.UPHAUL ? 12 * DEG * (1 - (sim.stateData.progress ?? 0)) + 4 * DEG : 4 * DEG;
     } else if (st === S.TACK) beta = 3 * DEG;
-    const onBoom = !(st === S.SECURE || st === S.UPHAUL || st === S.CLIMB || (st === S.TACK && !sim.stateData.switched));
+    // What the hands hold through a move: the boom; the mast (stepping round
+    // it in a tack, pushing the sail round it in a helitack); the mast and the
+    // front of the boom (holding the sail in while the nose comes up through
+    // the wind); or just the front of the boom, the other hand free (the sail
+    // let go in a carving 360).
+    const d = sim.stateData;
+    const sinceSwitch = st === S.TACK && d.switched ? sim.stateTime - (d.switchTime ?? 0) : 0;
+    let hold = 'boom';
+    if (st === S.SECURE || st === S.CLIMB) hold = 'mastUphaul';
+    else if (st === S.UPHAUL) hold = 'uphaul';
+    else if (st === S.TACK) hold = !d.switched ? 'mastBoom' : sinceSwitch < 0.3 ? 'mast' : 'boom';
+    else if (st === S.TRICK && d.kind === 'heli' && d.phase === 'spin') hold = 'mast';
+    else if (st === S.TRICK && d.kind === 'c360' && d.turned > 75 * DEG && d.turned < 300 * DEG) hold = 'mastFree';
+    this.hold = hold;
+    const onBoom = hold === 'boom';
+    // (holding the mast you hang out to windward off it, at arm's length; in
+    // a spock, off the boom, outside the wishbone as it turns with you)
+    if (hold === 'mast' || hold === 'mastBoom' || hold === 'mastFree') beta = Math.max(beta, 8 * DEG);
+    if (st === S.TRICK && d.kind === 'spock') beta = Math.max(beta, 14 * DEG);
     const hooked = s.hooked && st === S.SAILING;
+    // (on the mast: just below the boom, on the windward side of it)
+    const mastAt = (y) => toBoard(new THREE.Vector3(0, y, -sim.rig.side * 0.035));
     let hands, lines = null;
-    if (st === S.UPHAUL) {
+    if (hold === 'mastBoom') {
+      hands = { f: mastAt(rig.geo.boomHeight - 0.2).toArray(), b: toBoard(rig.boomPoint(0.25, sim.rig.side)).toArray() };
+    } else if (hold === 'mast') {
+      hands = { f: mastAt(rig.geo.boomHeight - 0.1).toArray(), b: mastAt(rig.geo.boomHeight - 0.42).toArray() };
+    } else if (hold === 'mastFree') {
+      hands = { f: toBoard(rig.boomPoint(0.22, sim.rig.side)).toArray(), b: mastAt(rig.geo.boomHeight - 0.42).toArray() };
+    } else if (st === S.UPHAUL) {
       // On the uphaul rope, an arm's length out toward the boom (hand over
       // hand up it as the rig comes up), or on the rope by the boom once it's close.
       const top = toBoard(new THREE.Vector3(0.06, rig.geo.boomHeight, 0));
@@ -435,14 +550,21 @@ export class Sailor {
     // Leaning back against the pull (fore and aft): the reach is judged the
     // way the physics judges it.
     const phi = onBoom && st === S.SAILING ? s.phi ?? 0 : 0;
-    const ctx = bodyContext({ H, stance: pose, side, leanX: s.leanX, hooked, hands, lines, lineLength: sim.harnessLines, onBoom, phi: reachPhi(phi) });
+    let ctx = bodyContext({ H, stance: pose, side, leanX: s.leanX, hooked, hands, lines, lineLength: sim.harnessLines, onBoom, phi: reachPhi(phi) });
     const reach = ctx.reach;
     // Hanging at full stretch the physics lean can run a degree or two past
     // the reach (your arms holding you), or lag a moment behind a rig moved
     // out of reach; draw those at the edge of the reach.
     this.reachFits = true;
     if (onBoom) {
-      const lim = reachLimit(ctx);
+      let lim = reachLimit(ctx);
+      // The rig's come down onto you (raked right back and pulled over you):
+      // bend your knees and duck under the boom.
+      for (const extra of [0.08, 0.16, 0.24, 0.32]) {
+        if (lim.fits) break;
+        const lower = { ...ctx, sit: ctx.sit + extra }, l2 = reachLimit(lower);
+        if (l2.fits) { ctx = lower; lim = l2; }
+      }
       this.reachFits = lim.fits;
       if (lim.fits) beta = clamp(beta, lim.betaMin, lim.betaMax);
     }
@@ -498,9 +620,11 @@ export class Sailor {
       const d = ha.clone().sub(sh);
       return d.length() > reach ? sh.clone().addScaledVector(d.normalize(), reach) : ha;
     };
-    // Back hand let go of the boom (too much pull): it drops to your side.
-    const backOff = onBoom && st === S.SAILING && s.backOff > 0;
-    if (backOff) haB = shR.clone().add(new THREE.Vector3(0, -0.85 * reach, 0)).addScaledVector(facing, 0.12);
+    // Back hand let go of the boom (too much pull): it drops to your side;
+    // let go in a carving 360, it's out behind you for balance.
+    const backOff = (onBoom && st === S.SAILING && s.backOff > 0) || hold === 'mastFree';
+    if (hold === 'mastFree') haB = shR.clone().add(new THREE.Vector3(-0.35 * reach, -0.6 * reach, 0)).addScaledVector(leanDir, 0.45 * reach);
+    else if (backOff) haB = shR.clone().add(new THREE.Vector3(0, -0.85 * reach, 0)).addScaledVector(facing, 0.12);
     this.backOff = backOff || (onBoom && s.regrab < 1);
     const gripF = haF.distanceTo(shL) <= reach * 1.001, gripB = !backOff && haB.distanceTo(shR) <= reach * 1.001;
     this.lastHands = onBoom ? { F: haF.clone(), B: haB.clone() } : null; // grip points, for tools/pose-check
@@ -511,8 +635,44 @@ export class Sailor {
     Object.assign(p, { pelvis, chest, neck, head, shL, shR, haL: haF, haR: haB, footF: feetF, footB: feetB, front: chest.clone().addScaledVector(facing, 0.3) });
     p.elL = ik(shL, haF, arm, arm, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
     p.elR = ik(shR, haB, arm, arm, new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4));
-    p.kneeF = ik(pelvis, feetF, 0.25 * H, 0.25 * H, facing.clone().add(new THREE.Vector3(0.4, 0.1, 0)));
-    p.kneeB = ik(pelvis, feetB, 0.25 * H, 0.25 * H, facing.clone().add(new THREE.Vector3(-0.1, 0.1, 0)));
+    // Knees bent forward and in toward the rig, but never into the mast or
+    // the foot of the sail: beside the mast the knee goes out the other way
+    // round it, under the sail it bends out to windward.
+    const mastA = toBoard(new THREE.Vector3(0, 0, 0)), mastB = toBoard(new THREE.Vector3(0, 1.3, 0));
+    const low = [];
+    for (let k = 0; k < rig.sailPos.length; k += 3) {
+      if (rig.sailPos[k + 1] < 1.1 && rig.sailPos[k] > 0.02) low.push(toBoard(new THREE.Vector3(rig.sailPos[k], rig.sailPos[k + 1], rig.sailPos[k + 2])));
+    }
+    const segPt = (a, b, q) => {
+      const ab = b.clone().sub(a);
+      return q.distanceTo(a.clone().addScaledVector(ab, clamp(q.clone().sub(a).dot(ab) / Math.max(ab.lengthSq(), 1e-9), 0, 1)));
+    };
+    const legGap = (knee, foot) => {
+      let gap = Math.min(segSegDist(pelvis.toArray(), knee.toArray(), mastA.toArray(), mastB.toArray()) - 0.085,
+        segSegDist(knee.toArray(), foot.toArray(), mastA.toArray(), mastB.toArray()) - 0.055) - 0.035;
+      for (const q of low) gap = Math.min(gap, segPt(pelvis, knee, q) - 0.105, segPt(knee, foot, q) - 0.075);
+      return gap;
+    };
+    const leg = (foot, pole0) => {
+      const mid = pelvis.clone().add(foot).multiplyScalar(0.5);
+      const ab = mastB.clone().sub(mastA);
+      const onMast = mastA.clone().addScaledVector(ab, clamp(mid.clone().sub(mastA).dot(ab) / ab.lengthSq(), 0, 1));
+      const away = mid.clone().sub(onMast).setY(0);
+      if (away.lengthSq() < 1e-6) away.copy(leanDir);
+      away.normalize();
+      let best = null, bestGap = -Infinity;
+      for (const dir of [away, leanDir]) {
+        for (const w of [0, 0.6, 1.5, 3, 6]) {
+          const knee = ik(pelvis, foot, 0.25 * H, 0.25 * H, pole0.clone().addScaledVector(dir, w));
+          const gap = legGap(knee, foot);
+          if (gap > 0.01) return knee;
+          if (gap > bestGap) { bestGap = gap; best = knee; }
+        }
+      }
+      return best;
+    };
+    p.kneeF = leg(feetF, facing.clone().add(new THREE.Vector3(0.4, 0.1, 0)));
+    p.kneeB = leg(feetB, facing.clone().add(new THREE.Vector3(-0.1, 0.1, 0)));
     p.grip = { L: gripF, R: gripB, pole: new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4) };
 
     // In the water: floating beside the board, or hanging on near the tail.
@@ -621,9 +781,20 @@ export class Sailor {
   update(sim, rig, dt) {
     const target = this.targetPose(sim, rig);
     if (!this.pose) this.pose = clonePose(target);
+    // Tacking, the back foot comes round the front of the mast to be the new
+    // front one: at the switch each foot carries on along its own path.
+    const tackSwitched = sim.state === S.TACK && !!sim.stateData.switched;
+    if (tackSwitched && !this.tackSwitched) {
+      const q = this.pose;
+      [q.footF, q.footB] = [q.footB, q.footF];
+      [q.kneeF, q.kneeB] = [q.kneeB, q.kneeF];
+    }
+    this.tackSwitched = tackSwitched;
     const fast = sim.state === S.FALLING || sim.state === S.SAILING || sim.state === S.FLIP;
     const k = 1 - Math.exp(-dt * (fast ? 22 : 9));
-    for (const j of JOINTS) this.pose[j].lerp(target[j], k);
+    // (stepping round the mast the feet keep close to their path)
+    const kFeet = sim.state === S.TACK ? 1 - Math.exp(-dt * 24) : k;
+    for (const j of JOINTS) this.pose[j].lerp(target[j], j.startsWith('foot') || j.startsWith('knee') ? kFeet : k);
     const p = this.pose;
     if (target.grip) {
       // Gripping hands go exactly on the boom; the elbow straightens if the
@@ -637,6 +808,7 @@ export class Sailor {
       snap('shL', 'elL', 'haL', 'haL', target.grip.L);
       snap('shR', 'elR', 'haR', 'haR', target.grip.R);
     }
+    this.clearOfRig(sim, rig);
     // The stance's feet: the front foot along the board (more so in the strap), the back one across it.
     const side = sim.sailor.side;
     const toe = (a) => new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
@@ -646,10 +818,87 @@ export class Sailor {
     this.figure.update(p, { onBoard, toes: [toe(sim.sailor.straps ? 0.9 * side : 0.2 * side), toe(1.3 * side)], lookAt });
   }
 
+  /**
+   * Last of all, on the pose as drawn (smoothing and all): nothing of the rig
+   * goes through the body. The torso is moved out to windward of the boom
+   * tube you hold, and off the mast, and the arms and legs follow it.
+   */
+  clearOfRig(sim, rig) {
+    const st = sim.state;
+    if (!(st === S.SAILING || st === S.TACK || st === S.FLIP || st === S.TRICK || st === S.SECURE)) return;
+    const p = this.pose, H = this.h, m = rig.group.matrix;
+    const windward = new THREE.Vector3(0, 0, sim.sailor.side);
+    const tube = [];
+    for (let x = 0.05; x < rig.boomLength * 0.8; x += 0.07) tube.push(rig.boomPoint(x, sim.rig.side).applyMatrix4(m));
+    const mastA = new THREE.Vector3(0, 0, 0).applyMatrix4(m), mastB = new THREE.Vector3(0, rig.geo.boomHeight + 0.9, 0).applyMatrix4(m);
+    const near = (a, b, q) => {
+      const ab = b.clone().sub(a);
+      const t = clamp(q.clone().sub(a).dot(ab) / Math.max(ab.lengthSq(), 1e-9), 0, 1);
+      return [a.clone().addScaledVector(ab, t), t];
+    };
+    // (sideways off a tube: square to it, level, the shorter way out)
+    const offTube = (c, i) => {
+      const along = tube[Math.min(i + 1, tube.length - 1)].clone().sub(tube[Math.max(i - 1, 0)]).normalize();
+      const d = c.clone().sub(tube[i]);
+      d.addScaledVector(along, -d.dot(along)).setY(0);
+      return d.lengthSq() > 1e-4 ? d.normalize() : windward;
+    };
+    let moved = 0;
+    for (let it = 0; it < 8 && moved < 0.3; it++) {
+      const top = p.neck.clone().addScaledVector(p.neck.clone().sub(p.pelvis).normalize(), 0.09 * H);
+      let worst = 0, dir = null, tAt = 1;
+      tube.forEach((q, i) => {
+        const [c, t] = near(p.pelvis, top, q);
+        const depth = 0.135 + 0.017 + 0.012 - q.distanceTo(c);
+        if (depth > worst) { worst = depth; dir = offTube(c, i); tAt = t; }
+      });
+      // (the mast: the nearest point of it to the torso, pushed straight off it)
+      for (let k = 0; k <= 12; k++) {
+        const q = mastA.clone().lerp(mastB, k / 12);
+        const [c, t] = near(p.pelvis, top, q);
+        const depth = 0.135 + 0.025 + 0.012 - q.distanceTo(c);
+        if (depth > worst) {
+          worst = depth; tAt = t;
+          dir = c.clone().sub(q).setY(0);
+          dir = dir.lengthSq() > 1e-6 ? dir.normalize() : windward;
+        }
+      }
+      if (worst <= 0) break;
+      const shift = dir.clone().multiplyScalar(Math.min(worst + 0.005, 0.3 - moved));
+      for (const j of ['chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'front']) p[j].add(shift);
+      p.pelvis.addScaledVector(shift, 1 - tAt);
+      moved += shift.length();
+    }
+    if (!moved) return;
+    // The arms reach from where the shoulders are now; the knees keep their bend.
+    const arm = 0.5 * BODY.reach * H, pole = new THREE.Vector3(0, -1, 0).addScaledVector(windward, 0.4);
+    p.elL.copy(ik(p.shL, p.haL, arm, arm, pole));
+    p.elR.copy(ik(p.shR, p.haR, arm, arm, pole));
+    for (const [k, f] of [['kneeF', 'footF'], ['kneeB', 'footB']]) {
+      const bend = p[k].clone().sub(p.pelvis.clone().add(p[f]).multiplyScalar(0.5));
+      p[k].copy(ik(p.pelvis, p[f], 0.25 * H, 0.25 * H, bend.lengthSq() > 1e-8 ? bend : windward));
+    }
+  }
+
   /** Harness hook position in the board frame (for the lines). */
   get hookLocal() {
     return this.figure.hookPos;
   }
+}
+
+/**
+ * The body as capsules (board frame) from the posed joints, roughly the
+ * figure's own shapes: for keeping the rig out of it.
+ */
+export function bodyCapsules(p) {
+  const c = (name, a, b, r) => ({ name, a, b, r });
+  return [
+    c('torso', p.pelvis, p.chest, 0.135), c('torso', p.chest, p.neck, 0.13), c('head', p.head, p.head, 0.115),
+    c('upper arm', p.shL, p.elL, 0.055), c('upper arm', p.shR, p.elR, 0.055),
+    c('forearm', p.elL, p.haL, 0.045), c('forearm', p.elR, p.haR, 0.045),
+    c('thigh', p.pelvis, p.kneeF, 0.085), c('thigh', p.pelvis, p.kneeB, 0.085),
+    c('shin', p.kneeF, p.footF, 0.055), c('shin', p.kneeB, p.footB, 0.055),
+  ];
 }
 
 function clonePose(p) {
