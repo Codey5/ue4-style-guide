@@ -2,6 +2,7 @@
 // each strip sees its own apparent wind (wind gradient, sail twist, rig motion
 // while pumping) and produces lift/drag from a soft-sail polar.
 import { DEG, RHO_AIR, add, clamp, cross, dot, lerp, norm, scale, smoothstep, sub } from './math.js';
+import { tw as tweaks } from '../tweaks.js';
 
 export const TACK_HEIGHT = 0.14; // tack (bottom of luff) above the mast foot, along the mast
 export const BOOM_HEIGHT = 1.42; // default boom height on the mast above the mast foot
@@ -221,7 +222,7 @@ export function sailForces(geo, ctx) {
     const nLee = scale(cross(c, ax.m), cs);
     const cW = mulR(R, c), nW = mulR(R, nLee);
     const alpha = Math.atan2(dot(u, nW), dot(u, cW));
-    const q = 0.5 * RHO_AIR * sp * sp;
+    const q = 0.5 * RHO_AIR * sp * sp * tweaks.physics.sailPower;
     const { cl, cd } = sailPolar(alpha, clMax, aspect, tune.cd0);
     const cn = cl * Math.cos(alpha) + cd * Math.sin(alpha);
     const ct = cd * Math.cos(alpha) - cl * Math.sin(alpha);

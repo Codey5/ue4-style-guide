@@ -2,6 +2,7 @@
 // windward and leeward, an overhead view for learning wind angles, and free orbit.
 import * as THREE from 'three';
 import { clamp, damp, wrapAngle } from '../physics/math.js';
+import { tw } from '../tweaks.js';
 
 export const CAMERA_MODES = [
   { id: 'chase', name: 'Chase' },
@@ -46,9 +47,12 @@ export class CameraRig {
     const g = this.lookGoal ? this.goal : null;
     const course = g ? Math.atan2(-(g[1] - p[2]), g[0] - p[0]) : speed > 1.5 ? Math.atan2(-sim.vel[2], sim.vel[0]) : view.yaw;
     if (this.yaw === null) this.yaw = course;
-    this.yaw += wrapAngle(course - this.yaw) * (1 - Math.exp(-dt * (g ? 3.5 : 1.6)));
+    this.yaw += wrapAngle(course - this.yaw) * (1 - Math.exp(-dt * (g ? 3.5 : tw.camera.turnFollow)));
     // Ride the chop gently: don't copy every bounce of the board.
-    this.boardY = this.boardY === undefined ? p[1] : damp(this.boardY, p[1], 2.2, dt);
+    this.boardY = this.boardY === undefined ? p[1] : damp(this.boardY, p[1], tw.camera.bobFollow, dt);
+    // Field of view, a little wider at speed if you like.
+    const fov = this.fovOverride ?? tw.camera.fov + tw.camera.speedFov * clamp(speed / 15, 0, 1);
+    if (Math.abs(this.camera.fov - fov) > 0.01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const fwd = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const stbd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     this.side = this.side === undefined ? sim.sailor.side : damp(this.side, sim.sailor.side, 2.5, dt);
@@ -63,7 +67,7 @@ export class CameraRig {
         lookOffset = fwd.clone().multiplyScalar(6);
         break;
       case 'chase':
-        offset = fwd.clone().multiplyScalar(-6.5 * z).addScaledVector(windward, 2.2 * z).add(new THREE.Vector3(0, 1.5 * z, 0));
+        offset = fwd.clone().multiplyScalar(-tw.camera.chaseDistance * z).addScaledVector(windward, tw.camera.chaseSide * z).add(new THREE.Vector3(0, tw.camera.chaseHeight * z, 0));
         lookOffset = fwd.clone().multiplyScalar(2.5);
         break;
       case 'windward':
@@ -85,7 +89,7 @@ export class CameraRig {
       this.offset = offset.clone();
       this.lookOff = lookOffset.clone();
     } else {
-      const rate = CAMERA_MODES[this.mode].id === 'free' ? 14 : 3.2;
+      const rate = CAMERA_MODES[this.mode].id === 'free' ? 14 : tw.camera.follow;
       const k = 1 - Math.exp(-dt * rate);
       this.offset.lerp(offset, k);
       this.lookOff.lerp(lookOffset, 1 - Math.exp(-dt * 4));
@@ -95,7 +99,7 @@ export class CameraRig {
     if (this.pos.y < minY) this.pos.y = minY;
     this.look.copy(center).add(this.lookOff);
     // A gentle, smooth sway when slapping over chop at speed (optional).
-    const want = this.reducedMotion || !this.shakeEnabled ? 0 : clamp((sim.chopHit ?? 0) * 0.25, 0, 0.035);
+    const want = this.reducedMotion || !this.shakeEnabled ? 0 : clamp((sim.chopHit ?? 0) * 0.25, 0, 0.035) * tw.camera.shake;
     this.shake = damp(this.shake, want, 3, dt);
     const t = view.t;
     const sx = this.shake * (Math.sin(t * 7.3) + 0.5 * Math.sin(t * 13.1 + 1.7));

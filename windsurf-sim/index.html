@@ -334,6 +334,51 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
   .small-note { display: block; }
 }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* ---- Tuning panel (` or F2) */
+.tune {
+  position: fixed; top: 12px; right: 12px; z-index: 60; width: min(360px, calc(100vw - 24px)); max-height: calc(100vh - 24px);
+  display: flex; flex-direction: column; background: var(--glass-solid); color: var(--ink); border: 1px solid var(--hair);
+  border-radius: var(--r); font: 12px/1.35 var(--ui); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+.tune[hidden] { display: none; }
+.tune-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 4px; }
+.tune-head b { font: 600 18px/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; }
+.tune-count { color: var(--ink-dim); margin-left: 6px; }
+.tune-x { background: none; border: 0; color: var(--ink-dim); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.tune-x:hover { color: var(--ink); }
+.tune-intro { margin: 0 12px 8px; color: var(--ink-dim); }
+.tune-actions { display: flex; gap: 6px; padding: 0 12px 8px; }
+.tune-actions button, .tune-io button {
+  font: 600 12px var(--ui); color: var(--sea-night); background: var(--signal); border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+.tune button.quiet { background: transparent; color: var(--ink-dim); border: 1px solid var(--hair); }
+.tune-io { padding: 0 12px 8px; }
+.tune-io textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; font: 11px/1.4 var(--mono); color: var(--ink); background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--hair); border-radius: 6px; padding: 6px;
+}
+.tune-io-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--ink-dim); }
+.tune-io-row span { flex: 1; }
+.tune-body { overflow-y: auto; padding: 0 12px 10px; overscroll-behavior: contain; }
+.tune-group { border-top: 1px solid var(--hair); padding: 4px 0 6px; }
+.tune-group summary { cursor: pointer; font: 600 14px/1.8 var(--display); letter-spacing: 0.05em; text-transform: uppercase; }
+.tune-physics summary { color: var(--warn); }
+.tune-note { margin: 0 0 6px; color: var(--ink-dim); }
+.tune-row { display: grid; grid-template-columns: 1fr 108px 40px 18px; align-items: center; gap: 6px; padding: 2px 0; }
+.tune-row label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tune-row input[type=range] { width: 100%; accent-color: var(--signal); margin: 0; }
+.tune-row output { font: 11px var(--mono); text-align: right; color: var(--ink-dim); }
+.tune-row.changed label, .tune-row.changed output { color: var(--signal); }
+.tune-undo { visibility: hidden; background: none; border: 0; color: var(--ink-dim); cursor: pointer; padding: 0; font-size: 14px; }
+.tune-row.changed .tune-undo { visibility: visible; }
+.tune-undo:hover { color: var(--ink); }
+.tune-open {
+  display: block; margin: 8px 0 0; font: 600 12px var(--ui); color: var(--ink-dim); background: transparent; border: 1px solid var(--hair);
+  border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+.tune-open:hover { color: var(--ink); }
+.tune-open kbd { font: 11px var(--mono); }
 </style>
 <!--BUILD:HEAD-END-->
 <script type="importmap">{ "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/" } }</script>
@@ -463,6 +508,7 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
         <button class="tab" role="tab" data-tab="controls" aria-selected="false">Controls</button>
         <button class="tab" role="tab" data-tab="technique" aria-selected="false">Technique</button>
       </nav>
+      <button class="tune-open" id="tune-open">Tuning panel <kbd>`</kbd> / <kbd>F2</kbd></button>
       <div class="pad-status" id="pad-status">No controller detected. Connect one and press any button, or use the keyboard.</div>
     </div>
     <div class="content" id="menu-content"></div>

@@ -3,6 +3,7 @@
 import { DEG, MS_TO_KN, clamp } from './math.js';
 import { fbm3, noise1 } from './noise.js';
 import { shelterAt } from './spot.js';
+import { tw } from '../tweaks.js';
 
 export const GUST_SCALE = 170; // metres: typical size of a gust patch
 export const GUST_EVOLVE = 45; // seconds for the gust pattern to reshape itself
@@ -38,7 +39,7 @@ export class Wind {
     if (this.gustiness <= 0) return 1;
     const d = this.dir, adv = this.speed * GUST_ADVECT * t;
     const n = fbm3((x - d[0] * adv) / GUST_SCALE, (z - d[2] * adv) / GUST_SCALE, t / GUST_EVOLVE);
-    return 1 + 0.42 * this.gustiness * clamp(n, -1.2, 1.2);
+    return Math.max(0.2, 1 + 0.42 * this.gustiness * tw.physics.gusts * clamp(n, -1.2, 1.2));
   }
 
   /** Direction offset (radians, positive = veer clockwise) at a point. */

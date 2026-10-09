@@ -27,6 +27,8 @@ import { CATEGORIES, GpsLogger } from './game/gps.js';
 import { GearVerdict, SessionBook } from './game/sessions.js';
 import { Career, ChapterRun, MARKS, chapterSetup, findChapter } from './game/career.js';
 import { StoryUi } from './ui/storyui.js';
+import { TuneUi } from './ui/tuneui.js';
+import { loadTweaks, tw } from './tweaks.js';
 
 const DT = 1 / 240;
 const STORE_KEY = 'beam-reach-settings-v2';
@@ -89,6 +91,8 @@ canvas.addEventListener('webglcontextrestored', () => {
   direct = true;
   sim.emit('gfx', 'The graphics reset, so the game now draws more simply (no glow). Reload the page to try the full look again.', 2);
 });
+// (the tuning panel's settings from last time, before anything reads them)
+loadTweaks();
 const camRig = new CameraRig(camera);
 
 let sim = makeSim('secure');
@@ -98,6 +102,8 @@ const effects = new Effects(scene);
 const windFx = new WindParticles(scene);
 const input = new Input(canvas);
 const hud = new Hud();
+const tune = new TuneUi();
+document.getElementById('tune-open')?.addEventListener('click', () => tune.toggle());
 const audio = new Audio();
 const lessonUi = new LessonUi();
 let lesson = null; // active LessonRunner
@@ -481,9 +487,12 @@ function frame(now) {
       lastLanding = sim.landing;
       const hit = sim.landing.hit;
       if (hit > 0.5) {
-        effects.slap(sim, boardGroup, clamp(0.25 + hit * 0.3, 0.3, 0.9));
-        audio.slap(clamp(hit / 2, 0.3, 1));
-        rumbleKick = Math.max(rumbleKick, clamp(hit / 2.5, 0.25, 0.85));
+        const k = tw.juice.landing;
+        if (k > 0) {
+          effects.slap(sim, boardGroup, clamp(0.25 + hit * 0.3, 0.3, 0.9) * k);
+          audio.slap(clamp(hit / 2 * k, 0.15, 1));
+          rumbleKick = Math.max(rumbleKick, clamp(hit / 2.5, 0.25, 0.85) * k);
+        }
       }
     }
   }
@@ -563,12 +572,13 @@ function frame(now) {
     // (and goes quiet while the board flies)
     const weak = clamp((sim.airborne ? 0 : tel.planing * clamp(tel.speed / 14, 0, 1) * 0.18) + (sim.chopHit ?? 0) * 0.9 + luff * 0.25 +
       (sim.finVentilated ? 0.7 : (f.fin ?? 0) * 0.45) + (f.hand ?? 0) * 0.5 * pulse + battenKick, 0, 1);
-    input.rumble(strong, weak, 90);
+    input.rumble(strong * tw.juice.rumble, weak * tw.juice.rumble, 90);
   }
 
+  bloom.strength = tw.juice.glow;
   if (direct) renderer.render(scene, camera);
   else composer.render(dt);
   // (handles for the headless checks and screenshots)
-  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig, sailor, rig };
+  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig, sailor, rig, tune };
 }
 requestAnimationFrame(frame);

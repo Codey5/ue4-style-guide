@@ -22,6 +22,7 @@ import {
   boomStations, gripCenterX, reachPhi, stance,
 } from './body.js';
 import { S } from './states.js';
+import { tw } from '../tweaks.js';
 
 export { S };
 
@@ -298,6 +299,7 @@ export class Sim {
     W = Math.max(W, 0.25 * mB * G);
     const chop = this.waves.hsAt(this.pos[0], this.pos[2]);
     const hull = planingSolve(u, W, xLoad, b, chop);
+    hull.drag *= tw.physics.hullDrag;
     this.hull = hull;
 
     // ---- Horizontal forces & yaw moments about the system CG.
@@ -921,11 +923,11 @@ export class Sim {
       // (the rig sits on a universal joint: you hold it steady while the
       // board pitches over the waves underneath it)
       const wavePitch = (this.pitch - (this.hull?.trim ?? this.pitch)) * smoothstep(0.6, 1, this.hull?.planing ?? 0);
-      const rakeCmd = (neutral + ctl.rake * (ctl.rake > 0 ? 34 : 24)) * DEG + clamp((s.give ?? 0) / 250, 0, 1) * 22 * DEG - 0.8 * wavePitch;
+      const rakeCmd = (neutral + ctl.rake * (ctl.rake > 0 ? 34 : 24) * tw.controls.rakeRange) * DEG + clamp((s.give ?? 0) / 250, 0, 1) * 22 * DEG - 0.8 * wavePitch;
       // Hanging on the boom with more weight than the sail is pulling brings
       // the rig over toward you; a rig leaned out of reach comes back in; and
       // a rig pulling forward harder than you can hold tips forward.
-      const leanCmd = ctl.lean * 34 * DEG + s.side * (clamp(s.hang / 900, 0, 1) * 45 * DEG - (s.reachIn ?? 0) * 1.5);
+      const leanCmd = ctl.lean * 34 * tw.controls.leanRange * DEG + s.side * (clamp(s.hang / 900, 0, 1) * 45 * DEG - (s.reachIn ?? 0) * 1.5);
       let sheet = ctl.sheet;
       if (s.gripLost > 0) sheet *= 0.45; // the back hand slips: the sail opens and dumps power
       // (back hand off the boom: the sail flags out; taking hold again, you sheet back in over a second)
@@ -950,12 +952,13 @@ export class Sim {
       if (Math.sign(fa) === r.side) open = Math.min(open, Math.abs(fa));
       const target = r.side * open;
       const load = clamp(this.handForce / 900, 0, 0.75);
-      const inRate = (110 * (1 - load) + (ctl.pump ? 120 : 0)) * DEG;
-      const outRate = (s.gripLost > 0 ? 260 : 150) * DEG;
+      const ss = tw.controls.sheetSpeed, rs = tw.controls.rigSpeed;
+      const inRate = (110 * (1 - load) + (ctl.pump ? 120 : 0)) * DEG * ss;
+      const outRate = (s.gripLost > 0 ? 260 : 150) * DEG * ss;
       const sheetingIn = Math.abs(target) < Math.abs(r.boom);
-      r.boom = servo(r.boom, target, ctl.pump ? 16 : 7, sheetingIn ? inRate : outRate, dt);
-      r.rake = servo(r.rake, rakeCmd + rakePump, ctl.pump ? 14 : 6, 115 * DEG * (ctl.pump ? 2 : 1), dt);
-      r.lean = servo(r.lean, leanCmd, 6, 115 * DEG, dt);
+      r.boom = servo(r.boom, target, (ctl.pump ? 16 : 7) * ss, sheetingIn ? inRate : outRate, dt);
+      r.rake = servo(r.rake, rakeCmd + rakePump, (ctl.pump ? 14 : 6) * rs, 115 * DEG * (ctl.pump ? 2 : 1) * rs, dt);
+      r.lean = servo(r.lean, leanCmd, 6 * rs, 115 * DEG * rs, dt);
       r.up = 1;
     } else if (st === S.SECURE) {
       r.rake = servo(r.rake, ctl.rake * 26 * DEG, 5, 115 * DEG, dt);
@@ -1023,10 +1026,11 @@ export class Sim {
       s.leanX = damp(s.leanX, shift, this.state === S.TRICK ? 8 : 6, dt);
       return;
     }
-    // Small stick deflection = shift weight; past ~55% = step along the board.
+    // Small stick deflection = shift weight; past ~55% (tunable) = step along the board.
     s.leanX = damp(s.leanX, ctl.weight * (s.straps === 2 ? 0.2 : 0.14), 8, dt);
-    if (s.straps === 0 && Math.abs(ctl.weight) > 0.55) {
-      const v = Math.sign(ctl.weight) * ((Math.abs(ctl.weight) - 0.55) / 0.45) * 0.9;
+    const stepAt = tw.controls.stepAt;
+    if (s.straps === 0 && Math.abs(ctl.weight) > stepAt) {
+      const v = Math.sign(ctl.weight) * ((Math.abs(ctl.weight) - stepAt) / (1 - stepAt)) * 0.9;
       s.x = clamp(s.x + v * dt, b.backStrapX + 0.02, b.mastFootX - 0.22);
     }
     if (ctl.strapsHeld) {
@@ -1405,7 +1409,7 @@ export class Sim {
     const k = lerp(140, 100, p), c = lerp(20, 17, p);
     const touching = imm > -0.004;
     // (the pop: your legs driving the board down against the water)
-    const popPush = popping && touching ? POP_ACC * this.popK : 0;
+    const popPush = popping && touching ? POP_ACC * tw.physics.pop * this.popK : 0;
     let push = touching ? Math.max(0, gEff + k * (imm - draft) + c * (vS - zCdot)) + popPush : 0;
     // Flying, the wind gets under the board: a little lift with the nose (or
     // the windward rail) up into the apparent wind.
@@ -1705,7 +1709,7 @@ export class Sim {
     // Core and leg strength scale roughly with body mass. Holding the mast
     // (tacks, sail flips) steadies you: the rig is pinned at the mast foot.
     const holdingMast = this.state === S.TACK || this.state === S.FLIP || this.state === S.TRICK;
-    const tauMax = (260 + 80 * p) * (mS / 75) * (holdingMast ? 1.6 : 1) + kRoll * (1 - 0.5 * p);
+    const tauMax = (260 + 80 * p) * (mS / 75) * (holdingMast ? 1.6 : 1) * tw.physics.holdStrength + kRoll * (1 - 0.5 * p);
     // Balanced: the lean whose weight lever (centre of mass out from the
     // board's centreline) matches the sail's pull.
     this.betaEq = leanFor(tbl, (tauPull - tauRig) / (mS * G));

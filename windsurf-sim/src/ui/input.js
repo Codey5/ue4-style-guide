@@ -4,10 +4,11 @@
 // right stick toward the rail you want to sink.
 import { emptyControls } from '../physics/sim.js';
 import { clamp } from '../physics/math.js';
+import { tw } from '../tweaks.js';
 
 const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, R3: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
 
-function deadzone(x, y, dz = 0.14) {
+function deadzone(x, y, dz = tw.controls.deadzone) {
   const m = Math.hypot(x, y);
   if (m < dz) return [0, 0];
   const k = Math.min(1, (m - dz) / (1 - dz)) / m;
@@ -19,7 +20,7 @@ function deadzone(x, y, dz = 0.14) {
  * grows with the push: steering with the rig forward doesn't lean it
  * sideways by accident (a rig leaned to leeward pulls you over).
  */
-function axial(x, y, k = 0.35) {
+function axial(x, y, k = tw.controls.crossTalk) {
   const cross = (a, b) => {
     const m = k * Math.abs(b);
     return Math.abs(a) <= m ? 0 : Math.sign(a) * (Math.abs(a) - m) / (1 - m);
@@ -64,7 +65,7 @@ export class Input {
     this.rumbleEnabled = true;
     this.invertRake = false;
     window.addEventListener('keydown', (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.keyPressed(e.code);
       this.keys.add(e.code);
@@ -149,9 +150,12 @@ export class Input {
     if (gp) {
       const b = (i) => gp.buttons[i] ? gp.buttons[i].pressed : false;
       const v = (i) => gp.buttons[i] ? gp.buttons[i].value : 0;
-      const [lx, ly] = axial(...deadzone(gp.axes[0] ?? 0, gp.axes[1] ?? 0));
-      const [rx, ry] = deadzone(gp.axes[2] ?? 0, gp.axes[3] ?? 0);
-      const rt = v(BTN.RT), lt = v(BTN.LT);
+      // (response curves: finer control near the centre, full travel still full)
+      const curve = (x, e) => Math.sign(x) * Math.abs(x) ** e;
+      const sc = tw.controls.stickCurve, tc = tw.controls.triggerCurve;
+      const [lx, ly] = axial(...deadzone(gp.axes[0] ?? 0, gp.axes[1] ?? 0)).map((x) => curve(x, sc));
+      const [rx, ry] = deadzone(gp.axes[2] ?? 0, gp.axes[3] ?? 0).map((x) => curve(x, sc));
+      const rt = curve(v(BTN.RT), tc), lt = curve(v(BTN.LT), tc);
       const active = Math.abs(lx) + Math.abs(ly) + Math.abs(rx) + Math.abs(ry) + rt + lt > 0.05 ||
         gp.buttons.some((x) => x.pressed);
       if (active) this.lastDevice = 'gamepad';

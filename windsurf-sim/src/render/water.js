@@ -1,6 +1,7 @@
 // Ocean surface. Same wave trains and gust noise as the physics, so the chop
 // you see is the chop the board rides and the dark patches are real gusts.
 import * as THREE from 'three';
+import { tw } from '../tweaks.js';
 import { GUST_ADVECT, GUST_EVOLVE, GUST_SCALE } from '../physics/environment.js';
 import { SHELTER_GLSL } from '../physics/spot.js';
 import { SKY_GLSL } from './scene.js';
@@ -341,7 +342,7 @@ export class Water {
     const d = wind.dir;
     this.uniforms.uWindDir.value.set(d[0], d[2]);
     this.uniforms.uWindSpeed.value = wind.speed;
-    this.uniforms.uGustiness.value = wind.gustiness;
+    this.uniforms.uGustiness.value = wind.gustiness * tw.physics.gusts;
     this.uniforms.uHs.value = waves.hs;
     this.uniforms.uShoreZ.value = shoreZ;
     const bar = waves.bar;

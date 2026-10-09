@@ -116,6 +116,18 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 **Rumble** (Chrome and Edge): the low motor carries the sail's load, thumps as a gust fills the sail, knocks as you pop and thumps as the board lands off a chop, and pulses harder and harder as the pull tips you toward your toes before a catapult (about half a second of warning). The high motor carries the chatter of the chop (silent while the board flies), a fluttering luff and the tick of a batten popping through, buzzes as the fin nears a spin-out, and pulses when a hand is about to lose its grip.
 
+## Tuning panel
+
+Press <kbd>`</kbd> or <kbd>F2</kbd> (or **Tuning panel** in the menu) for the numbers behind the game's feel, as sliders that apply the moment they move, while you sail:
+
+- **Controls**: stick dead zone and response curve, trigger curve, the left stick's axis lock, how fast the boom and the rig follow the sticks, how far the rig rakes and leans, and where a weight shift becomes a step.
+- **Sailor**: how much the body gives to the board's motion, the legs' and back's springs (stiffness and damping), upper-body sway, how level the head stays, hip twist, back arch, and how quickly the pose follows the physics.
+- **Camera**: field of view (and extra at speed), the chase camera's distance, height and offset to windward, how tightly it follows, swings round after a turn and rides the chop, and its shake.
+- **Juice**: rumble, spray, glow and landing impact.
+- **Physics** (folded away): sail power, board drag, gust strength, body strength and pop strength. These change how the board behaves: the coach and the lessons are tested on the defaults.
+
+Changed values are marked, each has its own reset, and they're kept in this browser. **Copy changes** gives just what you've changed, as a few lines of text (`{"sailor.give": 1.6, "camera.fov": 72}`): send it over to make those the defaults, or **Paste** it into another browser. The tests always run on the defaults (`src/tweaks.js`).
+
 ## What's simulated
 
 **Wind**

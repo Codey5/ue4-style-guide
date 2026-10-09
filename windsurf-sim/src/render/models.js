@@ -1,6 +1,7 @@
 // Board, rig and sailor models, posed every frame from the simulation state.
 import * as THREE from 'three';
 import { Figure } from './figure.js';
+import { tw } from '../tweaks.js';
 import { DEG, clamp, lerp, smoothstep } from '../physics/math.js';
 import { rigAxes } from '../physics/sail.js';
 import { S } from '../physics/states.js';
@@ -366,7 +367,7 @@ export class Rig {
     this.popAge ??= new Array(nS).fill(9);
     this.load ??= new Array(nS).fill(0);
     this.luffAmt ??= new Array(nS).fill(0);
-    const tw = new Array(nS).fill(0);
+    const twistAt = new Array(nS).fill(0);
     for (let i = 0; i < nS; i++) {
       const before = this.camVis[i];
       this.camVis[i] = r.cam[i];
@@ -379,7 +380,7 @@ export class Rig {
       this.load[i] = lerp(this.load[i], loadT, Math.min(1, dt * 8));
       const luffT = st ? (1 - smoothstep(1.5, 7, Math.abs(aDeg))) * clamp(q / 12, 0, 1.3) : 0;
       this.luffAmt[i] = lerp(this.luffAmt[i], luffT, Math.min(1, dt * 6));
-      tw[i] = (st?.tw ?? 0) * (inWater ? 0 : 1);
+      twistAt[i] = (st?.tw ?? 0) * (inWater ? 0 : 1);
     }
     const q = aero ? aero.qMean : 0;
     this.flutterPhase += dt * (5 + Math.sqrt(Math.max(q, 0)) * 1.5) * Math.PI * 2;
@@ -409,7 +410,7 @@ export class Rig {
       const cam = lerp(at(this.camVis, h), this.camVis[k], 0.6) * (1 + overshoot);
       camRow[v] = cam;
       const sideRow = cam >= 0 ? 1 : -1;
-      const twist = at(tw, h);
+      const twist = at(twistAt, h);
       const ca = Math.cos(-sideRow * twist), sa = Math.sin(-sideRow * twist);
       const load = at(this.load, h), luff = at(this.luffAmt, h);
       const depth = chord * (0.035 + 0.075 * load) * fullness * (inWater ? 0.25 : 1);
@@ -613,7 +614,7 @@ export class Sailor {
     const shL = mid.clone().add(half), shR = mid.clone().sub(half); // front and back shoulder
     // (the back arches a little hanging in the harness, its hook pulling your
     // hips toward the boom, and rounds as you crouch)
-    const chest = pelvis.clone().lerp(neck, 0.72).addScaledVector(facing, 0.03 + (hooked ? 0.02 : 0) - 0.12 * (pose.sit ?? 0));
+    const chest = pelvis.clone().lerp(neck, 0.72).addScaledVector(facing, 0.03 + tw.sailor.backArch * ((hooked ? 0.02 : 0) - 0.12 * (pose.sit ?? 0)));
     const head = neck.clone().addScaledVector(torsoAxis, 0.09 * H).addScaledVector(facing, 0.02);
     const feetF = V(pose.feetF), feetB = V(pose.feetB);
 
@@ -794,9 +795,9 @@ export class Sailor {
     }
     this.tackSwitched = tackSwitched;
     const fast = sim.state === S.FALLING || sim.state === S.SAILING || sim.state === S.FLIP;
-    const k = 1 - Math.exp(-dt * (fast ? 22 : 9));
+    const k = 1 - Math.exp(-dt * (fast ? 22 : 9) * tw.sailor.poseSpeed);
     // (stepping round the mast the feet keep close to their path)
-    const kFeet = sim.state === S.TACK ? 1 - Math.exp(-dt * 24) : k;
+    const kFeet = sim.state === S.TACK ? 1 - Math.exp(-dt * 24 * tw.sailor.poseSpeed) : k;
     for (const j of JOINTS) this.base[j].lerp(target[j], j.startsWith('foot') || j.startsWith('knee') ? kFeet : k);
     // (a hand on the boom is on it, smoothing or not)
     if (target.grip?.L) this.base.haL.copy(target.haL);
@@ -834,7 +835,7 @@ export class Sailor {
     // Hips turned toward the bow from the shoulders (square to the boom):
     // more so in the straps, hooked in; little in a move or off the board.
     const s = sim.sailor, st = sim.state;
-    const twist = !onBoard ? 0 : st === S.SAILING ? 0.3 + (s.straps === 2 ? 0.25 : 0) + (s.hooked ? 0.1 : 0) : 0.12;
+    const twist = tw.sailor.hipTwist * (!onBoard ? 0 : st === S.SAILING ? 0.3 + (s.straps === 2 ? 0.25 : 0) + (s.hooked ? 0.1 : 0) : 0.12);
     const hipFacing = p.front.clone().sub(p.chest).setY(0).normalize().add(new THREE.Vector3(twist, 0, 0));
     this.figure.update(p, { onBoard, toes: [toe(s.straps ? 0.9 * side : 0.2 * side), toe(1.3 * side)], lookAt: this.lookAt, hipFacing });
   }
@@ -870,7 +871,7 @@ export class Sailor {
       g.acc.lerp(a, 1 - Math.exp(-dt / 0.03));
       // (your weight is pressed down into the deck by what slows its fall,
       // and lags behind it fore and aft and sideways; in the air you fall together)
-      if (onBoard && !sim.airborne) drive = g.acc.clone().negate().clampLength(0, 60);
+      if (onBoard && !sim.airborne) drive = g.acc.clone().negate().clampLength(0, 60).multiplyScalar(tw.sailor.give);
     }
     g.v0 = v;
     if (!onBoard) {
@@ -881,9 +882,10 @@ export class Sailor {
       // Hips: on the legs (about 2 Hz, half damped), giving most up and down.
       // Upper body: on the hips (about 3 Hz), swaying fore and aft and
       // sideways, carried by the hips' spring.
-      const kH = (2 * Math.PI * 2) ** 2, cH = 2 * 0.5 * Math.sqrt(kH);
-      const kU = (2 * Math.PI * 2.8) ** 2, cU = 2 * 0.4 * Math.sqrt(kU);
-      const gainH = new THREE.Vector3(0.6, 1, 0.45), gainU = new THREE.Vector3(1, 0.2, 0.8);
+      const ts = tw.sailor;
+      const kH = (2 * Math.PI * ts.hipsHz) ** 2, cH = 2 * ts.hipsDamping * Math.sqrt(kH);
+      const kU = (2 * Math.PI * ts.upperHz) ** 2, cU = 2 * ts.upperDamping * Math.sqrt(kU);
+      const gainH = new THREE.Vector3(0.6, 1, 0.45), gainU = new THREE.Vector3(1, 0.2, 0.8).multiplyScalar(ts.sway);
       const n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;
       for (let i = 0; i < n; i++) {
         const aH = drive.clone().multiply(gainH).addScaledVector(g.hips, -kH).addScaledVector(g.hipsV, -cH);
@@ -929,7 +931,7 @@ export class Sailor {
     if (st === S.WATER || st === S.WATERSTART || st === S.FALLING || !this.q) return;
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.qInv);
     const d = p.head.clone().sub(p.neck), len = d.length();
-    p.head.copy(p.neck).addScaledVector(d.divideScalar(len).lerp(up, 0.4).normalize(), len);
+    p.head.copy(p.neck).addScaledVector(d.divideScalar(len).lerp(up, tw.sailor.headLevel).normalize(), len);
     const ahead = new THREE.Vector3(1, 0, 0).applyQuaternion(this.q).setY(0).normalize().applyQuaternion(this.qInv);
     this.lookAt = p.head.clone().addScaledVector(ahead, Math.max(2, sim.board.length * 0.5 + 3 - p.head.x));
   }
