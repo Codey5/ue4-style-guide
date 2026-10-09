@@ -46,11 +46,16 @@ const DEFS = [
   ['camera.turnFollow', 'Turn follow', 0.3, 6, 0.1, 1.6, 'How quickly the camera swings round after a turn.'],
   ['camera.bobFollow', 'Ride the chop', 0.3, 12, 0.1, 2.2, 'How closely the camera follows the board up and down: higher bobs more with the chop.'],
   ['camera.shake', 'Camera shake', 0, 4, 0.05, 1, 'Sway when slapping over chop at speed (with camera shake on in Settings).'],
+  ['camera.kicks', 'Camera kicks', 0, 3, 0.05, 1, 'How much the camera reacts to big moments: widening as you get planing, pulling back for a trick, dipping on a hard landing.'],
   // Juice
   ['juice.rumble', 'Rumble strength', 0, 2, 0.05, 1, 'All controller rumble.'],
   ['juice.spray', 'Spray amount', 0, 3, 0.05, 1, 'Spray off the rails and the nose.'],
   ['juice.glow', 'Glow', 0, 1.5, 0.01, 0.3, 'Bloom around bright highlights (with glow on in Settings).'],
   ['juice.landing', 'Landing impact', 0, 3, 0.05, 1, 'Slap, spray and rumble when the board lands off a chop or a jump.'],
+  ['juice.actions', 'Action feedback', 0, 2, 0.05, 1, 'The sound, rumble and body response to what you do: hooking in, stepping into a strap, pumping, the sail filling, the rig swishing round.'],
+  ['juice.moments', 'Big moments', 0, 2, 0.05, 1, 'Payoffs for the big moments: getting planing, a gust hitting, a landing, a trick (sound swells, rumble, spray).'],
+  ['juice.slowmo', 'Slow motion', 0, 1, 0.05, 0.5, 'How slow the slow motion gets at the top of a big jump and as a trick comes off. 0 = never.'],
+  ['juice.banners', 'Big moment text', 0, 1, 1, 1, 'The big text for a trick, a jump, a landing and getting planing (1 = on).'],
   // Physics
   ['physics.sailPower', 'Sail power', 0.5, 1.6, 0.01, 1, 'Scales every force the sail makes.'],
   ['physics.hullDrag', 'Board drag', 0.5, 1.6, 0.01, 1, 'Scales the water\'s drag on the board.'],

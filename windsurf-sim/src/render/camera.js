@@ -24,6 +24,16 @@ export class CameraRig {
     this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     this.shake = 0;
     this.shakeEnabled = true;
+    // Kicks for the big moments: a wider view, a pull back, a dip on landing.
+    this.kickFov = 0; this.kickPull = 0; this.dip = 0; this.dipV = 0;
+  }
+
+  /** A moment's kick: fov (degrees wider), pull (fraction further back), dip (m/s down, springs back). */
+  kick({ fov = 0, pull = 0, dip = 0 } = {}) {
+    const k = this.reducedMotion ? 0 : tw.camera.kicks;
+    this.kickFov = Math.max(this.kickFov, fov * k);
+    this.kickPull = Math.max(this.kickPull, pull * k);
+    this.dipV -= dip * k;
   }
 
   get modeName() {
@@ -51,7 +61,12 @@ export class CameraRig {
     // Ride the chop gently: don't copy every bounce of the board.
     this.boardY = this.boardY === undefined ? p[1] : damp(this.boardY, p[1], tw.camera.bobFollow, dt);
     // Field of view, a little wider at speed if you like.
-    const fov = this.fovOverride ?? tw.camera.fov + tw.camera.speedFov * clamp(speed / 15, 0, 1);
+    // (kicks ease out over a second or two; a dip springs back)
+    this.kickFov *= Math.exp(-dt * 1.6);
+    this.kickPull *= Math.exp(-dt * 1.3);
+    this.dipV += (-55 * this.dip - 8 * this.dipV) * dt;
+    this.dip += this.dipV * dt;
+    const fov = this.fovOverride ?? tw.camera.fov + tw.camera.speedFov * clamp(speed / 15, 0, 1) + this.kickFov;
     if (Math.abs(this.camera.fov - fov) > 0.01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const fwd = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const stbd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
@@ -94,7 +109,7 @@ export class CameraRig {
       this.offset.lerp(offset, k);
       this.lookOff.lerp(lookOffset, 1 - Math.exp(-dt * 4));
     }
-    this.pos.copy(center).add(this.offset);
+    this.pos.copy(center).addScaledVector(this.offset, 1 + this.kickPull);
     const minY = waves.height(this.pos.x, this.pos.z, view.t) + 0.5;
     if (this.pos.y < minY) this.pos.y = minY;
     this.look.copy(center).add(this.lookOff);
@@ -104,7 +119,7 @@ export class CameraRig {
     const t = view.t;
     const sx = this.shake * (Math.sin(t * 7.3) + 0.5 * Math.sin(t * 13.1 + 1.7));
     const sy = this.shake * (Math.sin(t * 9.1 + 0.4) + 0.5 * Math.sin(t * 15.7));
-    this.camera.position.set(this.pos.x + sx, this.pos.y + sy, this.pos.z);
+    this.camera.position.set(this.pos.x + sx, this.pos.y + sy + this.dip, this.pos.z);
     this.camera.lookAt(this.look);
   }
 

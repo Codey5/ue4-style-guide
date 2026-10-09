@@ -920,6 +920,14 @@ export class Sailor {
     p.kneeB.copy(ik(p.pelvis, p.footB, leg, leg, bendB));
   }
 
+  /** A push to the body's springs (board frame, m/s): to the hips, and the upper body over them. */
+  kick(hips = null, upper = null) {
+    const g = this.spring;
+    if (!g) return;
+    if (hips) g.hipsV.add(hips);
+    if (upper) g.upperV.add(upper);
+  }
+
   /**
    * Eyes on the horizon: the head stays nearer upright than the body it's on
    * (leaning out, or the board pitching and rolling under you), and looks

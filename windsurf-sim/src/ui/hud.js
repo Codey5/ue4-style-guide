@@ -84,6 +84,8 @@ export class Hud {
     for (const e of sim.events) {
       if (e.t <= this.lastEvent) continue;
       out.push(e);
+      // (shown as big text instead: no need for the toast too)
+      if (this.quiet?.has(e.type)) continue;
       const div = document.createElement('div');
       div.className = `toast p${e.priority}`;
       div.textContent = e.text;
@@ -94,6 +96,28 @@ export class Hud {
     }
     if (sim.events.length) this.lastEvent = sim.events[sim.events.length - 1].t;
     return out;
+  }
+
+  /** Big text for a moment (a trick, a jump, a landing, getting planing); tone: good, warn, bad, gold, small. */
+  moment(title, sub = '', tone = '') {
+    const box = document.getElementById('moment');
+    if (!box) return;
+    const m = document.createElement('div');
+    m.className = `m ${tone}`;
+    m.innerHTML = `<b></b>${sub ? '<span></span>' : ''}`;
+    m.querySelector('b').textContent = title;
+    if (sub) m.querySelector('span').textContent = sub;
+    box.replaceChildren(m);
+    setTimeout(() => m.remove(), 2000);
+  }
+
+  /** The speed readout flashes (getting planing, a new top speed). */
+  pulseSpeed() {
+    const b = document.getElementById('sog');
+    if (!b) return;
+    b.classList.remove('pulse');
+    void b.offsetWidth; // (restart the animation)
+    b.classList.add('pulse');
   }
 
   resetEvents(sim) {

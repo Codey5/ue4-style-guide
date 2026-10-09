@@ -28,6 +28,7 @@ import { GearVerdict, SessionBook } from './game/sessions.js';
 import { Career, ChapterRun, MARKS, chapterSetup, findChapter } from './game/career.js';
 import { StoryUi } from './ui/storyui.js';
 import { TuneUi } from './ui/tuneui.js';
+import { Juice } from './render/juice.js';
 import { loadTweaks, tw } from './tweaks.js';
 
 const DT = 1 / 240;
@@ -105,6 +106,9 @@ const hud = new Hud();
 const tune = new TuneUi();
 document.getElementById('tune-open')?.addEventListener('click', () => tune.toggle());
 const audio = new Audio();
+const juice = new Juice({ audio, camRig, effects, hud });
+// (events that get big text on screen rather than a message)
+const BIG_TEXT_EVENTS = new Set(['trickdone', 'planing', 'jump']);
 const lessonUi = new LessonUi();
 let lesson = null; // active LessonRunner
 const storyUi = new StoryUi();
@@ -168,6 +172,7 @@ function restart(mode, setup = null, watch = false, logged = false) {
   syncWorld();
   effects.clearTrail();
   hud.resetEvents(sim);
+  juice.reset();
   camRig.yaw = null;
   camRig.pos.set(0, 0, 0); // snap instead of flying in from the old spot
   camRig.look.set(0, 0, 0);
@@ -399,7 +404,8 @@ function frame(now) {
 
     // Fixed-step physics; button presses go to the first sub-step only. In a
     // watched lesson the coach supplies the controls, one physics step at a time.
-    acc += dt;
+    // (slow motion at the big moments: the world runs slower, physics and all)
+    acc += dt * juice.timeScale;
     let first = true;
     let steps = 0;
     framePressed = {};
@@ -460,7 +466,10 @@ function frame(now) {
       sim.emit('lesson', 'The coach fell in. It happens to everyone! Starting the lesson again.', 2);
     }
 
-    for (const e of hud.pushEvents(sim)) {
+    hud.quiet = tw.juice.banners >= 0.5 ? BIG_TEXT_EVENTS : null;
+    const newEvents = hud.pushEvents(sim);
+    juice.update(dt, sim, newEvents, { sailor, boardGroup });
+    for (const e of newEvents) {
       if (e.type === 'fall') {
         const p = new THREE.Vector3(sim.pos[0], sim.pos[1] + 0.3, sim.pos[2]);
         effects.splash(p, 1.2);
@@ -511,19 +520,21 @@ function frame(now) {
   boardGroup.position.set(view.pos[0], view.pos[1], view.pos[2]);
   boardGroup.rotation.set(view.roll, view.yaw, view.pitch, 'YZX');
   boardGroup.updateMatrixWorld(true);
-  rig.update(sim, dt, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);
+  // (the world's own time: slower in slow motion, stopped while paused)
+  const sdt = paused ? 0 : dt * juice.timeScale;
+  rig.update(sim, paused ? dt : sdt, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);
   // (paused, the sailor holds still: the body's springs and smoothing wait)
-  sailor.update(sim, rig, paused ? 0 : dt);
+  sailor.update(sim, rig, sdt);
   rig.drapeAround(sim, sailor);
   rig.updateUphaul(sim, sailor);
   camRig.goal = story?.target?.at ?? null;
   if (!camRig.goal) camRig.lookGoal = false;
   camRig.update(dt, sim, sim.waves, view);
   water.update(view.t, camera);
-  effects.update(paused ? 0 : dt, sim, boardGroup, sim.waves, { camera, height: renderer.domElement.height, water, t: view.t });
+  effects.update(sdt, sim, boardGroup, sim.waves, { camera, height: renderer.domElement.height, water, t: view.t });
   skyUniforms.uTime.value = view.t;
   world.update(view.t, sim.waves, story?.target ?? null);
-  windFx.update(paused ? 0 : dt, camera, sim.wind, view.t, sim.waves.height(camera.position.x, camera.position.z, view.t));
+  windFx.update(sdt, camera, sim.wind, view.t, sim.waves.height(camera.position.x, camera.position.z, view.t));
   sun.position.set(sim.pos[0] + env.sunDir.x * 60, env.sunDir.y * 60, sim.pos[2] + env.sunDir.z * 60);
   sun.target.position.set(sim.pos[0], 0, sim.pos[2]);
   sun.target.updateMatrixWorld();
@@ -572,13 +583,13 @@ function frame(now) {
     // (and goes quiet while the board flies)
     const weak = clamp((sim.airborne ? 0 : tel.planing * clamp(tel.speed / 14, 0, 1) * 0.18) + (sim.chopHit ?? 0) * 0.9 + luff * 0.25 +
       (sim.finVentilated ? 0.7 : (f.fin ?? 0) * 0.45) + (f.hand ?? 0) * 0.5 * pulse + battenKick, 0, 1);
-    input.rumble(strong * tw.juice.rumble, weak * tw.juice.rumble, 90);
+    input.rumble(Math.max(strong, juice.strong) * tw.juice.rumble, Math.max(weak, juice.weak) * tw.juice.rumble, 90);
   }
 
   bloom.strength = tw.juice.glow;
   if (direct) renderer.render(scene, camera);
   else composer.render(dt);
   // (handles for the headless checks and screenshots)
-  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig, sailor, rig, tune };
+  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig, sailor, rig, tune, juice, audio };
 }
 requestAnimationFrame(frame);

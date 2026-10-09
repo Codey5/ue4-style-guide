@@ -116,6 +116,18 @@ The in-game **Technique** tab walks through uphauling, steering, getting planing
 
 **Rumble** (Chrome and Edge): the low motor carries the sail's load, thumps as a gust fills the sail, knocks as you pop and thumps as the board lands off a chop, and pulses harder and harder as the pull tips you toward your toes before a catapult (about half a second of warning). The high motor carries the chatter of the chop (silent while the board flies), a fluttering luff and the tick of a batten popping through, buzzes as the fin nears a spin-out, and pulses when a hand is about to lose its grip.
 
+## Feel
+
+Everything you do gets an answer, and the big moments a payoff:
+
+- **What you do.** Hooking in clacks the harness hook onto the lines (and you drop into them), a foot planted in a strap thuds through the deck, each pump stroke whooshes and throws your body back with the rig, sheeting in hard fills the sail with a deep whump and pulls you toward it, and the rig swishes through the air as it's thrown round in a flip, a tack or a trick. Each with a tick through the controller.
+- **Getting planing.** The board lets go: the hiss swells, the camera widens and pulls back, a burst of spray, a long swell through the controller, and you settle into the harness.
+- **Gusts.** You hear one coming across the water before it reaches you; when it hits, a rush of wind, a swell in the controller, the camera widening a touch, and the rig pulling you toward it.
+- **Jumps.** A moment of slow motion at the top of a big one (the world goes muffled), then the landing: a boom through the board, the camera dipping, a thump through the controller, and how you came down: a clean landing, tail first or nose first, with the height, airtime and distance.
+- **Tricks.** As one comes off, a beat of slow motion, a rising sting, the camera pulling back, and its name in big letters with your speed out of it. A catapult gets a beat of slow motion as you go over the boom.
+
+All of it is in the tuning panel (Juice, and Camera kicks): set any of it stronger, softer or off.
+
 ## Tuning panel
 
 Press <kbd>`</kbd> or <kbd>F2</kbd> (or **Tuning panel** in the menu) for the numbers behind the game's feel, as sliders that apply the moment they move, while you sail:
@@ -123,7 +135,7 @@ Press <kbd>`</kbd> or <kbd>F2</kbd> (or **Tuning panel** in the menu) for the nu
 - **Controls**: stick dead zone and response curve, trigger curve, the left stick's axis lock, how fast the boom and the rig follow the sticks, how far the rig rakes and leans, and where a weight shift becomes a step.
 - **Sailor**: how much the body gives to the board's motion, the legs' and back's springs (stiffness and damping), upper-body sway, how level the head stays, hip twist, back arch, and how quickly the pose follows the physics.
 - **Camera**: field of view (and extra at speed), the chase camera's distance, height and offset to windward, how tightly it follows, swings round after a turn and rides the chop, and its shake.
-- **Juice**: rumble, spray, glow and landing impact.
+- **Juice**: rumble, spray, glow, landing impact, action feedback, big moments, slow motion, and the big text.
 - **Physics** (folded away): sail power, board drag, gust strength, body strength and pop strength. These change how the board behaves: the coach and the lessons are tested on the defaults.
 
 Changed values are marked, each has its own reset, and they're kept in this browser. **Copy changes** gives just what you've changed, as a few lines of text (`{"sailor.give": 1.6, "camera.fov": 72}`): send it over to make those the defaults, or **Paste** it into another browser. The tests always run on the defaults (`src/tweaks.js`).

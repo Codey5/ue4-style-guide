@@ -335,6 +335,28 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
 }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 
+/* ---- Big moments: a trick, a jump, a landing, getting planing */
+.moment { position: absolute; bottom: 21%; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; width: min(720px, 92vw); }
+.moment .m { animation: moment-pop 1.9s cubic-bezier(.2,.9,.25,1) forwards; text-shadow: 0 3px 18px rgba(0, 0, 0, 0.55); }
+.moment .m b { display: block; font: 900 clamp(34px, 7vw, 72px)/0.95 var(--display); letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink); }
+.moment .m span { display: block; margin-top: 6px; font: 600 clamp(14px, 2.2vw, 20px)/1.2 var(--ui); color: var(--ink); opacity: 0.9; }
+.moment .m.good b { color: var(--good); }
+.moment .m.warn b { color: var(--warn); }
+.moment .m.bad b { color: var(--bad); }
+.moment .m.gold b { color: var(--signal); }
+.moment .m.small b { font-size: clamp(22px, 4vw, 40px); }
+@keyframes moment-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  12% { opacity: 1; transform: scale(1.08); }
+  22% { transform: scale(1); }
+  75% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.04) translateY(-8px); }
+}
+.speed .sog b.pulse { animation: sog-pulse 0.7s ease-out; }
+@keyframes sog-pulse { 0% { color: var(--signal); transform: scale(1.18); } 100% { color: inherit; transform: scale(1); } }
+.speed .sog b { display: inline-block; transform-origin: left bottom; }
+@media (prefers-reduced-motion: reduce) { .moment .m { animation-duration: 2.4s; animation-name: moment-fade; } @keyframes moment-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } } }
+
 /* ---- Tuning panel (` or F2) */
 .tune {
   position: fixed; top: 12px; right: 12px; z-index: 60; width: min(360px, calc(100vw - 24px)); max-height: calc(100vh - 24px);
@@ -427,6 +449,7 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
   <aside class="pod telemetry" id="telemetry" hidden aria-label="Telemetry"></aside>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="moment" id="moment" aria-live="polite"></div>
 
   <section class="pod stance detail-lesson" aria-label="Stance">
     <div class="label">Stance</div>
