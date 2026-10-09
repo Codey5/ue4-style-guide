@@ -503,7 +503,8 @@ function frame(now) {
   boardGroup.rotation.set(view.roll, view.yaw, view.pitch, 'YZX');
   boardGroup.updateMatrixWorld(true);
   rig.update(sim, dt, sailor.pose && sim.sailor.hooked && sim.state === S.SAILING ? sailor.hookLocal.clone() : null);
-  sailor.update(sim, rig, dt);
+  // (paused, the sailor holds still: the body's springs and smoothing wait)
+  sailor.update(sim, rig, paused ? 0 : dt);
   rig.drapeAround(sim, sailor);
   rig.updateUphaul(sim, sailor);
   camRig.goal = story?.target?.at ?? null;
@@ -568,6 +569,6 @@ function frame(now) {
   if (direct) renderer.render(scene, camera);
   else composer.render(dt);
   // (handles for the headless checks and screenshots)
-  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig };
+  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig, sailor, rig };
 }
 requestAnimationFrame(frame);

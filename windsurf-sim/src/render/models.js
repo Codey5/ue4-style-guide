@@ -611,7 +611,9 @@ export class Sailor {
     }
     const torsoAxis = neck.clone().sub(pelvis).normalize();
     const shL = mid.clone().add(half), shR = mid.clone().sub(half); // front and back shoulder
-    const chest = pelvis.clone().lerp(neck, 0.72).addScaledVector(facing, 0.03);
+    // (the back arches a little hanging in the harness, its hook pulling your
+    // hips toward the boom, and rounds as you crouch)
+    const chest = pelvis.clone().lerp(neck, 0.72).addScaledVector(facing, 0.03 + (hooked ? 0.02 : 0) - 0.12 * (pose.sit ?? 0));
     const head = neck.clone().addScaledVector(torsoAxis, 0.09 * H).addScaledVector(facing, 0.02);
     const feetF = V(pose.feetF), feetB = V(pose.feetB);
 
@@ -673,7 +675,8 @@ export class Sailor {
     };
     p.kneeF = leg(feetF, facing.clone().add(new THREE.Vector3(0.4, 0.1, 0)));
     p.kneeB = leg(feetB, facing.clone().add(new THREE.Vector3(-0.1, 0.1, 0)));
-    p.grip = { L: gripF, R: gripB, pole: new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4) };
+    // (free: a hand that's let go, which moves with the body)
+    p.grip = { L: gripF, R: gripB, freeR: backOff, pole: new THREE.Vector3(0, -1, 0).addScaledVector(leanDir, 0.4) };
 
     // In the water: floating beside the board, or hanging on near the tail.
     if (st === S.WATER || st === S.WATERSTART || st === S.FALLING || st === S.CLIMB || st === S.RISING) {
@@ -780,12 +783,12 @@ export class Sailor {
 
   update(sim, rig, dt) {
     const target = this.targetPose(sim, rig);
-    if (!this.pose) this.pose = clonePose(target);
+    if (!this.base) this.base = clonePose(target);
     // Tacking, the back foot comes round the front of the mast to be the new
     // front one: at the switch each foot carries on along its own path.
     const tackSwitched = sim.state === S.TACK && !!sim.stateData.switched;
     if (tackSwitched && !this.tackSwitched) {
-      const q = this.pose;
+      const q = this.base;
       [q.footF, q.footB] = [q.footB, q.footF];
       [q.kneeF, q.kneeB] = [q.kneeB, q.kneeF];
     }
@@ -794,89 +797,231 @@ export class Sailor {
     const k = 1 - Math.exp(-dt * (fast ? 22 : 9));
     // (stepping round the mast the feet keep close to their path)
     const kFeet = sim.state === S.TACK ? 1 - Math.exp(-dt * 24) : k;
-    for (const j of JOINTS) this.pose[j].lerp(target[j], j.startsWith('foot') || j.startsWith('knee') ? kFeet : k);
-    const p = this.pose;
-    if (target.grip) {
-      // Gripping hands go exactly on the boom; the elbow straightens if the
-      // smoothed shoulder lags a little behind.
-      const H = this.h;
-      const snap = (sh, el, ha, tHa, on) => {
-        if (!on) return;
-        p[ha].copy(target[tHa]);
-        p[el].copy(ik(p[sh], p[ha], 0.5 * BODY.reach * H, 0.5 * BODY.reach * H, target.grip.pole));
-      };
-      snap('shL', 'elL', 'haL', 'haL', target.grip.L);
-      snap('shR', 'elR', 'haR', 'haR', target.grip.R);
+    for (const j of JOINTS) this.base[j].lerp(target[j], j.startsWith('foot') || j.startsWith('knee') ? kFeet : k);
+    // (a hand on the boom is on it, smoothing or not)
+    if (target.grip?.L) this.base.haL.copy(target.haL);
+    if (target.grip?.R) this.base.haR.copy(target.haR);
+    // Drawn: that pose, with the body's give on top.
+    const p = this.pose = clonePose(this.base);
+    const H = this.h, arm = 0.5 * BODY.reach * H;
+    const grip = target.grip ?? { L: false, R: false, pole: new THREE.Vector3(0, -1, 0) };
+    this.give(sim, p, dt, grip);
+    // Gripping hands go exactly on the boom, the arms reaching from where the
+    // shoulders are; if the body's give has taken a shoulder out of reach,
+    // the upper body is held back by that arm.
+    const snap = () => {
+      if (grip.L) { p.haL.copy(target.haL); p.elL.copy(ik(p.shL, p.haL, arm, arm, grip.pole)); }
+      if (grip.R) { p.haR.copy(target.haR); p.elR.copy(ik(p.shR, p.haR, arm, arm, grip.pole)); }
+    };
+    snap();
+    const reach = BODY.reach * H;
+    let held = false;
+    for (const [sh, ha, on] of [['shL', 'haL', grip.L], ['shR', 'haR', grip.R]]) {
+      const d = p[ha].distanceTo(p[sh]);
+      if (!on || d <= reach) continue;
+      const back = p[ha].clone().sub(p[sh]).multiplyScalar((d - reach) / d);
+      for (const j of ['neck', 'head', 'shL', 'shR', 'front']) p[j].add(back);
+      p.chest.addScaledVector(back, 0.6);
+      held = true;
     }
-    this.clearOfRig(sim, rig);
+    if (held) snap();
+    this.levelHead(sim, p);
+    this.clearOfRig(sim, rig, dt);
     // The stance's feet: the front foot along the board (more so in the strap), the back one across it.
     const side = sim.sailor.side;
     const toe = (a) => new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
     const onBoard = !(sim.state === S.WATER || sim.state === S.WATERSTART || sim.state === S.FALLING);
-    // (looking ahead past the mast while on the board)
-    const lookAt = onBoard ? new THREE.Vector3(sim.board.length * 0.5 + 3, p.head.y, p.head.z) : null;
-    this.figure.update(p, { onBoard, toes: [toe(sim.sailor.straps ? 0.9 * side : 0.2 * side), toe(1.3 * side)], lookAt });
+    // Hips turned toward the bow from the shoulders (square to the boom):
+    // more so in the straps, hooked in; little in a move or off the board.
+    const s = sim.sailor, st = sim.state;
+    const twist = !onBoard ? 0 : st === S.SAILING ? 0.3 + (s.straps === 2 ? 0.25 : 0) + (s.hooked ? 0.1 : 0) : 0.12;
+    const hipFacing = p.front.clone().sub(p.chest).setY(0).normalize().add(new THREE.Vector3(twist, 0, 0));
+    this.figure.update(p, { onBoard, toes: [toe(s.straps ? 0.9 * side : 0.2 * side), toe(1.3 * side)], lookAt: this.lookAt, hipFacing });
+  }
+
+  /**
+   * The body's give. Legs and back are springs, not rods: what the deck under
+   * your feet does (chop slamming into it, a landing, the nose digging in and
+   * the board slowing, a hard carve) your weight lags behind and the legs and
+   * back soak up, then spring back. Two springs, each with its weight: the
+   * hips on the legs, and the upper body on the hips (carried along by them),
+   * set off by the deck's acceleration under your feet. Your hands, on the
+   * boom, stay put; in the air, you and the board fall together and the
+   * springs settle.
+   */
+  give(sim, p, dt, grip) {
+    const g = this.spring ??= {
+      v0: null, acc: new THREE.Vector3(),
+      hips: new THREE.Vector3(), hipsV: new THREE.Vector3(), upper: new THREE.Vector3(), upperV: new THREE.Vector3(),
+    };
+    const st = sim.state;
+    const onBoard = st === S.SAILING || st === S.TACK || st === S.FLIP || st === S.TRICK || st === S.SECURE || st === S.UPHAUL || st === S.RISING;
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(sim.roll, sim.yaw, sim.pitch, 'YZX'));
+    const qInv = q.clone().invert();
+    this.q = q; this.qInv = qInv;
+    // The deck under your feet: its velocity (world), from the board's
+    // motion and turn rates, and so its acceleration (board frame, smoothed a touch).
+    const r = p.footF.clone().add(p.footB).multiplyScalar(0.5);
+    const w = new THREE.Vector3(sim.rollRate ?? 0, 0, sim.pitchRate ?? 0).add(new THREE.Vector3(0, sim.yawRate ?? 0, 0).applyQuaternion(qInv));
+    const v = new THREE.Vector3(sim.vel[0], sim.heaveVel ?? 0, sim.vel[2]).add(w.cross(r).applyQuaternion(q));
+    let drive = new THREE.Vector3();
+    if (g.v0 && dt > 1e-4 && dt < 0.1) {
+      const a = v.clone().sub(g.v0).divideScalar(dt).applyQuaternion(qInv);
+      g.acc.lerp(a, 1 - Math.exp(-dt / 0.03));
+      // (your weight is pressed down into the deck by what slows its fall,
+      // and lags behind it fore and aft and sideways; in the air you fall together)
+      if (onBoard && !sim.airborne) drive = g.acc.clone().negate().clampLength(0, 60);
+    }
+    g.v0 = v;
+    if (!onBoard) {
+      // (off the board the body is posed afresh: let the springs settle quickly)
+      const f = Math.exp(-dt * 10);
+      g.hips.multiplyScalar(f); g.upper.multiplyScalar(f); g.hipsV.set(0, 0, 0); g.upperV.set(0, 0, 0);
+    } else {
+      // Hips: on the legs (about 2 Hz, half damped), giving most up and down.
+      // Upper body: on the hips (about 3 Hz), swaying fore and aft and
+      // sideways, carried by the hips' spring.
+      const kH = (2 * Math.PI * 2) ** 2, cH = 2 * 0.5 * Math.sqrt(kH);
+      const kU = (2 * Math.PI * 2.8) ** 2, cU = 2 * 0.4 * Math.sqrt(kU);
+      const gainH = new THREE.Vector3(0.6, 1, 0.45), gainU = new THREE.Vector3(1, 0.2, 0.8);
+      const n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;
+      for (let i = 0; i < n; i++) {
+        const aH = drive.clone().multiply(gainH).addScaledVector(g.hips, -kH).addScaledVector(g.hipsV, -cH);
+        // (the hips' spring force is what carries the upper body along: it lags behind it)
+        const carried = g.hips.clone().multiplyScalar(kH).addScaledVector(g.hipsV, cH).multiply(gainU);
+        const aU = carried.addScaledVector(g.upper, -kU).addScaledVector(g.upperV, -cU);
+        g.hipsV.addScaledVector(aH, h); g.hips.addScaledVector(g.hipsV, h);
+        g.upperV.addScaledVector(aU, h); g.upper.addScaledVector(g.upperV, h);
+      }
+      // (as far as knees, ankles and back go)
+      const limit = (o, ov, lo, hi) => {
+        for (const ax of ['x', 'y', 'z']) {
+          if (o[ax] < lo[ax]) { o[ax] = lo[ax]; ov[ax] = Math.max(0, ov[ax]); }
+          if (o[ax] > hi[ax]) { o[ax] = hi[ax]; ov[ax] = Math.min(0, ov[ax]); }
+        }
+      };
+      limit(g.hips, g.hipsV, new THREE.Vector3(-0.1, -0.16, -0.08), new THREE.Vector3(0.1, 0.05, 0.08));
+      limit(g.upper, g.upperV, new THREE.Vector3(-0.1, -0.03, -0.08), new THREE.Vector3(0.1, 0.03, 0.08));
+    }
+    // Onto the pose: the hips, then the upper body bending over them (the
+    // chest less than the shoulders and head: the back bends); the knees
+    // bend to the hips; free hands go with you, gripping ones stay on the boom.
+    const kneeBend = (kn, foot) => p[kn].clone().sub(p.pelvis.clone().add(p[foot]).multiplyScalar(0.5));
+    const bendF = kneeBend('kneeF', 'footF'), bendB = kneeBend('kneeB', 'footB');
+    const top = g.hips.clone().add(g.upper);
+    p.pelvis.add(g.hips);
+    p.chest.add(g.hips).addScaledVector(g.upper, 0.55);
+    for (const j of ['neck', 'head', 'shL', 'shR', 'elL', 'elR', 'front']) p[j].add(top);
+    if (grip.freeR) p.haR.add(top);
+    const leg = 0.25 * this.h;
+    p.kneeF.copy(ik(p.pelvis, p.footF, leg, leg, bendF));
+    p.kneeB.copy(ik(p.pelvis, p.footB, leg, leg, bendB));
+  }
+
+  /**
+   * Eyes on the horizon: the head stays nearer upright than the body it's on
+   * (leaning out, or the board pitching and rolling under you), and looks
+   * ahead past the mast, level.
+   */
+  levelHead(sim, p) {
+    const st = sim.state;
+    this.lookAt = null;
+    if (st === S.WATER || st === S.WATERSTART || st === S.FALLING || !this.q) return;
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.qInv);
+    const d = p.head.clone().sub(p.neck), len = d.length();
+    p.head.copy(p.neck).addScaledVector(d.divideScalar(len).lerp(up, 0.4).normalize(), len);
+    const ahead = new THREE.Vector3(1, 0, 0).applyQuaternion(this.q).setY(0).normalize().applyQuaternion(this.qInv);
+    this.lookAt = p.head.clone().addScaledVector(ahead, Math.max(2, sim.board.length * 0.5 + 3 - p.head.x));
   }
 
   /**
    * Last of all, on the pose as drawn (smoothing and all): nothing of the rig
    * goes through the body. The torso is moved out to windward of the boom
-   * tube you hold, and off the mast, and the arms and legs follow it.
+   * tube you hold, and off the mast, and the arms and legs follow it. It
+   * gives way at once, and comes back in over a few tenths of a second (it
+   * remembers how far it was pushed), so the body never jumps.
    */
-  clearOfRig(sim, rig) {
+  clearOfRig(sim, rig, dt) {
     const st = sim.state;
-    if (!(st === S.SAILING || st === S.TACK || st === S.FLIP || st === S.TRICK || st === S.SECURE)) return;
+    const pushed = this.pushed ??= { upper: new THREE.Vector3(), pelvis: new THREE.Vector3() };
+    if (!(st === S.SAILING || st === S.TACK || st === S.FLIP || st === S.TRICK || st === S.SECURE)) {
+      pushed.upper.set(0, 0, 0); pushed.pelvis.set(0, 0, 0);
+      return;
+    }
     const p = this.pose, H = this.h, m = rig.group.matrix;
+    const upperJoints = ['chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'front'];
+    const back = Math.exp(-dt * 5);
+    pushed.upper.multiplyScalar(back); pushed.pelvis.multiplyScalar(back);
+    for (const j of upperJoints) p[j].add(pushed.upper);
+    p.pelvis.add(pushed.pelvis);
     const windward = new THREE.Vector3(0, 0, sim.sailor.side);
+    // (both tubes: you're outside the wishbone, beyond the one you hold)
     const tube = [];
-    for (let x = 0.05; x < rig.boomLength * 0.8; x += 0.07) tube.push(rig.boomPoint(x, sim.rig.side).applyMatrix4(m));
+    for (const sd of [1, -1]) for (let x = 0.05; x < rig.boomLength * 0.8; x += 0.07) tube.push(rig.boomPoint(x, sd * sim.rig.side).applyMatrix4(m));
     const mastA = new THREE.Vector3(0, 0, 0).applyMatrix4(m), mastB = new THREE.Vector3(0, rig.geo.boomHeight + 0.9, 0).applyMatrix4(m);
     const near = (a, b, q) => {
       const ab = b.clone().sub(a);
       const t = clamp(q.clone().sub(a).dot(ab) / Math.max(ab.lengthSq(), 1e-9), 0, 1);
       return [a.clone().addScaledVector(ab, t), t];
     };
-    // (sideways off a tube: square to it, level, the shorter way out)
-    const offTube = (c, i) => {
-      const along = tube[Math.min(i + 1, tube.length - 1)].clone().sub(tube[Math.max(i - 1, 0)]).normalize();
-      const d = c.clone().sub(tube[i]);
-      d.addScaledVector(along, -d.dot(along)).setY(0);
-      return d.lengthSq() > 1e-4 ? d.normalize() : windward;
-    };
+    // (off the tube you hold, out the way you hold it from: square to the
+    // sail, on its windward side, level)
+    const out = new THREE.Vector3(0, 0, -sim.rig.side).transformDirection(m).setY(0);
+    const outward = out.lengthSq() > 1e-4 ? out.normalize() : windward;
     let moved = 0;
-    for (let it = 0; it < 8 && moved < 0.3; it++) {
-      const top = p.neck.clone().addScaledVector(p.neck.clone().sub(p.pelvis).normalize(), 0.09 * H);
+    for (let it = 0; it < 16 && moved < 0.8; it++) {
+      // (the back as it's bent: hips to chest, chest to the head, where it's been turned)
+      const top = p.head;
       let worst = 0, dir = null, tAt = 1;
-      tube.forEach((q, i) => {
-        const [c, t] = near(p.pelvis, top, q);
-        const depth = 0.135 + 0.017 + 0.012 - q.distanceTo(c);
-        if (depth > worst) { worst = depth; dir = offTube(c, i); tAt = t; }
+      tube.forEach((q) => {
+        for (const [a, b, t0] of [[p.pelvis, p.chest, 0], [p.chest, top, 0.5]]) {
+          const [c, t] = near(a, b, q);
+          const depth = 0.135 + 0.017 + 0.012 - q.distanceTo(c);
+          if (depth > worst) { worst = depth; dir = outward; tAt = t0 + 0.5 * t; }
+        }
       });
       // (the mast: the nearest point of it to the torso, pushed straight off it)
       for (let k = 0; k <= 12; k++) {
         const q = mastA.clone().lerp(mastB, k / 12);
-        const [c, t] = near(p.pelvis, top, q);
-        const depth = 0.135 + 0.025 + 0.012 - q.distanceTo(c);
-        if (depth > worst) {
-          worst = depth; tAt = t;
-          dir = c.clone().sub(q).setY(0);
-          dir = dir.lengthSq() > 1e-6 ? dir.normalize() : windward;
+        for (const [a, b, t0] of [[p.pelvis, p.chest, 0], [p.chest, top, 0.5]]) {
+          const [c, t] = near(a, b, q);
+          const depth = 0.135 + 0.025 + 0.012 - q.distanceTo(c);
+          if (depth > worst) {
+            worst = depth; tAt = t0 + 0.5 * t;
+            dir = c.clone().sub(q).setY(0);
+            dir = dir.lengthSq() > 1e-6 ? dir.normalize() : windward;
+          }
         }
       }
       if (worst <= 0) break;
-      const shift = dir.clone().multiplyScalar(Math.min(worst + 0.005, 0.3 - moved));
-      for (const j of ['chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'front']) p[j].add(shift);
+      const shift = dir.clone().multiplyScalar(Math.min(worst + 0.005, 0.8 - moved));
+      for (const j of upperJoints) p[j].add(shift);
       p.pelvis.addScaledVector(shift, 1 - tAt);
+      pushed.upper.add(shift); pushed.pelvis.addScaledVector(shift, 1 - tAt);
       moved += shift.length();
     }
-    if (!moved) return;
-    // The arms reach from where the shoulders are now; the knees keep their bend.
-    const arm = 0.5 * BODY.reach * H, pole = new THREE.Vector3(0, -1, 0).addScaledVector(windward, 0.4);
-    p.elL.copy(ik(p.shL, p.haL, arm, arm, pole));
-    p.elR.copy(ik(p.shR, p.haR, arm, arm, pole));
-    for (const [k, f] of [['kneeF', 'footF'], ['kneeB', 'footB']]) {
-      const bend = p[k].clone().sub(p.pelvis.clone().add(p[f]).multiplyScalar(0.5));
-      p[k].copy(ik(p.pelvis, p[f], 0.25 * H, 0.25 * H, bend.lengthSq() > 1e-8 ? bend : windward));
+
+    // The arms reach from where the shoulders are now, the elbows bending
+    // round the boom rather than through it; the knees keep their bend.
+    const arm = 0.5 * BODY.reach * H, down = new THREE.Vector3(0, -1, 0);
+    const pole0 = down.clone().addScaledVector(windward, 0.4);
+    const poles = [pole0, pole0.clone().addScaledVector(outward, 1), pole0.clone().addScaledVector(outward, 2.5), down, down.clone().addScaledVector(outward, -1)];
+    for (const [sh, el, ha] of [['shL', 'elL', 'haL'], ['shR', 'elR', 'haR']]) {
+      let best = null, bestGap = -Infinity;
+      for (const pole of poles) {
+        const e = ik(p[sh], p[ha], arm, arm, pole);
+        let gap = Infinity;
+        for (const q of tube) gap = Math.min(gap, near(p[sh], e, q)[0].distanceTo(q) - 0.082);
+        if (gap > bestGap) { bestGap = gap; best = e; }
+        if (gap > 0) break;
+      }
+      p[el].copy(best);
+    }
+    if (pushed.pelvis.lengthSq() > 1e-8) {
+      for (const [k, f] of [['kneeF', 'footF'], ['kneeB', 'footB']]) {
+        const bend = p[k].clone().sub(p.pelvis.clone().add(p[f]).multiplyScalar(0.5));
+        p[k].copy(ik(p.pelvis, p[f], 0.25 * H, 0.25 * H, bend.lengthSq() > 1e-8 ? bend : windward));
+      }
     }
   }
 

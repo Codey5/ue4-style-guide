@@ -1,7 +1,8 @@
 // The sailor's body: one continuous skinned mesh (a wetsuit with panels, the
 // skin of the neck) over a skeleton that's set every frame from the joints
 // the physics poses (models.js), so it bends at the knees, hips, shoulders
-// and elbows like a body rather than a set of tubes. The head with its
+// and elbows like a body rather than a set of tubes, and its back (three
+// bones) arches, rounds and twists, the hips turned from the shoulders. The head with its
 // helmet and sunglasses, the fists, the booties and the harness with its
 // spreader bar and hook ride rigidly on their bones.
 import * as THREE from 'three';
@@ -11,9 +12,12 @@ import { clamp } from '../physics/math.js';
 const COL = {
   suit: new THREE.Color(0x1b2126), panel: new THREE.Color(0x168a9a), skin: new THREE.Color(0xc59474),
 };
-// Bones.
-const TORSO = 0, HEAD = 1, UPPER = [2, 5], FORE = [3, 6], HAND = [4, 7], THIGH = [8, 11], SHIN = [9, 12], FOOT = [10, 13];
-const N_BONES = 14;
+// Bones. The back is three: the pelvis (with the harness), the small of the
+// back, and the chest (with the shoulders), so it can arch, round and twist.
+const PELVIS = 0, HEAD = 1, UPPER = [2, 5], FORE = [3, 6], HAND = [4, 7], THIGH = [8, 11], SHIN = [9, 12], FOOT = [10, 13], SPINE = 14, CHEST = 15;
+const N_BONES = 16;
+// (where the small of the back and the chest bones start, as a share of the hip-to-neck length)
+const AT_SPINE = 0.33, AT_CHEST = 0.62;
 const RIGHT = 0, LEFT = 1;
 
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -121,7 +125,7 @@ export class Figure {
     const legL = 0.25 * H; // thigh, shin (as the pose's legs)
     const armL = 0.5 * BODY.reach * H; // upper arm; forearm with the hand to the grip
     const shW = BODY.shoulder * H, hipW = 0.085 * k;
-    this.legL = legL; this.hipW = hipW;
+    this.legL = legL; this.hipW = hipW; this.L = L;
     const sL = L / 0.552, sA = armL / 0.347, sG = legL / 0.445; // stretch the 1.78 m shapes to this body
 
     // ---- Rest pose: standing, facing +Z, right hand toward -X, arms a little out.
@@ -135,7 +139,9 @@ export class Figure {
     const hip = [V3(-hipW, yHip, 0), V3(hipW, yHip, 0)];
     const down = V3(0, -1, 0);
     const rest = new Array(N_BONES);
-    rest[TORSO] = frame(V3(0, 1, 0), V3(1, 0, 0)).setPosition(pelvis);
+    rest[PELVIS] = frame(V3(0, 1, 0), V3(1, 0, 0)).setPosition(pelvis);
+    rest[SPINE] = frame(V3(0, 1, 0), V3(1, 0, 0)).setPosition(V3(0, yHip + AT_SPINE * L, 0));
+    rest[CHEST] = frame(V3(0, 1, 0), V3(1, 0, 0)).setPosition(V3(0, yHip + AT_CHEST * L, 0));
     rest[HEAD] = frame(headAt.clone().sub(neck), V3(1, 0, 0)).setPosition(neck);
     // (the elbows bend toward the front, so each arm's bend axis is the body's right, -X)
     for (const s of [RIGHT, LEFT]) {
@@ -176,7 +182,10 @@ export class Figure {
         const arm = 0.55 * smooth(0.55 * shW, 0.95 * shW, ax) * smooth(L - 0.17 * k, L - 0.07 * k, y) * (1 - head);
         const leg = 0.45 * smooth(0.06 * k, 0.15 * k, ax) * smooth(0.03 * k, -0.08 * k, y);
         w[HEAD] = head; w[UPPER[s]] = arm; w[THIGH[s]] = leg;
-        w[TORSO] = Math.max(0, 1 - head - arm - leg);
+        // (the rest down the back: hips, the small of the back, the chest, blending over a hand's width)
+        const back = Math.max(0, 1 - head - arm - leg);
+        const hips = 1 - smooth(0.2 * L, 0.42 * L, y), chest = smooth(0.48 * L, 0.72 * L, y);
+        w[PELVIS] = back * hips; w[CHEST] = back * chest; w[SPINE] = back * Math.max(0, 1 - hips - chest);
         return w;
       },
     });
@@ -193,7 +202,7 @@ export class Figure {
         weigh: (p, d) => {
           const torso = 0.45 * smooth(0.03, -0.045 * k, d);
           const t = smooth(armL - 0.05 * k, armL + 0.05 * k, d);
-          return { [TORSO]: torso, [UPPER[s]]: (1 - torso) * (1 - t), [FORE[s]]: (1 - torso) * t };
+          return { [CHEST]: torso, [UPPER[s]]: (1 - torso) * (1 - t), [FORE[s]]: (1 - torso) * t };
         },
       });
     }
@@ -213,7 +222,7 @@ export class Figure {
         weigh: (p, d) => {
           const torso = 0.45 * smooth(0.05 * k, -0.07 * k, d);
           const t = smooth(legL - 0.055 * k, legL + 0.055 * k, d);
-          return { [TORSO]: torso, [THIGH[s]]: (1 - torso) * (1 - t), [SHIN[s]]: (1 - torso) * t };
+          return { [PELVIS]: torso, [THIGH[s]]: (1 - torso) * (1 - t), [SHIN[s]]: (1 - torso) * t };
         },
       });
     }
@@ -293,13 +302,13 @@ export class Figure {
     const bandRings = [at(0.04 * k), at(0.048 * k), at(0.14 * k), at(0.15 * k)];
     bandRings[0].color = 0x14181b; bandRings[3].color = 0x14181b;
     const band = rigidTube(bandRings, 28, 0xff7a1a, { caps: [false, false] });
-    const bandMesh = add(TORSO, new THREE.Mesh(band, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, side: THREE.DoubleSide })));
+    const bandMesh = add(PELVIS, new THREE.Mesh(band, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, side: THREE.DoubleSide })));
     bandMesh.receiveShadow = true;
     const front = at(0.095 * k);
     const zBar = front.cz + front.rz + 0.022 * k;
-    const bar = add(TORSO, new THREE.Mesh(new THREE.CapsuleGeometry(0.011 * k, 0.2 * k, 3, 8), std(0x9aa3a8, { metalness: 0.7, roughness: 0.35 })), V3(0, 0.095 * k, zBar));
+    const bar = add(PELVIS, new THREE.Mesh(new THREE.CapsuleGeometry(0.011 * k, 0.2 * k, 3, 8), std(0x9aa3a8, { metalness: 0.7, roughness: 0.35 })), V3(0, 0.095 * k, zBar));
     bar.rotation.z = Math.PI / 2;
-    const hook = add(TORSO, new THREE.Mesh(new THREE.TorusGeometry(0.03 * k, 0.008 * k, 6, 12, Math.PI * 1.25), std(0xcfd4d6, { metalness: 0.85, roughness: 0.25 })),
+    const hook = add(PELVIS, new THREE.Mesh(new THREE.TorusGeometry(0.03 * k, 0.008 * k, 6, 12, Math.PI * 1.25), std(0xcfd4d6, { metalness: 0.85, roughness: 0.25 })),
       V3(0, 0.095 * k + 0.006, zBar + 0.035 * k));
     hook.rotation.set(Math.PI / 2, 0, -Math.PI * 0.125);
     this.hookOffset = V3(0, 0.1 * k, zBar + 0.05 * k);
@@ -312,9 +321,11 @@ export class Figure {
    * Set the skeleton from the posed joints (board frame). p has the joints
    * of models.js plus `front`, a point the chest faces; onBoard: the feet
    * stand on the deck (else they point along the shins). toes: the feet's
-   * directions on the deck, [front foot, back foot].
+   * directions on the deck, [front foot, back foot]. hipFacing: the way the
+   * hips face (they turn toward the bow while the shoulders stay square to
+   * the boom); by default, the way the chest faces.
    */
-  update(p, { onBoard = true, toes = null, lookAt = null } = {}) {
+  update(p, { onBoard = true, toes = null, lookAt = null, hipFacing = null } = {}) {
     const legL = this.legL;
     const U = p.neck.clone().sub(p.pelvis).normalize();
     // Facing: square to the spine (keep last frame's if it's ambiguous).
@@ -324,9 +335,24 @@ export class Figure {
     F.normalize();
     this.last.F.copy(F);
     const R = F.clone().cross(U).normalize(); // the body's right
+    // The hips' own right: turned from the shoulders' toward where the hips face.
+    let Rh = R;
+    if (hipFacing) {
+      const Fh = hipFacing.clone().addScaledVector(U, -hipFacing.dot(U));
+      if (Fh.lengthSq() > 1e-6) Rh = Fh.normalize().cross(U).normalize();
+    }
     const set = (i, m, at) => { m.setPosition(at); m.decompose(this.bones[i].position, this.bones[i].quaternion, this.bones[i].scale); };
     const m = new THREE.Matrix4();
-    set(TORSO, frame(U, R.clone().negate(), m), p.pelvis);
+    // The back: a curve from the hips to the neck through the posed chest
+    // (bowed toward the front it's arched; away from it, rounded), the
+    // twist shared out up it from the hips to the shoulders.
+    const along = (t) => p.pelvis.clone().lerp(p.neck, t);
+    const bow = p.chest.clone().sub(along(0.72));
+    const spineAt = along(AT_SPINE).addScaledVector(bow, 0.8), chestAt = along(AT_CHEST).addScaledVector(bow, 1);
+    const Rs = Rh.clone().add(R).normalize();
+    set(PELVIS, frame(spineAt.clone().sub(p.pelvis), Rh.clone().negate(), m), p.pelvis);
+    set(SPINE, frame(chestAt.clone().sub(spineAt), Rs.negate(), m), spineAt);
+    set(CHEST, frame(p.neck.clone().sub(chestAt), R.clone().negate(), m), chestAt);
     // The head turns to look where you're going (past the mast), up to 70° off the chest.
     const hy = p.head.clone().sub(p.neck).normalize();
     let look = F.clone();
@@ -357,12 +383,12 @@ export class Figure {
       set(HAND[s], frame(fo, n, m), ha);
     }
     // Legs: hips either side of the pelvis joint, knees bent the way the pose bends them.
-    const fRight = p.footF.clone().sub(p.footB).dot(R) > 0;
+    const fRight = p.footF.clone().sub(p.footB).dot(Rh) > 0;
     const legs = fRight ? [['footF', 'kneeF', 0], ['footB', 'kneeB', 1]] : [['footB', 'kneeB', 1], ['footF', 'kneeF', 0]];
     for (const s of [RIGHT, LEFT]) {
       const [fj, kj, which] = legs[s];
       const foot = p[fj];
-      let hip = p.pelvis.clone().addScaledVector(R, s === RIGHT ? this.hipW : -this.hipW);
+      let hip = p.pelvis.clone().addScaledVector(Rh, s === RIGHT ? this.hipW : -this.hipW);
       const span = hip.distanceTo(foot);
       if (span > 2 * legL * 0.999) hip = foot.clone().addScaledVector(hip.clone().sub(foot).normalize(), 2 * legL * 0.999);
       const pole = p[kj].clone().sub(hip.clone().add(foot).multiplyScalar(0.5));
@@ -384,7 +410,7 @@ export class Figure {
       }
     }
     // The hook, for the harness lines.
-    this.bones[TORSO].updateMatrix();
-    this.hookPos.copy(this.hookOffset).applyMatrix4(this.bones[TORSO].matrix);
+    this.bones[PELVIS].updateMatrix();
+    this.hookPos.copy(this.hookOffset).applyMatrix4(this.bones[PELVIS].matrix);
   }
 }
