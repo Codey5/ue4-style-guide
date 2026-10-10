@@ -23,6 +23,18 @@ const RIGHT = 0, LEFT = 1;
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
+/**
+ * A reach that eases out to its full length L instead of locking there: as
+ * asked up to (1 - soft)·L, then closer and closer to L but never at it. A
+ * leg posed with it straightens smoothly and keeps a touch of bend, rather
+ * than snapping dead straight and sticking there (the knee of a plain
+ * two-bone IK swings fastest just as the leg locks).
+ */
+export function softReach(d, L, soft = 0.06) {
+  const m = soft * L, d0 = L - m;
+  return d <= d0 ? d : L - m * Math.exp(-(d - d0) / m);
+}
+
 /** Two-bone IK: the middle joint, bending toward the pole. */
 function ik(root, end, l1, l2, pole) {
   const d = end.clone().sub(root);
@@ -389,8 +401,9 @@ export class Figure {
       const [fj, kj, which] = legs[s];
       const foot = p[fj];
       let hip = p.pelvis.clone().addScaledVector(Rh, s === RIGHT ? this.hipW : -this.hipW);
-      const span = hip.distanceTo(foot);
-      if (span > 2 * legL * 0.999) hip = foot.clone().addScaledVector(hip.clone().sub(foot).normalize(), 2 * legL * 0.999);
+      // (the pose has let the body down onto its legs already: this only catches what's left, near full stretch)
+      const span = hip.distanceTo(foot), reach = softReach(span, 2 * legL, 0.02);
+      if (reach < span) hip = foot.clone().addScaledVector(hip.clone().sub(foot), reach / span);
       const pole = p[kj].clone().sub(hip.clone().add(foot).multiplyScalar(0.5));
       const knee = ik(hip, foot, legL, legL, pole.lengthSq() > 1e-8 ? pole : F);
       const th = knee.clone().sub(hip), sn = foot.clone().sub(knee);

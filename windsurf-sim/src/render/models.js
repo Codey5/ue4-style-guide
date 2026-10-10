@@ -1,6 +1,6 @@
 // Board, rig and sailor models, posed every frame from the simulation state.
 import * as THREE from 'three';
-import { Figure } from './figure.js';
+import { Figure, softReach } from './figure.js';
 import { tw } from '../tweaks.js';
 import { DEG, clamp, lerp, smoothstep } from '../physics/math.js';
 import { rigAxes } from '../physics/sail.js';
@@ -457,6 +457,40 @@ export class Rig {
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
+/** How far the body's springs go (board frame, m): the hips on the legs, the upper body on the hips. */
+const TRAVEL = {
+  hips: [new THREE.Vector3(-0.1, -0.16, -0.08), new THREE.Vector3(0.1, 0.05, 0.08)],
+  upper: [new THREE.Vector3(-0.1, -0.03, -0.08), new THREE.Vector3(0.1, 0.03, 0.08)],
+};
+const AXES = ['x', 'y', 'z'];
+
+/**
+ * The end of a spring's travel (as far as knees, ankles and back go) is a
+ * cushion, not a wall: past 60% of the way there a stiffer spring takes
+ * over, and more damping going out, slowing the body into it rather than
+ * stopping it dead. (A hard stop at twice the travel catches the most
+ * extreme settings.)
+ */
+function cushion(o, ov, [lo, hi], k, h) {
+  const kc = 4 * k, cc = 1.4 * Math.sqrt(kc);
+  for (const ax of AXES) {
+    const e = o[ax] > 0.6 * hi[ax] ? o[ax] - 0.6 * hi[ax] : o[ax] < 0.6 * lo[ax] ? o[ax] - 0.6 * lo[ax] : 0;
+    if (e === 0) continue;
+    ov[ax] -= kc * e * h;
+    if (ov[ax] * e > 0) ov[ax] /= 1 + cc * h;
+    if (o[ax] > 2 * hi[ax]) { o[ax] = 2 * hi[ax]; ov[ax] = Math.min(0, ov[ax]); }
+    if (o[ax] < 2 * lo[ax]) { o[ax] = 2 * lo[ax]; ov[ax] = Math.max(0, ov[ax]); }
+  }
+}
+
+/** A spring's offset as drawn: within its travel, easing into the ends (never quite reaching them). */
+function eased(o, [lo, hi]) {
+  const sat = (u) => (u <= 0.7 ? u : 1 - 0.3 * Math.exp(-(u - 0.7) / 0.3));
+  const out = o.clone();
+  for (const ax of AXES) out[ax] = o[ax] >= 0 ? hi[ax] * sat(o[ax] / hi[ax]) : lo[ax] * sat(o[ax] / lo[ax]);
+  return out;
+}
+
 /** Two-bone IK: returns the middle joint position. */
 function ik(root, end, l1, l2, pole) {
   const d = tmpA.subVectors(end, root);
@@ -886,9 +920,9 @@ export class Sailor {
       const kH = (2 * Math.PI * ts.hipsHz) ** 2, cH = 2 * ts.hipsDamping * Math.sqrt(kH);
       const kU = (2 * Math.PI * ts.upperHz) ** 2, cU = 2 * ts.upperDamping * Math.sqrt(kU);
       const gainH = new THREE.Vector3(0.6, 1, 0.45), gainU = new THREE.Vector3(1, 0.2, 0.8).multiplyScalar(ts.sway);
-      // (small enough steps for the stiffest spring, damping taken implicitly:
-      // stable however stiff or damped they're tuned)
-      const n = Math.min(400, Math.max(1, Math.ceil(dt * 240), Math.ceil(dt * Math.sqrt(Math.max(kH, kU)) * 1.5))), h = dt / n;
+      // (small enough steps for the stiffest spring, its cushion included,
+      // damping taken implicitly: stable however stiff or damped they're tuned)
+      const n = Math.min(400, Math.max(1, Math.ceil(dt * 240), Math.ceil(dt * Math.sqrt(5 * Math.max(kH, kU)) * 1.5))), h = dt / n;
       for (let i = 0; i < n; i++) {
         // (the hips' spring force is what carries the upper body along: it lags behind it)
         const carried = g.hips.clone().multiplyScalar(kH).addScaledVector(g.hipsV, cH).multiply(gainU);
@@ -896,30 +930,48 @@ export class Sailor {
         g.hips.addScaledVector(g.hipsV, h);
         g.upperV.add(carried.addScaledVector(g.upper, -kU).multiplyScalar(h)).divideScalar(1 + cU * h);
         g.upper.addScaledVector(g.upperV, h);
+        cushion(g.hips, g.hipsV, TRAVEL.hips, kH, h);
+        cushion(g.upper, g.upperV, TRAVEL.upper, kU, h);
       }
-      // (as far as knees, ankles and back go)
-      const limit = (o, ov, lo, hi) => {
-        for (const ax of ['x', 'y', 'z']) {
-          if (o[ax] < lo[ax]) { o[ax] = lo[ax]; ov[ax] = Math.max(0, ov[ax]); }
-          if (o[ax] > hi[ax]) { o[ax] = hi[ax]; ov[ax] = Math.min(0, ov[ax]); }
-        }
-      };
-      limit(g.hips, g.hipsV, new THREE.Vector3(-0.1, -0.16, -0.08), new THREE.Vector3(0.1, 0.05, 0.08));
-      limit(g.upper, g.upperV, new THREE.Vector3(-0.1, -0.03, -0.08), new THREE.Vector3(0.1, 0.03, 0.08));
     }
     // Onto the pose: the hips, then the upper body bending over them (the
     // chest less than the shoulders and head: the back bends); the knees
     // bend to the hips; free hands go with you, gripping ones stay on the boom.
     const kneeBend = (kn, foot) => p[kn].clone().sub(p.pelvis.clone().add(p[foot]).multiplyScalar(0.5));
     const bendF = kneeBend('kneeF', 'footF'), bendB = kneeBend('kneeB', 'footB');
-    const top = g.hips.clone().add(g.upper);
-    p.pelvis.add(g.hips);
-    p.chest.add(g.hips).addScaledVector(g.upper, 0.55);
+    const hips = eased(g.hips, TRAVEL.hips), upper = eased(g.upper, TRAVEL.upper);
+    const top = hips.clone().add(upper);
+    p.pelvis.add(hips);
+    p.chest.add(hips).addScaledVector(upper, 0.55);
     for (const j of ['neck', 'head', 'shL', 'shR', 'elL', 'elR', 'front']) p[j].add(top);
     if (grip.freeR) p.haR.add(top);
+    this.softLegs(p, grip);
     const leg = 0.25 * this.h;
     p.kneeF.copy(ik(p.pelvis, p.footF, leg, leg, bendF));
     p.kneeB.copy(ik(p.pelvis, p.footB, leg, leg, bendB));
+  }
+
+  /**
+   * Soft knees: where the pose asks the legs for all their length or more
+   * (hanging out hooked in, the hips sprung up off a chop), the body is let
+   * down onto them a little, so the knees ease out toward straight and keep
+   * a touch of bend, instead of locking straight with a snap.
+   */
+  softLegs(p, grip) {
+    const L = 0.5 * this.h, P = p.pelvis.clone();
+    const feet = [p.footF, p.footB].map((f) => [f, softReach(P.distanceTo(f), L)]);
+    if (feet.every(([f, r]) => P.distanceTo(f) - r < 1e-5)) return;
+    // (as near where it was as both legs allow)
+    for (let it = 0; it < 4; it++) {
+      for (const [f, r] of feet) {
+        const v = P.clone().sub(f), d = v.length();
+        if (d > r) P.copy(f).addScaledVector(v, r / d);
+      }
+    }
+    const drop = P.sub(p.pelvis);
+    p.pelvis.add(drop);
+    for (const j of ['chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'front']) p[j].add(drop);
+    if (grip.freeR) p.haR.add(drop);
   }
 
   /** A push to the body's springs (board frame, m/s): to the hips, and the upper body over them. */
