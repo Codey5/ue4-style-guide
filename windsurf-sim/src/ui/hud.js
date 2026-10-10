@@ -38,6 +38,7 @@ export class Hud {
     this.textTimer = 0;
     this.detail = false;
     this.extra = []; // prompts from outside the sim (look toward the buoy)
+    this.handsOff = false; // the coach is sailing (the prompts: just how to take over)
     this.camTimer = 0;
     $('arms-segs').innerHTML = '<i></i>'.repeat(10);
     this.segs = [...$('arms-segs').children];
@@ -395,7 +396,9 @@ export class Hud {
     }
     $('hint-title').textContent = sim.state === S.SAILING ? (sim.lastControls?.pop && !sim.airborne ? 'Crouched' : sim.inIrons ? 'In irons' : planing ? 'Planing' : 'Sailing')
       : sim.state === S.TRICK ? TRICKS[sim.stateData.kind]?.name ?? 'Freestyle' : stateTitle(sim.state);
-    const shown = list.slice(0, this.detail ? 6 : show).concat(this.extra.map(([key, text]) => ({ key, text, short: text })));
+    // (the coach sailing round: just how to take the board back)
+    const own = this.handsOff ? [{ key: `${g.LS} / ${g.RT}`, text: 'Any stick or button: take the board from the coach', short: 'Take over' }] : list.slice(0, this.detail ? 6 : show);
+    const shown = own.concat(this.extra.map(([key, text]) => ({ key, text, short: text })));
     const html = shown.map((x) => `<li><span class="key">${x.key}</span><span>${this.detail ? x.text : x.short}</span></li>`).join('');
     if (html !== this.lastHints) { $('hints').innerHTML = html; this.lastHints = html; }
   }

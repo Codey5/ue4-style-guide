@@ -21,6 +21,7 @@ import { Audio } from './ui/audio.js';
 import { LessonUi } from './ui/lessonui.js';
 import { LESSONS, findLesson, LessonRunner } from './coach/lessons.js';
 import { Coach } from './coach/coach.js';
+import { CruisePilot } from './coach/cruise.js';
 import { SANDBAR, placeAtStrip } from './physics/spot.js';
 import { adviseSail } from './physics/quiver.js';
 import { CATEGORIES, GpsLogger } from './game/gps.js';
@@ -115,6 +116,10 @@ const storyUi = new StoryUi();
 const career = new Career();
 let story = null; // the chapter being sailed (a ChapterRun)
 let storyStart = 0, storyDoneAt = null;
+// The coach sailing round on its own while you watch and tune (Go sailing's
+// "Watch the coach sail", or the tuning panel's "Coach sails"): it isn't
+// logged by the GPS, and touching the controls takes the board back.
+let cruise = null, cruiseWanted = false, cruiseBase = null;
 
 const boardGroup = new THREE.Group();
 scene.add(boardGroup);
@@ -178,6 +183,8 @@ function restart(mode, setup = null, watch = false, logged = false) {
   camRig.look.set(0, 0, 0);
   camRig.boardY = undefined;
   prevState = null;
+  cruise = cruiseWanted && !setup ? new CruisePilot(sim) : null;
+  if (cruise) endSession();
 }
 
 function applyOptions() {
@@ -253,6 +260,7 @@ function startLesson(id, mode) {
   if (!def) return;
   audio.start();
   exitStory();
+  setCruise(false, true);
   restart(def.setup.start, def.setup, mode === 'watch');
   lesson = new LessonRunner(def, mode, sim);
   menu.activeLesson = lesson;
@@ -274,6 +282,7 @@ function startChapter(id) {
   audio.start();
   exitLesson();
   exitStory();
+  setCruise(false, true);
   const setup = chapterSetup(ch, settings.mass);
   restart(ch.start === 'strip' ? 'strip' : setup.start, setup, false, true);
   story = new ChapterRun(ch, career, sim);
@@ -295,8 +304,41 @@ function exitStory() {
   world.setMarks([]);
 }
 
+/** The coach takes the board (on) or hands it back to you (off). quiet: no message. */
+function setCruise(on, quiet = false) {
+  if (on === !!cruise && on === cruiseWanted) return;
+  if (on && (lesson || story)) { exitLesson(); exitStory(); restart('sailing'); }
+  cruiseWanted = on;
+  cruiseBase = null;
+  if (on) { cruise = new CruisePilot(sim); endSession(); }
+  else if (cruise) {
+    // (you take over where the coach left the sheet and the hiking, not with a jolt)
+    const c = usedControls;
+    if (c) { input.kbSheet = clamp(c.sheet ?? 0, 0, 1); input.kbHike = clamp(c.hike ?? 0, 0, 1); }
+    cruise = null;
+    if (!lesson && !story) startSession();
+  }
+  tune.setCruise(on);
+  const chip = document.getElementById('chip-auto');
+  chip.hidden = !on;
+  chip.className = on ? 'chip on' : 'chip';
+  if (!quiet) sim.emit('cruise', on ? 'The coach has the board: touch the controls to take over.' : 'You have the board.', 2);
+}
+/** From the menu: back on the water, the coach sailing. */
+function watchCruise() {
+  audio.start();
+  exitLesson();
+  exitStory();
+  setCruise(true);
+  menu.started = true;
+  camRig.mode = 0;
+  resume();
+}
+tune.onCruise = (on) => (on ? watchCruise() : setCruise(false));
+
 const menu = new Menu(settings, {
-  start: (mode) => { audio.start(); exitLesson(); exitStory(); restart(mode); menu.started = true; resume(); },
+  start: (mode) => { audio.start(); exitLesson(); exitStory(); setCruise(false, true); restart(mode); menu.started = true; resume(); },
+  cruise: () => watchCruise(),
   lesson: (id, mode) => startLesson(id, mode),
   exitLesson: () => { exitLesson(); restart('secure'); resume(); },
   chapter: (id) => startChapter(id),
@@ -396,6 +438,17 @@ function frame(now) {
     if (ui.zoom) camRig.zoomBy(ui.zoom);
     if (ui.drag) camRig.drag(ui.drag[0], ui.drag[1]);
 
+    // The coach sailing round: touching the controls takes the board back.
+    if (cruise) {
+      cruiseBase ??= { sheet: controls.sheet, hike: controls.hike };
+      const sticks = Math.abs(controls.rake) + Math.abs(controls.lean) + Math.abs(controls.weight) + Math.abs(controls.rail);
+      if (sticks > 0.25 || Math.abs(controls.sheet - cruiseBase.sheet) > 0.15 || Math.abs(controls.hike - cruiseBase.hike) > 0.15 ||
+        controls.pump || controls.uphaul || controls.strapsHeld || Object.values(controls.pressed).some(Boolean)) {
+        setCruise(false);
+        controls.pressed = {};
+      }
+    }
+
     // Watching the coach: Y / T hands the lesson over to you.
     if (lesson && lesson.mode === 'watch' && controls.pressed.flip) {
       startLesson(lesson.lesson.id, 'try');
@@ -413,9 +466,10 @@ function frame(now) {
     let goalDone = false;
     while (acc >= DT && steps < 24) {
       const coachDriving = lesson && lesson.coachDriving;
-      const c = coachDriving ? lesson.controls(DT) : first ? controls : { ...controls, pressed: {} };
+      const c = coachDriving ? lesson.controls(DT) : cruise ? cruise.controls(DT) : first ? controls : { ...controls, pressed: {} };
       prevState = snapshot();
       sim.step(DT, c);
+      cruise?.after(DT);
       usedControls = c;
       if (gps) {
         gps.step(sim);
@@ -452,6 +506,11 @@ function frame(now) {
       steps++;
     }
     if (steps >= 24) acc = 0;
+    // (an extreme setting can make the physics blow up: back on the water rather than frozen)
+    if (![...sim.pos, ...sim.vel, sim.yaw, sim.pitch, sim.roll].every(Number.isFinite)) {
+      restart('sailing');
+      sim.emit('reset', 'The physics broke (an extreme setting?): back on the water.', 3);
+    }
     if (goalDone) {
       audio.chime(storyDoneAt !== null && sim.t - storyDoneAt < 0.1);
       rumbleKick = Math.max(rumbleKick, 0.4);
@@ -543,6 +602,7 @@ function frame(now) {
   // (in the story: a button to look toward the mark you're heading for)
   const tg = story && !story.complete ? story.target : null;
   hud.extra = tg ? [[hud.glyphs(input).R3, camRig.lookGoal ? 'Camera back' : `Look toward ${tg.name}`]] : [];
+  hud.handsOff = !!cruise;
   hud.update(dt, sim, input, shown);
   // (in the story, only once speed is what the chapter's about)
   const gpsOn = gps && !lesson && settings.gpsPanel && (!story || story.chapter.goals.some((g) => g.kind === 'gps'));
@@ -590,6 +650,6 @@ function frame(now) {
   if (direct) renderer.render(scene, camera);
   else composer.render(dt);
   // (handles for the headless checks and screenshots)
-  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig, sailor, rig, tune, juice, audio };
+  window.__beamReach = { sim, controls: lastControls, paused, lesson, story, career, effects, boardGroup, water, camera, renderer, gps, book, Coach, hud, camRig, sailor, rig, tune, juice, audio, cruise };
 }
 requestAnimationFrame(frame);

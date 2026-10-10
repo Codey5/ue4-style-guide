@@ -387,11 +387,33 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
 .tune-group summary { cursor: pointer; font: 600 14px/1.8 var(--display); letter-spacing: 0.05em; text-transform: uppercase; }
 .tune-physics summary { color: var(--warn); }
 .tune-note { margin: 0 0 6px; color: var(--ink-dim); }
-.tune-row { display: grid; grid-template-columns: 1fr 108px 40px 18px; align-items: center; gap: 6px; padding: 2px 0; }
+.tune-row { display: grid; grid-template-columns: 1fr 100px 52px 18px; align-items: center; gap: 6px; padding: 2px 0; border-radius: 4px; }
+.tune-row:hover { background: rgba(233, 242, 245, 0.05); }
+.tune-num {
+  width: 100%; box-sizing: border-box; font: 11px var(--mono); text-align: right; color: var(--ink-dim); background: transparent;
+  border: 1px solid transparent; border-radius: 4px; padding: 2px 4px; cursor: text;
+}
+.tune-num:hover { border-color: var(--hair); }
+.tune-num:focus { outline: none; border-color: var(--signal); color: var(--ink); background: rgba(0, 0, 0, 0.35); }
+.tune-row.changed .tune-num { color: var(--signal); }
+.tune-row.beyond .tune-num { color: var(--warn); border-color: rgba(255, 171, 58, 0.5); }
+.tune-row.beyond label::after { content: ' ⟂'; color: var(--warn); }
+.tune-cruise { display: flex; gap: 8px; align-items: flex-start; margin: 0 12px 8px; padding: 6px 8px; border: 1px solid var(--hair); border-radius: 6px; cursor: pointer; }
+.tune-cruise input { accent-color: var(--signal); margin-top: 2px; }
+.tune-cruise span { color: var(--ink-dim); }
+.tune-cruise b { color: var(--ink); }
+.tune-tip {
+  position: fixed; z-index: 61; box-sizing: border-box; padding: 10px 12px; background: var(--glass-solid); color: var(--ink);
+  border: 1px solid var(--signal); border-radius: 8px; font: 12px/1.45 var(--ui); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5); pointer-events: none;
+}
+.tune-tip[hidden] { display: none; }
+.tune-tip b { font: 600 13px var(--ui); }
+.tune-tip p { margin: 4px 0 0; }
+.tune-tip .tune-tip-meta { color: var(--ink-dim); font-size: 11px; }
+.tune-tip em { color: var(--warn); font-style: normal; }
 .tune-row label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tune-row input[type=range] { width: 100%; accent-color: var(--signal); margin: 0; }
-.tune-row output { font: 11px var(--mono); text-align: right; color: var(--ink-dim); }
-.tune-row.changed label, .tune-row.changed output { color: var(--signal); }
+.tune-row.changed label { color: var(--signal); }
 .tune-undo { visibility: hidden; background: none; border: 0; color: var(--ink-dim); cursor: pointer; padding: 0; font-size: 14px; }
 .tune-row.changed .tune-undo { visibility: visible; }
 .tune-undo:hover { color: var(--ink); }
@@ -420,6 +442,7 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
       <span class="chip" id="chip-plane">Planing</span>
       <span class="chip" id="chip-hook">Hooked in</span>
       <span class="chip" id="chip-straps">Straps</span>
+      <span class="chip" id="chip-auto" hidden>Coach sailing</span>
       <span class="chip" id="chip-spin" hidden>Spin-out</span>
       <span class="chip air" id="chip-air" hidden>Air</span>
     </div>

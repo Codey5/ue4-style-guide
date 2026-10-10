@@ -886,14 +886,16 @@ export class Sailor {
       const kH = (2 * Math.PI * ts.hipsHz) ** 2, cH = 2 * ts.hipsDamping * Math.sqrt(kH);
       const kU = (2 * Math.PI * ts.upperHz) ** 2, cU = 2 * ts.upperDamping * Math.sqrt(kU);
       const gainH = new THREE.Vector3(0.6, 1, 0.45), gainU = new THREE.Vector3(1, 0.2, 0.8).multiplyScalar(ts.sway);
-      const n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;
+      // (small enough steps for the stiffest spring, damping taken implicitly:
+      // stable however stiff or damped they're tuned)
+      const n = Math.min(400, Math.max(1, Math.ceil(dt * 240), Math.ceil(dt * Math.sqrt(Math.max(kH, kU)) * 1.5))), h = dt / n;
       for (let i = 0; i < n; i++) {
-        const aH = drive.clone().multiply(gainH).addScaledVector(g.hips, -kH).addScaledVector(g.hipsV, -cH);
         // (the hips' spring force is what carries the upper body along: it lags behind it)
         const carried = g.hips.clone().multiplyScalar(kH).addScaledVector(g.hipsV, cH).multiply(gainU);
-        const aU = carried.addScaledVector(g.upper, -kU).addScaledVector(g.upperV, -cU);
-        g.hipsV.addScaledVector(aH, h); g.hips.addScaledVector(g.hipsV, h);
-        g.upperV.addScaledVector(aU, h); g.upper.addScaledVector(g.upperV, h);
+        g.hipsV.add(drive.clone().multiply(gainH).addScaledVector(g.hips, -kH).multiplyScalar(h)).divideScalar(1 + cH * h);
+        g.hips.addScaledVector(g.hipsV, h);
+        g.upperV.add(carried.addScaledVector(g.upper, -kU).multiplyScalar(h)).divideScalar(1 + cU * h);
+        g.upper.addScaledVector(g.upperV, h);
       }
       // (as far as knees, ankles and back go)
       const limit = (o, ov, lo, hi) => {

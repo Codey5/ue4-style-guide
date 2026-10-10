@@ -253,7 +253,9 @@ export class Menu {
           <button class="btn" id="act-restart-water">${this.started ? 'Restart' : 'Start'}: in the water</button>
           <button class="btn" id="act-restart-sailing">${this.started ? 'Restart' : 'Start'}: already sailing</button>
           <button class="btn" id="act-restart-strip">${this.started ? 'Restart' : 'Start'}: at the speed strip</button>
+          <button class="btn" id="act-cruise">Watch the coach sail</button>
         </div>
+        <p class="muted"><b>Watch the coach sail</b>: the coach sails round on its own for as long as you like (getting planing, gybing and tacking, jumping in chop, freestyle in a breeze, getting back on after a fall) while you watch, change the conditions or the gear, or tune the feel (<kbd>\`</kbd>). Turn it off in the tuning panel, or take over with any stick.</p>
         <p class="muted">Free sailing is logged by your GPS: the Speed tab has your records. The speed strip is the flat water in the lee of the sandbar, a few hundred metres downwind.</p>
         <p class="muted">New to windsurfing? The <b>Story</b> takes you from your first day on a board to speed week, a chapter at a time.</p>
         <h3>Quick controls</h3>
@@ -337,6 +339,7 @@ export class Menu {
     on('act-restart-water', 'click', () => h.start('water'));
     on('act-restart-sailing', 'click', () => h.start('sailing'));
     on('act-restart-strip', 'click', () => h.start('strip'));
+    on('act-cruise', 'click', () => h.cruise?.());
     on('act-strip', 'click', () => h.start('strip'));
     on('act-clear', 'click', (e) => {
       if (e.target.dataset.armed) { h.clearRecords(); this.render(); }

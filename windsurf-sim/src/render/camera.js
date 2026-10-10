@@ -66,7 +66,7 @@ export class CameraRig {
     this.kickPull *= Math.exp(-dt * 1.3);
     this.dipV += (-55 * this.dip - 8 * this.dipV) * dt;
     this.dip += this.dipV * dt;
-    const fov = this.fovOverride ?? tw.camera.fov + tw.camera.speedFov * clamp(speed / 15, 0, 1) + this.kickFov;
+    const fov = this.fovOverride ?? clamp(tw.camera.fov + tw.camera.speedFov * clamp(speed / 15, 0, 1) + this.kickFov, 5, 170);
     if (Math.abs(this.camera.fov - fov) > 0.01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const fwd = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const stbd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));

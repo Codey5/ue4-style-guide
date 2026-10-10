@@ -14,6 +14,8 @@ No controller? The keyboard works too (see below), though analog triggers make i
 
 New to it, or to windsurfing? Start the **Story**. The **Lessons** in the menu show each technique, sailed by a coach.
 
+Just want to watch? **Go sailing → Watch the coach sail** puts the coach on the board in your conditions and gear, sailing round for as long as you like: reaches back and forth, planing, in the straps and hooked in in a breeze, jumping off the chop, gybing (or tacking in light wind) at the ends and, every few laps in a good breeze, a freestyle show. It gets back on after a fall and keeps clear of the beach and the sandbar. Touch any stick or button to take the board from it. Its sailing isn't logged by the GPS.
+
 ## Story
 
 A summer at the spot, in ten chapters: from never having stood on a windsurf board to speed week on the sandbar. Kai, who runs the school on the beach, picks the board, the sail and the day for each one, starting on the biggest, steadiest board in barely any wind and building up a little at a time. Each chapter has four goals, done in order; a chapter takes a few minutes, and finishing it unlocks the next (finished chapters are kept in your browser). Restarting a chapter starts it afresh. From chapter 4 the sails are sized for your weight (the Gear tab's weight setting): a school rigs a heavier sailor a bigger sail.
@@ -137,6 +139,8 @@ Press <kbd>`</kbd> or <kbd>F2</kbd> (or **Tuning panel** in the menu) for the nu
 - **Camera**: field of view (and extra at speed), the chase camera's distance, height and offset to windward, how tightly it follows, swings round after a turn and rides the chop, and its shake.
 - **Juice**: rumble, spray, glow, landing impact, action feedback, big moments, slow motion, and the big text.
 - **Physics** (folded away): sail power, board drag, gust strength, body strength and pop strength. These change how the board behaves: the coach and the lessons are tested on the defaults.
+
+Hover a setting (or tab to it) for exactly what it does, what it is now and its default. Click its number to type a value, including past the slider's ends to try something extreme: within a safe range that the tooltip gives (a value beyond the slider is marked ⟂ and coloured). If an extreme physics setting makes the simulation blow up, you're put back on the water rather than frozen. **Coach sails** at the top of the panel hands the board to the coach so you can tune while you watch someone sail (any stick takes it back).
 
 Changed values are marked, each has its own reset, and they're kept in this browser. **Copy changes** gives just what you've changed, as a few lines of text (`{"sailor.give": 1.6, "camera.fov": 72}`): send it over to make those the defaults, or **Paste** it into another browser. The tests always run on the defaults (`src/tweaks.js`).
 
@@ -279,17 +283,17 @@ Rig tuning, same board and sail (`node tools/physics-check.mjs tune`):
 npm install        # three.js and esbuild
 npm run dev        # http://localhost:8000 serves index.html with live ES modules
 npm run build      # writes dist/beam-reach.html (single file, ~800 KB)
-npm test           # physics speed polar, maneuver checks, GPS & speed strip, freestyle & battens, every lesson and story chapter sailed by the coach, hands-on-boom pose check, sailor-through-the-rig clash check
+npm test           # physics speed polar, maneuver checks, GPS & speed strip, freestyle & battens, every lesson and story chapter sailed by the coach, hands-on-boom pose check, sailor-through-the-rig clash check, eight minutes of the coach cruising in three conditions
 npm run quiver     # recalibrate the gear advisor's wind ranges (src/physics/quiver.js) from the physics
 ```
 
 ```
 src/physics/   wind & chop, sail aero, planing hull & foils, the sailor's body geometry, balance + state machine (no rendering deps)
-src/coach/     the coach (an expert sailor driving the controls) and the lesson scripts
+src/coach/     the coach (an expert sailor driving the controls), the lesson scripts, the pilot that sails it round marks and the cruise
 src/game/      the GPS speed logger, the session log (personal bests, gear verdict) and the story (chapters, goals, progress)
 src/render/    three.js: water shader, sky & spot, board/rig/sailor models, spray & wake, cameras
 src/ui/        gamepad & keyboard input, HUD, menu, procedural audio
-tools/         build script, physics, maneuver, GPS, freestyle, lesson, story and pose checks, the story autopilot, gear-advisor calibration
+tools/         build script, physics, maneuver, GPS, freestyle, lesson, story, pose, clash and cruise checks, the story autopilot, gear-advisor calibration
 ```
 
 The physics runs at a fixed 240 Hz (about 5 µs per step) independent of the frame rate; rendering interpolates between the last two physics states so motion stays smooth at any refresh rate. The water has no textures: waves and ripples are evaluated per pixel and filtered by their size on screen (the procedural equivalent of mipmapping), so distant water doesn't shimmer.

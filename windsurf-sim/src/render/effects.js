@@ -275,7 +275,7 @@ export class Effects {
       // of droplets out and back, more slapping over the chop; none in the air.
       const air = sim.airborne ? 0 : 1;
       const rate = (clamp((speed - 3) * 30, 0, 340) * (0.25 + 0.75 * p) + (sim.chopHit ?? 0) * 260) * air * tw.juice.spray;
-      this.emitAcc += rate * dt;
+      this.emitAcc = Math.min(this.emitAcc + rate * dt, 600); // (a cap per frame, however much spray is asked for)
       const b = sim.board;
       const side = sim.sailor.side;
       const m = boardObj.matrixWorld;
@@ -297,7 +297,7 @@ export class Effects {
       }
       // Planing, the rail throws sheets of spray out and back, and above
       // about 16 knots the tail kicks up a rooster tail behind the fin.
-      this.sheetAcc += clamp((speed - 4) * 28, 0, 340) * p * air * dt * tw.juice.spray;
+      this.sheetAcc = Math.min(this.sheetAcc + clamp((speed - 4) * 28, 0, 340) * p * air * dt * tw.juice.spray, 600);
       while (this.sheetAcc > 1) {
         this.sheetAcc -= 1;
         const x = (sim.hull?.cp ?? 0) + 0.05 + Math.random() * 0.5;
@@ -306,7 +306,7 @@ export class Effects {
         v.y = 0.8 + Math.random() * (0.6 + speed * 0.08);
         this.spawn([w.x, w.y, w.z], [v.x, v.y, v.z], 0.3 + Math.random() * 0.4, SHEET, 0.035 + Math.random() * 0.06, 0.22 + Math.random() * 0.16);
       }
-      this.roosterAcc += clamp((speed - 7) * 30, 0, 280) * p * air * dt * tw.juice.spray;
+      this.roosterAcc = Math.min(this.roosterAcc + clamp((speed - 7) * 30, 0, 280) * p * air * dt * tw.juice.spray, 600);
       while (this.roosterAcc > 1) {
         this.roosterAcc -= 1;
         const w = new THREE.Vector3(b.transomX + 0.05, 0.02, (Math.random() - 0.5) * 0.25).applyMatrix4(m);
