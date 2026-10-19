@@ -183,9 +183,6 @@ export class Coach {
     // lifting you (the feet then hold the course it would bear you away from).
     // (hanging in the harness: unhooked your arms can't hold a rig leaned that far)
     const lit = p * smoothstep(6.5, 8.5, t.speed) * (s0.hooked ? 1 : 0);
-    // (back in control after a move or a fall: from where the rig is now, not where it was)
-    if (sim.t - (this.leanT ?? -1) > 0.25) this.reachLean = 0;
-    this.leanT = sim.t;
     this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22 + lit * smoothstep(-10 * DEG, REACH_LEAN_AT * DEG, short) * Math.max(0, REACH_LEAN - 0.22), 0.8, dt);
     c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp, -0.2, 1);
     // Rough water: a touch less power, so the board stays under control over the chop.
