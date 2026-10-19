@@ -131,7 +131,9 @@ export class Coach {
     const steer = clamp(this.steer(dt, this.replane ? 85 : wantTwa, this.replane ? 8 : o.turnRate ?? 6), this.replane ? -0.8 : -1.5, this.replane ? 0.8 : 1.5);
     // On the plane the feet take a share of the steering (heels to head up,
     // toes to bear away), so the rig can stay where the power wants it.
-    const feetShare = sim.telemetry.planing > 0.9 && t.speed > 6 ? FEET_SHARE : 0;
+    // (hooked in, holding a course: a big change of course is the rig's job,
+    // and unhooked your weight's on the boom, not free to work the rails)
+    const feetShare = sim.sailor.hooked && sim.telemetry.planing > 0.9 && t.speed > 6 ? FEET_SHARE * (1 - smoothstep(0.3, 0.8, Math.abs(steer))) : 0;
     this.feetSteer = feetShare * steer;
     c.rake = clamp(steer * (1 - feetShare), -1, 1);
     // Broad reaches: the apparent wind is light and the sail no longer
@@ -179,7 +181,11 @@ export class Coach {
     // Once fully planing and fast, much more: leaned well out to windward the
     // boom comes out over the water and you hang right out from it, the sail
     // lifting you (the feet then hold the course it would bear you away from).
-    const lit = p * smoothstep(6.5, 8.5, t.speed);
+    // (hanging in the harness: unhooked your arms can't hold a rig leaned that far)
+    const lit = p * smoothstep(6.5, 8.5, t.speed) * (s0.hooked ? 1 : 0);
+    // (back in control after a move or a fall: from where the rig is now, not where it was)
+    if (sim.t - (this.leanT ?? -1) > 0.25) this.reachLean = 0;
+    this.leanT = sim.t;
     this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22 + lit * smoothstep(-10 * DEG, REACH_LEAN_AT * DEG, short) * Math.max(0, REACH_LEAN - 0.22), 0.8, dt);
     c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp, -0.2, 1);
     // Rough water: a touch less power, so the board stays under control over the chop.

@@ -146,7 +146,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const checks = [
       ['Jumps: popped off chop faces, about half a metre for two thirds of a second', timed.n >= 10 && timed.h > 0.35 && timed.h < 0.9 && timed.air > 0.45 && timed.air < 1.1],
       ['Jumps: the coach lands them cleanly (no falls, rare spin-outs)', timed.falls === 0 && timed.spins <= 3],
-      ['Jumps: timing the pop onto a face beats popping blind', timed.h > blind.h + 0.1],
+      // (the sail lifts every pop now you hang off a leaned rig, blind ones too: timing still wins, on average and at its best)
+      ['Jumps: timing the pop onto a face beats popping blind', timed.h > blind.h + 0.05 && timed.maxH > blind.maxH + 0.2],
       ['Jumps: on flat water a pop is only a little hop', flat.maxH < 0.25],
       ['Jumps: weight forward in the air lands you nose first and over the front', fwd.falls >= 2 && fwd.noseFirst + fwd.falls > timed.noseFirst + 2],
     ];

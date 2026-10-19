@@ -569,6 +569,7 @@ export const LESSONS = [
       },
       {
         say: 'Power up again on a beam reach.',
+        retryOnFall: 'In the water! Back on, and power up again.',
         run: (x) => x.coach.sail(x.dt, { twa: 100, pump: true, straps: true, hook: false, hike: 'auto' }),
         done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > 16,
       },
@@ -594,6 +595,7 @@ export const LESSONS = [
       },
       {
         say: 'Power up again.',
+        retryOnFall: 'In the water! Back on, and power up again.',
         run: (x) => x.coach.sail(x.dt, { twa: 100, pump: true, straps: true, hook: false, hike: 'auto' }),
         done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > 15,
       },

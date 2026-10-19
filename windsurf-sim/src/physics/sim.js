@@ -51,7 +51,8 @@ const LEGS = 0.4;
 const POP_T = 0.15, POP_ACC = 10;
 /** Yaw torque (N·m) your feet put into turning a slow board, at full rig rake. */
 const FEET_STEER = 16;
-const PLANE_STEER = 800; // N·m of yaw at full heel or toe pressure, fully planing
+const PLANE_STEER = 800; // N·m of yaw per unit of light heel or toe pressure, fully planing
+const PLANE_SAT = 0.5; // (levelling off to PLANE_STEER × this at hard pressure)
 /** How long holding the pop button takes to crouch fully (s). */
 const CROUCH_T = 0.3;
 /**
@@ -379,7 +380,8 @@ export class Sim {
     // twists the planing surface and pushes the fin over, turning the board
     // without much heel. It's how you hold a course with the rig leaned out
     // to windward (which on its own bears you away) instead of raking it back.
-    if (this.state === S.SAILING && !this.airborne) N -= (ctl.rail ?? 0) * PLANE_STEER * p * smoothstep(3, 8, speed) * this.contactLat;
+    // (it levels off as you press harder: past that you're carving on the rail)
+    if (this.state === S.SAILING && !this.airborne) N -= PLANE_SAT * Math.tanh((ctl.rail ?? 0) / PLANE_SAT) * PLANE_STEER * p * smoothstep(3, 8, speed) * this.contactLat;
     N += this.roll * u * Math.abs(u) * 26 * (1 - p);
 
     // Rig and sailor in the water act as sea anchors: the rig lies to leeward,
@@ -1204,7 +1206,9 @@ export class Sim {
       // then you catch it again.
       const free = d.turned > 75 * DEG && d.turned < 300 * DEG;
       const fa = flagAngle(free);
-      const target = free ? r.boom + wrapAngle(fa - r.boom) : r.side * boomOpen(ctl.sheet);
+      // (caught again coming up through the wind, it's sheeted in progressively, not snapped in on you)
+      const catchSheet = d.turned > 290 * DEG ? Math.min(ctl.sheet, lerp(0.2, 1, smoothstep(300 * DEG, 352 * DEG, d.turned))) : ctl.sheet;
+      const target = free ? r.boom + wrapAngle(fa - r.boom) : r.side * boomOpen(catchSheet);
       r.boom = servo(r.boom, target, free ? 10 : 6, (free ? 300 : 160) * DEG, dt);
       if (!free) r.boom = wrapAngle(r.boom);
       // (thrown forward while it's free, back up to catch it as you come up through the wind)
@@ -1721,7 +1725,10 @@ export class Sim {
     const kRoll = RHO_WATER * G * (b.width ** 3) * b.length / 12 * 0.12;
     // Core and leg strength scale roughly with body mass. Holding the mast
     // (tacks, sail flips) steadies you: the rig is pinned at the mast foot.
-    const holdingMast = this.state === S.TACK || this.state === S.FLIP || this.state === S.TRICK;
+    // (coming out of a carving 360, the sail caught again and filling, you're
+    // on the boom and lean back against it as you would sailing)
+    const catching = this.state === S.TRICK && this.stateData.kind === 'c360' && (this.stateData.turned ?? 0) > 290 * DEG;
+    const holdingMast = (this.state === S.TACK || this.state === S.FLIP || this.state === S.TRICK) && !catching;
     const tauMax = (260 + 80 * p) * (mS / 75) * (holdingMast ? 1.6 : 1) * tw.physics.holdStrength + kRoll * (1 - 0.5 * p);
     // Balanced: the lean whose weight lever (centre of mass out from the
     // board's centreline) matches the sail's pull.
