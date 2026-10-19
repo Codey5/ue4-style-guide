@@ -4,6 +4,11 @@
 import { DEG, clamp, damp, smoothstep, wrapAngle } from '../physics/math.js';
 import { emptyControls, S } from '../physics/sim.js';
 
+// On the plane, the share of the steering done with the feet; and how far
+// (of the stick's travel) the rig is leaned out to windward once fully lit
+// up and overpowered, and how far past your reach that takes.
+const FEET_SHARE = 0.8, REACH_LEAN = 0.45, REACH_LEAN_AT = 15;
+
 export class Coach {
   constructor(sim) {
     this.sim = sim;
@@ -124,7 +129,11 @@ export class Coach {
     if (this.replane && this.cur !== undefined) this.cur = Math.max(this.cur, Math.abs(sim.twa) - 2 * DEG);
     // (gently: not throwing the rig forward and over to windward out of reach)
     const steer = clamp(this.steer(dt, this.replane ? 85 : wantTwa, this.replane ? 8 : o.turnRate ?? 6), this.replane ? -0.8 : -1.5, this.replane ? 0.8 : 1.5);
-    c.rake = clamp(steer, -1, 1);
+    // On the plane the feet take a share of the steering (heels to head up,
+    // toes to bear away), so the rig can stay where the power wants it.
+    const feetShare = sim.telemetry.planing > 0.9 && t.speed > 6 ? FEET_SHARE : 0;
+    this.feetSteer = feetShare * steer;
+    c.rake = clamp(steer * (1 - feetShare), -1, 1);
     // Broad reaches: the apparent wind is light and the sail no longer
     // overpowers you, so sheet in toward maximum lift and sit back on the tail.
     const deep = smoothstep(105 * DEG, 140 * DEG, this.cur);
@@ -167,7 +176,11 @@ export class Coach {
     // (felt over a second or two, not snapped to every gust)
     // Past about 15° of lean the sail loses more drive than the extra hang
     // gains, so beyond that you sheet out instead.
-    this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22, 0.8, dt);
+    // Once fully planing and fast, much more: leaned well out to windward the
+    // boom comes out over the water and you hang right out from it, the sail
+    // lifting you (the feet then hold the course it would bear you away from).
+    const lit = p * smoothstep(6.5, 8.5, t.speed);
+    this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22 + lit * smoothstep(-10 * DEG, REACH_LEAN_AT * DEG, short) * Math.max(0, REACH_LEAN - 0.22), 0.8, dt);
     c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp, -0.2, 1);
     // Rough water: a touch less power, so the board stays under control over the chop.
     const rough = smoothstep(0.35, 0.8, sim.waves.hsAt(sim.pos[0], sim.pos[2])) * (p > 0.9 ? 1 : 0);
@@ -186,7 +199,7 @@ export class Coach {
     // heels (windward rail) head up. Off the wind a little steady heel
     // pressure stops the eased sail's drive turning the board further downwind.
     const heel = p > 0.9 ? side * 0.3 * deep : 0;
-    const carve = p > 0.9 && Math.abs(steer) > 0.35 ? -side * steer * 0.6 : 0;
+    const carve = (p > 0.9 && Math.abs(steer) > 0.35 ? -side * steer * 0.6 : 0) - side * (this.feetSteer ?? 0);
     c.rail = o.rail ?? clamp(heel + carve, -0.8, 0.8);
     c.hike = o.hike === 'auto' ? this.hikeFor(dt) : 0;
     // Stance: weight forward to get planing, back toward the straps once going,

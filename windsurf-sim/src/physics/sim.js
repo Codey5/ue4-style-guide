@@ -51,6 +51,7 @@ const LEGS = 0.4;
 const POP_T = 0.15, POP_ACC = 10;
 /** Yaw torque (N·m) your feet put into turning a slow board, at full rig rake. */
 const FEET_STEER = 16;
+const PLANE_STEER = 800; // N·m of yaw at full heel or toe pressure, fully planing
 /** How long holding the pop button takes to crouch fully (s). */
 const CROUCH_T = 0.3;
 /**
@@ -286,12 +287,19 @@ export class Sim {
       const mfp = Math.max((sailor.hooked ? 0.22 : 0.08) * handForce, this.state === S.SAILING ? this.hangDown ?? 0 : 0);
       const up = Math.max(0, aeroUp);
       W = (mB + mS + rigOnBoard) * G - aeroUp;
-      const feetLoad = Math.max(0.05 * mS * G, mS * G - mfp - up);
+      // The sail's lift (leaned out to windward and raked back, it carries
+      // you) comes off the board where the rig is held: between the mast foot
+      // and your hands, by how far behind the mast its centre is.
+      const hx = this.bodyGeo?.ctx?.hands ? 0.5 * (this.bodyGeo.ctx.hands.f[0] + this.bodyGeo.ctx.hands.b[0]) : b.mastFootX - 0.8;
+      const ceX = b.mastFootX - (aero?.ceChord ?? 0.6) * Math.abs(Math.cos(rig.boom));
+      const upMast = up * clamp((hx - ceX) / Math.min(-0.1, hx - b.mastFootX), 0, 0.8);
+      const feetLoad = Math.max(0.05 * mS * G, mS * G - mfp - (up - upMast));
+      const mastLoad = Math.max(0, rigOnBoard * G + mfp - upMast);
       // The sail's drive reaches the board through the feet and the mast foot,
       // at deck level (the sailor leans back against it), so it only pitches
       // the nose down with the deck's height above the planing surface.
-      xLoad = (mB * G * -0.05 + (rigOnBoard * G + mfp) * b.mastFootX + feetLoad * this.feetLoadX()) /
-        Math.max(1, mB * G * 1 + rigOnBoard * G + mfp + feetLoad) + (aeroFwd * (deckY + 0.05)) / Math.max(200, W);
+      xLoad = (mB * G * -0.05 + mastLoad * b.mastFootX + feetLoad * this.feetLoadX()) /
+        Math.max(1, mB * G * 1 + mastLoad + feetLoad) + (aeroFwd * (deckY + 0.05)) / Math.max(200, W);
     } else {
       W = (mB + mS * 0.12 + rigOnBoard * 0.4) * G - Math.max(0, aeroUp) * 0.3;
       xLoad = b.mastFootX - 0.3;
@@ -367,6 +375,11 @@ export class Sim {
     const carve = p * W * Math.tan(this.roll) * 0.85 * this.contactLat;
     applyAt(cgW, scale(stbd, carve));
     N += -carve * 0.32;
+    // Steering with the feet on the plane: weighting the heels or the toes
+    // twists the planing surface and pushes the fin over, turning the board
+    // without much heel. It's how you hold a course with the rig leaned out
+    // to windward (which on its own bears you away) instead of raking it back.
+    if (this.state === S.SAILING && !this.airborne) N -= (ctl.rail ?? 0) * PLANE_STEER * p * smoothstep(3, 8, speed) * this.contactLat;
     N += this.roll * u * Math.abs(u) * 26 * (1 - p);
 
     // Rig and sailor in the water act as sea anchors: the rig lies to leeward,
