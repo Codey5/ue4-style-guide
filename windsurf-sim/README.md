@@ -221,7 +221,7 @@ All four moves start the same way: hold LB to crouch, then press a button. Each 
 - The sailor and the rig never pass through each other. Through each move the hands hold what a sailor holds: the boom; the mast (stepping round it in a tack, pushing the sail round it in a helitack); the mast and the front of the boom (holding the sail in as the nose comes up through the wind); or the boom with one hand, the other out for balance (the sail let go in a carving 360). The knees bend round the mast and the foot of the sail rather than into them; if the rig comes down onto you (raked back and pulled over you, or a boom out of reach), your body gives way to windward of the boom and your arms reach for it. The sail's cloth is pushed round your body, on its far side from you, where you press into it.
 - The default sailor is 183 cm and 75 kg, with the boom between chest and shoulder height (0.74 × your height, 135 cm) and 32" harness lines (0.45 × your height).
 - The sail's heeling moment about the board's centreline is fought by your weight times how far your centre of mass is out from that centreline, worked out from the posed body (feet in the straps, hook in the lines, hands on the boom), plus core and leg strength (which scale with body mass) and foot pressure on the rails.
-- How far out you can hang is geometry. Unhooked, it's your arms' reach to the boom; hooked in, it's the harness lines. Leaning the rig to windward brings the boom out over the water so you can hang further out, but past about 15° the sail loses more drive than you gain. Longer lines let you hang further out. A higher boom lets you lean further on straight arms but needs longer lines. Your hands slide back along the boom as you move back toward the straps; with the sail eased right out they stay forward, where the boom is still in reach.
+- How far out you can hang is geometry. Unhooked, it's your arms' reach to the boom; hooked in, it's the harness lines. Leaning the rig to windward brings the boom out over the water so you can hang further out. It also bears the board away, and the sail lifts you, taking weight off the board, between the mast foot and your hands. Fully planing and powered up, you hold the course with your feet instead of raking the rig back: heel and toe pressure turns a planing board (fading as it heels over onto its rail, where the carve turns it). The coach leans the rig out about 25° once it's lit up and hangs 30–37° off it, as riders do in photos; it costs a few percent of top speed against a more upright rig, for a lot more power held. Longer lines let you hang further out. A higher boom lets you lean further on straight arms but needs longer lines. Your hands slide back along the boom as you move back toward the straps; with the sail eased right out they stay forward, where the boom is still in reach.
 - To hook in, the lines have to reach the hook: sheet in and come in toward the boom. Hooked in with your feet still forward, the lines are behind you and you can't hang out far; in the straps they're over your feet.
 - Fore and aft, too. The rig is pinned at the mast foot and its drive (high up) and lift (behind the mast) tip it forward. You hold it back through your hands or the harness, so the same pull tips you forward over your front foot. You balance it by leaning back, with the hips back over the tail, until your weight behind your feet matches the pull at the hook or hands. Your feet can press anywhere from the back heel to the front toes, a little further with them in the straps. Weight forward or back (right stick) picks where; leaning back with weight forward, more of your weight hangs on the boom into the mast foot. The board feels that pressure: it's where the hull is loaded. The stance diagram (in the detailed HUD, and in the lessons about it) shows it: a bar from heel to toes, a line where your feet press, a ring for your centre of mass, and how far back you're leaning, amber as the pull nears what your toes can hold and red past it.
 - Technique takes some of the pull before it reaches you: the rig's own weight, a push-pull between your hands, and hanging your weight down on the boom behind the mast (into the mast foot, which presses the nose down, so only as much as you need).
@@ -250,16 +250,16 @@ All four moves start the same way: hold LB to crouch, then press a button. Each 
 | --- | --- | --- |
 | 135 L, 7.0 m², 6–10 kn, beam reach | 3.5–5.5 kn, displacement | Slogging speeds |
 | 135 L, 7.0 m², 11 / 12 kn | 6.8 kn slogging / just planes (10.4 kn) | Planing threshold ~12 kn for this combination |
-| 135 L, 7.0 m², 14 / 16 / 20 kn | 17.4 / 18.6 / 19.5 kn board speed | Typical freeride GPS speeds |
-| 135 L, 7.0 m², 24 kn | 20.0 kn, sailor at the limit | 7.0 m² is too big here |
-| 135 L, 16 kn, close-hauled planing | holds 55° to the true wind at 9.9 kn | 50–55° typical for freeride |
-| 135 L, 16 kn, 90° / 130° | 18.0 / 17.0 kn | A broad reach holds its speed once planing |
-| 135 L, 22 kn, 100° / 130° / 145° | 19.9 / 20.5 / 17.0 kn | Fastest on a broad reach; deep angles need more wind |
+| 135 L, 7.0 m², 14 / 16 / 20 kn | 16.6 / 18.0 / 18.8 kn board speed | Typical freeride GPS speeds |
+| 135 L, 7.0 m², 24 kn | 19.3 kn, sailor at the limit | 7.0 m² is too big here |
+| 135 L, 16 kn, close-hauled planing | holds 54° to the true wind at 9.7 kn | 50–55° typical for freeride |
+| 135 L, 16 kn, 90° / 130° | 17.2 / 17.5 kn | A broad reach holds its speed once planing |
+| 135 L, 22 kn, 100° / 130° / 145° | 19.0 / 21.2 / 16.3 kn | Fastest on a broad reach; deep angles need more wind |
 | 135 L, 16 kn, 140° and deeper | drops off the plane | The apparent wind gets too light to carry the board |
-| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 21.4 / 23.6 kn | Smaller, faster boards |
-| 135 L, 16 kn, flat water / standard chop (0.34 m) | 21.3 / 18.6 kn, skipping off the chop 9% of the time | Flat water is fast; chop costs speed |
-| 135 L, 22 kn, rough chop (0.74 m), weight forward / back | 10.0 kn and three falls / 18.3 kn | Keep the nose up in rough water |
-| 183 cm, 32" lines, hooked in, rig leaned ~16°, fully powered | hangs out ~25–30°, leans back ~30°, centre of mass ~35 cm behind where the feet press | A typical hooked-in freeride stance |
+| 115 L, 6.3 m², 18 kn / 95 L, 5.3 m², 22 kn | 20.6 / 22.4 kn | Smaller, faster boards |
+| 135 L, 16 kn, flat water / standard chop (0.34 m) | 20.5 / 18.0 kn, skipping off the chop 9% of the time | Flat water is fast; chop costs speed |
+| 135 L, 22 kn, rough chop (0.74 m), weight forward / back | 15.2 kn and a fall / 17.4 kn | Keep the nose up in rough water |
+| 183 cm, 32" lines, hooked in, fully powered and lit up, rig leaned ~25° to windward | hangs out ~30–37° off the boom out over the water, the feet holding the course | Hanging off a leaned-out rig, as in photos of planing riders |
 | 115 L, 6.3 m², 16 kn, planing hooked in, gust to 24 kn | weight forward, sail locked in: catapulted. Weight back, sheet eased: rides it out | Why you sheet out and sink back in a gust |
 | 210 L beginner, 5.3 m², 8 kn | 4.1 kn, can sail 55° upwind | Daggerboard boards point in light wind |
 | 95 L board, 85 kg sailor | refuses to float you standing still | A sinker |
@@ -268,11 +268,11 @@ Rig tuning, same board and sail (`node tools/physics-check.mjs tune`):
 
 | Change | Effect |
 | --- | --- |
-| Outhaul loose / tight, 12 kn | 15.4 kn planing / 7.1 kn, not planing |
+| Outhaul loose / tight, 12 kn | 14.9 kn planing / 7.1 kn, not planing |
 | Outhaul loose, 16 kn | back hand about twice as loaded (the draft further back) |
-| Downhaul maximum / light, gusty 22 kn | 20.3 / 18.3 kn |
-| Downhaul light / maximum, 12 kn | 9.1 / 7.5 kn |
-| Mast foot 10 cm back / forward, 22 kn, flat water | 23.6 / 21.7 kn (forward rides nose-down; in rough chop forward is the faster, steadier ride) |
+| Downhaul maximum / light, gusty 22 kn | 18.8 / 18.0 kn |
+| Downhaul light / maximum, 12 kn | 15.0 / 7.5 kn |
+| Mast foot 10 cm back / forward, 22 kn, flat water | 23.2 / 21.9 kn (forward rides nose-down; in rough chop forward is the faster, steadier ride) |
 | Harness lines 10 cm forward / back, 16 kn | back hand loaded / front hand loaded, and the sail sheets in on you |
 
 `npm run drag` prints the hull resistance curve, which shows the hump and the effect of stance.
