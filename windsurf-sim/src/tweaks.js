@@ -56,10 +56,10 @@ const DEFS = [
     'The share of the body\'s tilt (leaning out, the board pitching and rolling) the head turns back toward upright: 0 = the head tilts with the body; 1 = always upright. Drawing only.'],
   ['sailor.hipTwist', 'Hip twist', 0, 2.5, 0.05, 0.5, [0, 10],
     'Multiplies how far the hips turn toward the bow from the shoulders (which stay square to the boom): at 1 about 17° sailing, 26° in the straps, 33° hooked in and in the straps, 7° in a move. Drawing only.'],
-  ['sailor.backArch', 'Back arch', 0, 10, 0.1, 6, [-5, 15],
+  ['sailor.backArch', 'Back arch', 0, 6, 0.05, 1, [-5, 15],
     'Multiplies the bend in the back: arched (chest toward the boom) hanging in the harness, rounded crouching. 0 = a straight back; negative bends it the other way. Drawing only.'],
   ['sailor.sitIn', 'Sit into the harness', 0, 3, 0.05, 1, [0, 6],
-    'Hooked in and loaded, how far the hips sit down into the harness, below the line from your feet to your shoulders: at 1, 11 cm in a seat harness and 6 cm in a waist harness at full pull (from 150 N on the hook to 550 N). Drawing only.'],
+    'Hooked in and loaded, how far the hips sit down into the harness, the knees bending and the back kept straight (down and a touch toward the rig, where the hook pulls): at 1, 11 cm in a seat harness and 6 cm in a waist harness at full pull (from 150 N on the hook to 550 N). Drawing only.'],
   ['sailor.armsStraight', 'Straight arms hooked in', 0, 1.5, 0.05, 1, [0, 1.5],
     'Hooked in and loaded, how much the torso tips back from the hips to straighten the arms: at 1 the longer arm is drawn at 96% of its reach; 0 leaves the arms as the balance puts them. Drawing only.'],
   ['sailor.chestOpen', 'Chest open to the bow', 0, 2.5, 0.05, 1, [0, 2.7],
@@ -185,9 +185,13 @@ export function saveTweaks() {
   try { store()?.setItem(STORE, JSON.stringify(changedTweaks())); } catch { /* private window: kept for this visit only */ }
 }
 /** In the browser: what you set last time. (Headless, there's no store: the defaults.) */
+/** Former defaults, by setting: a saved value equal to one is dropped. */
+const RETIRED = { 'sailor.backArch': 6 };
+
 export function loadTweaks() {
   try {
     const raw = store()?.getItem(STORE);
-    if (raw) for (const [key, v] of Object.entries(JSON.parse(raw))) setTweak(key, v, { save: false, free: true });
+    // (values kept from when they were the defaults, since changed: the new default instead)
+    if (raw) for (const [key, v] of Object.entries(JSON.parse(raw))) if (RETIRED[key] !== v) setTweak(key, v, { save: false, free: true });
   } catch { /* a bad entry: defaults */ }
 }

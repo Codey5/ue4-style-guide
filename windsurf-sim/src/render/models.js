@@ -647,8 +647,8 @@ export class Sailor {
       mid = neck.clone().addScaledVector(neck.clone().sub(pelvis).normalize(), -BODY.neckDrop * H);
     }
     // Hanging in the harness, loaded, the body is drawn the way riders hang
-    // (from photos of planing riders): the hips sit down into the harness,
-    // below the line from the feet to the shoulders; the arms straighten, the
+    // (from photos of planing riders): the hips sit down into the harness
+    // (the knees bending, the back kept straight); the arms straighten, the
     // torso tipping back from the hips to take the shoulders out from the
     // boom; and the chest opens toward the bow, the front arm long and the
     // back one bent. (The lean the physics balances is still the line from
@@ -670,7 +670,9 @@ export class Sailor {
       };
       const fits = (n, open, k = 0.97) => { const q = shoulders(n, open); return q.f.distanceTo(haF) <= reach * k && q.b.distanceTo(haB) <= reach * k; };
       // The hips sitting down (less if that would take a hand out of reach).
-      const sagDir = new THREE.Vector3(0, -0.85, 0).addScaledVector(leanDir, 0.45).normalize();
+      // (down, and a little toward the rig where the hook pulls them: not
+      // out behind you, which hollows the back and sticks your backside out)
+      const sagDir = new THREE.Vector3(0, -1, 0).addScaledVector(facing, 0.2).normalize();
       let sag = load * ts.sitIn * (this.harness === 'seat' ? 0.11 : 0.06);
       const pelvis0 = pelvis.clone(), neck0 = neck.clone();
       for (let i = 0; i < 6 && sag > 0.002; i++, sag *= 0.6) {
@@ -696,10 +698,13 @@ export class Sailor {
       for (let i = 0; i < 8 && open > 0 && !fits(neck, open, 0.99); i++) open *= 0.7;
       if (!fits(neck, open, 0.99)) open = 0;
       const q = shoulders(neck, open);
+      // (the whole body moves with the shoulders, hips and all, so the back
+      // stays straight: not the shoulders forward and the backside left out behind)
+      const shift = q.m.clone().sub(mid);
+      pelvis.add(shift);
+      neck.add(shift);
       mid = q.m;
       half.copy(q.hv);
-      neck = pelvis.clone().addScaledVector(mid.clone().addScaledVector(neck.clone().sub(pelvis).normalize(), BODY.neckDrop * H).sub(pelvis).normalize(), torsoLen);
-      mid = neck.clone().addScaledVector(neck.clone().sub(pelvis).normalize(), -BODY.neckDrop * H);
       this.chestOpened = open;
     }
     const torsoAxis = neck.clone().sub(pelvis).normalize();
