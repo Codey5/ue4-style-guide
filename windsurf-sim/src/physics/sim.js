@@ -380,8 +380,11 @@ export class Sim {
     // twists the planing surface and pushes the fin over, turning the board
     // without much heel. It's how you hold a course with the rig leaned out
     // to windward (which on its own bears you away) instead of raking it back.
-    // (it levels off as you press harder: past that you're carving on the rail)
-    if (this.state === S.SAILING && !this.airborne) N -= PLANE_SAT * Math.tanh((ctl.rail ?? 0) / PLANE_SAT) * PLANE_STEER * p * smoothstep(3, 8, speed) * this.contactLat;
+    // (it levels off as you press harder, and fades as the board heels over:
+    // on its rail, it's the carve turning it)
+    if (this.state === S.SAILING && !this.airborne) {
+      N -= PLANE_SAT * Math.tanh((ctl.rail ?? 0) / PLANE_SAT) * PLANE_STEER * p * smoothstep(3, 8, speed) * this.contactLat * (1 - smoothstep(8 * DEG, 20 * DEG, Math.abs(this.roll)));
+    }
     N += this.roll * u * Math.abs(u) * 26 * (1 - p);
 
     // Rig and sailor in the water act as sea anchors: the rig lies to leeward,
@@ -1207,7 +1210,7 @@ export class Sim {
       const free = d.turned > 75 * DEG && d.turned < 300 * DEG;
       const fa = flagAngle(free);
       // (caught again coming up through the wind, it's sheeted in progressively, not snapped in on you)
-      const catchSheet = d.turned > 290 * DEG ? Math.min(ctl.sheet, lerp(0.2, 1, smoothstep(300 * DEG, 352 * DEG, d.turned))) : ctl.sheet;
+      const catchSheet = d.turned > 290 * DEG ? Math.min(ctl.sheet, lerp(0.5, 1, smoothstep(300 * DEG, 352 * DEG, d.turned))) : ctl.sheet;
       const target = free ? r.boom + wrapAngle(fa - r.boom) : r.side * boomOpen(catchSheet);
       r.boom = servo(r.boom, target, free ? 10 : 6, (free ? 300 : 160) * DEG, dt);
       if (!free) r.boom = wrapAngle(r.boom);
