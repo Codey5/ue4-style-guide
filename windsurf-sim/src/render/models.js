@@ -506,10 +506,12 @@ function ik(root, end, l1, l2, pole) {
 const JOINTS = ['pelvis', 'chest', 'neck', 'head', 'shL', 'shR', 'elL', 'elR', 'haL', 'haR', 'kneeF', 'kneeB', 'footF', 'footB', 'front'];
 
 export class Sailor {
-  constructor(height = 1.8) {
+  /** harness: 'waist' or 'seat' (how it's drawn, and how low the hips sit in it). */
+  constructor(height = 1.8, { harness = 'waist' } = {}) {
     this.group = new THREE.Group();
     this.h = height;
-    this.figure = new Figure(height);
+    this.harness = harness;
+    this.figure = new Figure(height, { harness });
     this.group.add(this.figure.root);
     this.pose = null;
     this.fallPose = null;
@@ -643,6 +645,62 @@ export class Sailor {
       const legLen = clamp(span - l2 * 0.999, l1, l1Max);
       pelvis = ik(base, neck, legLen, l2, pelvis.clone().sub(base).addScaledVector(leanDir, 0.05));
       mid = neck.clone().addScaledVector(neck.clone().sub(pelvis).normalize(), -BODY.neckDrop * H);
+    }
+    // Hanging in the harness, loaded, the body is drawn the way riders hang
+    // (from photos of planing riders): the hips sit down into the harness,
+    // below the line from the feet to the shoulders; the arms straighten, the
+    // torso tipping back from the hips to take the shoulders out from the
+    // boom; and the chest opens toward the bow, the front arm long and the
+    // back one bent. (The lean the physics balances is still the line from
+    // the feet to the shoulders.)
+    const load = hooked && !this.offReach && !s.backOff ? smoothstep(150, 550, sim.handForce ?? 0) : 0;
+    this.hangLoad = load;
+    if (load > 0) {
+      const ts = tw.sailor, torsoLen = BODY.torso * H;
+      // (the shoulder line turned toward the bow about the front shoulder,
+      // which stays where the front arm holds it: the back shoulder comes
+      // forward toward the boom, the back arm bending)
+      const shoulders = (n, open) => {
+        const ax = n.clone().sub(pelvis).normalize();
+        const m0 = n.clone().addScaledVector(ax, -BODY.neckDrop * H);
+        const out = leanDir.clone().addScaledVector(ax, -leanDir.dot(ax)).normalize();
+        const hv = half.clone().multiplyScalar(Math.cos(open)).addScaledVector(out, half.length() * Math.sin(open));
+        const f = m0.clone().add(half), m = f.clone().sub(hv);
+        return { m, f, b: m.clone().sub(hv), hv };
+      };
+      const fits = (n, open, k = 0.97) => { const q = shoulders(n, open); return q.f.distanceTo(haF) <= reach * k && q.b.distanceTo(haB) <= reach * k; };
+      // The hips sitting down (less if that would take a hand out of reach).
+      const sagDir = new THREE.Vector3(0, -0.85, 0).addScaledVector(leanDir, 0.45).normalize();
+      let sag = load * ts.sitIn * (this.harness === 'seat' ? 0.11 : 0.06);
+      const pelvis0 = pelvis.clone(), neck0 = neck.clone();
+      for (let i = 0; i < 6 && sag > 0.002; i++, sag *= 0.6) {
+        pelvis.copy(pelvis0).addScaledVector(sagDir, sag);
+        neck = pelvis.clone().addScaledVector(neck0.clone().sub(pelvis).normalize(), torsoLen);
+        if (fits(neck, 0, 1)) break;
+        pelvis.copy(pelvis0); neck = neck0.clone();
+      }
+      // Straighter arms: tip the torso back about the hips, away from the hands, until the longer arm is nearly straight.
+      const away = mid.clone().sub(haF.clone().add(haB).multiplyScalar(0.5));
+      const axis = neck.clone().sub(pelvis).normalize();
+      const rotAxis = axis.clone().cross(away.addScaledVector(axis, -away.dot(axis))).normalize();
+      if (rotAxis.lengthSq() > 0.5 && ts.armsStraight > 0) {
+        const tipped = (a) => pelvis.clone().add(neck.clone().sub(pelvis).applyAxisAngle(rotAxis, a));
+        const target = 0.9 + 0.06 * Math.min(1, ts.armsStraight);
+        let lo = 0, hi = 0.35 * Math.min(1.5, ts.armsStraight) * load;
+        if (fits(tipped(hi), 0, target)) lo = hi;
+        else for (let i = 0; i < 10; i++) { const a = (lo + hi) / 2; if (fits(tipped(a), 0, target)) lo = a; else hi = a; }
+        if (fits(tipped(lo), 0, 1)) neck = tipped(lo);
+      }
+      // The chest opening toward the bow, as far as the front arm reaches.
+      let open = clamp(load * ts.chestOpen * 25 * DEG, 0, 60 * DEG);
+      for (let i = 0; i < 8 && open > 0 && !fits(neck, open, 0.99); i++) open *= 0.7;
+      if (!fits(neck, open, 0.99)) open = 0;
+      const q = shoulders(neck, open);
+      mid = q.m;
+      half.copy(q.hv);
+      neck = pelvis.clone().addScaledVector(mid.clone().addScaledVector(neck.clone().sub(pelvis).normalize(), BODY.neckDrop * H).sub(pelvis).normalize(), torsoLen);
+      mid = neck.clone().addScaledVector(neck.clone().sub(pelvis).normalize(), -BODY.neckDrop * H);
+      this.chestOpened = open;
     }
     const torsoAxis = neck.clone().sub(pelvis).normalize();
     const shL = mid.clone().add(half), shR = mid.clone().sub(half); // front and back shoulder

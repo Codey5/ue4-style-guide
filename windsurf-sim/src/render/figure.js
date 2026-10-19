@@ -129,7 +129,8 @@ function rigidTube(rings, seg, color, { caps = [true, true], ex = V3(1, 0, 0), d
 }
 
 export class Figure {
-  constructor(height = 1.8) {
+  /** harness: 'waist' (a band round the waist, the hook at the belly) or 'seat' (round the hips, with leg loops, the hook low). */
+  constructor(height = 1.8, { harness = 'waist' } = {}) {
     const H = height, k = H / 1.78;
     this.H = H;
     this.root = new THREE.Group();
@@ -303,7 +304,10 @@ export class Figure {
       add(FOOT[s], new THREE.Mesh(bootGeo, bootMat));
       add(FOOT[s], new THREE.Mesh(collarGeo, std(0x262c31, { roughness: 0.75 })), V3(0, -0.006 * k, 0.012 * k));
     }
-    // The harness: a waist band round the hips, a spreader bar across the front and the hook.
+    // The harness: a band round the waist (or, a seat harness, round the
+    // hips with a loop round each thigh), a spreader bar across the front and the hook.
+    const seat = harness === 'seat';
+    this.harness = seat ? 'seat' : 'waist';
     const at = (y) => {
       // (the torso's cross-section at height y, a little proud of it)
       let i = 1;
@@ -311,19 +315,30 @@ export class Figure {
       const a = torsoRings[i - 1], b = torsoRings[i], t = clamp((y - a.s) / (b.s - a.s), 0, 1);
       return { s: y, rx: (a.rx + (b.rx - a.rx) * t) * 1.02 + 0.004, rz: (a.rz + (b.rz - a.rz) * t) * 1.02 + 0.004, cz: a.cz + (b.cz - a.cz) * t };
     };
-    const bandRings = [at(0.04 * k), at(0.048 * k), at(0.14 * k), at(0.15 * k)];
+    const y0 = seat ? -0.035 * k : 0.04 * k, y1 = seat ? 0.075 * k : 0.15 * k, yHook = 0.5 * (y0 + y1) + 0.005 * k;
+    const bandRings = [at(y0), at(y0 + 0.008 * k), at(y1 - 0.01 * k), at(y1)];
     bandRings[0].color = 0x14181b; bandRings[3].color = 0x14181b;
     const band = rigidTube(bandRings, 28, 0xff7a1a, { caps: [false, false] });
     const bandMesh = add(PELVIS, new THREE.Mesh(band, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, side: THREE.DoubleSide })));
     bandMesh.receiveShadow = true;
-    const front = at(0.095 * k);
+    const front = at(yHook);
     const zBar = front.cz + front.rz + 0.022 * k;
-    const bar = add(PELVIS, new THREE.Mesh(new THREE.CapsuleGeometry(0.011 * k, 0.2 * k, 3, 8), std(0x9aa3a8, { metalness: 0.7, roughness: 0.35 })), V3(0, 0.095 * k, zBar));
+    const bar = add(PELVIS, new THREE.Mesh(new THREE.CapsuleGeometry(0.011 * k, (seat ? 0.17 : 0.2) * k, 3, 8), std(0x9aa3a8, { metalness: 0.7, roughness: 0.35 })), V3(0, yHook, zBar));
     bar.rotation.z = Math.PI / 2;
     const hook = add(PELVIS, new THREE.Mesh(new THREE.TorusGeometry(0.03 * k, 0.008 * k, 6, 12, Math.PI * 1.25), std(0xcfd4d6, { metalness: 0.85, roughness: 0.25 })),
-      V3(0, 0.095 * k + 0.006, zBar + 0.035 * k));
+      V3(0, yHook + 0.006, zBar + 0.035 * k));
     hook.rotation.set(Math.PI / 2, 0, -Math.PI * 0.125);
-    this.hookOffset = V3(0, 0.1 * k, zBar + 0.05 * k);
+    this.hookOffset = V3(0, yHook + 0.005 * k, zBar + 0.05 * k);
+    if (seat) {
+      // (the leg loops: a strap round the top of each thigh)
+      const loopRings = [0.075, 0.082, 0.118, 0.125].map((u, i) => {
+        const r = (0.086 + (i === 0 || i === 3 ? 0 : 0.003)) * k * 1.1 + 0.005;
+        return { s: u * sG, rx: r, rz: r, cz: -0.002 * k, color: i === 0 || i === 3 ? 0x14181b : undefined };
+      });
+      const loop = rigidTube(loopRings, 20, 0xff7a1a, { caps: [false, false] });
+      const loopMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, side: THREE.DoubleSide });
+      for (const s of [RIGHT, LEFT]) add(THIGH[s], new THREE.Mesh(loop, loopMat));
+    }
     this.hookPos = V3();
 
     this.last = { F: V3(0, 0, 1), arm: [null, null], leg: [null, null] };

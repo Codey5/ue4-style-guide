@@ -292,7 +292,8 @@ export class Menu {
         ${slider('height', 'Your height', 155, 200, 1, s.height, `${s.height} cm`)}
         ${slider('boom', 'Boom height', -12, 16, 1, s.boomRel, boomLabel(s))}
         ${slider('lines', 'Harness lines', -6, 6, 1, s.linesRel ?? 0, linesLabel(s))}
-        <p class="muted">How far out you can hang decides how much power you can hold. Unhooked, it's your arms; hooked in, it's the harness lines. Longer lines let you hang further out but take the boom further from your hands; shorter lines keep you upright and close to the rig. A higher boom lets you lean further out on straight arms but needs longer lines, or the hook won't reach. Leaning the rig to windward brings the boom out over the water to you.</p>
+        ${slider('harness', 'Harness', 0, 1, 1, s.harness === 'waist' ? 0 : 1, s.harness === 'waist' ? 'Waist' : 'Seat')}
+        <p class="muted">How far out you can hang decides how much power you can hold. Unhooked, it's your arms; hooked in, it's the harness lines. Longer lines let you hang further out but take the boom further from your hands; shorter lines keep you upright and close to the rig. A higher boom lets you lean further out on straight arms but needs longer lines, or the hook won't reach. Leaning the rig to windward brings the boom out over the water to you. A waist harness sits round your middle; a seat harness round your hips, with loops round your thighs, so you sit down into the lines.</p>
         <h3>Rig tuning</h3>
         ${slider('tlines', 'Harness line position', -10, 10, 1, s.tuneLines ?? 0, linesPosLabel(s))}
         ${slider('tmast', 'Mast foot', -10, 10, 1, s.tuneMast ?? 0, mastLabel(s))}
@@ -382,6 +383,7 @@ export class Menu {
       h.gear();
     });
     range('lines', 'linesRel', () => '', (v) => { s.linesRel = v; $('lines-out').textContent = linesLabel(s); h.gear(); });
+    range('harness', 'harness', (v) => (v ? 'Seat' : 'Waist'), (v) => { s.harness = v ? 'seat' : 'waist'; h.gear(); });
     range('boom', 'boomRel', () => '', (v) => { s.boomRel = v; $('boom-out').textContent = boomLabel(s); h.gear(); });
     range('tlines', 'tuneLines', () => '', (v) => { s.tuneLines = v; $('tlines-out').textContent = linesPosLabel(s); h.gear(); });
     range('tmast', 'tuneMast', () => '', (v) => { s.tuneMast = v; $('tmast-out').textContent = mastLabel(s); h.gear(); });

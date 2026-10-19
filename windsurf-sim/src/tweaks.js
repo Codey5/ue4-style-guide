@@ -58,6 +58,12 @@ const DEFS = [
     'Multiplies how far the hips turn toward the bow from the shoulders (which stay square to the boom): at 1 about 17° sailing, 26° in the straps, 33° hooked in and in the straps, 7° in a move. Drawing only.'],
   ['sailor.backArch', 'Back arch', 0, 10, 0.1, 6, [-5, 15],
     'Multiplies the bend in the back: arched (chest toward the boom) hanging in the harness, rounded crouching. 0 = a straight back; negative bends it the other way. Drawing only.'],
+  ['sailor.sitIn', 'Sit into the harness', 0, 3, 0.05, 1, [0, 6],
+    'Hooked in and loaded, how far the hips sit down into the harness, below the line from your feet to your shoulders: at 1, 11 cm in a seat harness and 6 cm in a waist harness at full pull (from 150 N on the hook to 550 N). Drawing only.'],
+  ['sailor.armsStraight', 'Straight arms hooked in', 0, 1.5, 0.05, 1, [0, 1.5],
+    'Hooked in and loaded, how much the torso tips back from the hips to straighten the arms: at 1 the longer arm is drawn at 96% of its reach; 0 leaves the arms as the balance puts them. Drawing only.'],
+  ['sailor.chestOpen', 'Chest open to the bow', 0, 2.5, 0.05, 1, [0, 2.7],
+    'Hooked in and loaded, how far the shoulders turn toward the bow (about the front shoulder: the back one comes forward and its arm bends): at 1, 25° at full pull, less if the front hand would be out of reach. Drawing only.'],
   ['sailor.poseSpeed', 'Pose follow speed', 0.3, 3, 0.05, 1.45, [0.05, 50],
     'Multiplies how quickly the drawn body moves into each new pose the physics asks for: at 1 it\'s most of the way there in a twentieth of a second sailing, a tenth in a move. Lower is lazier, smoother; higher snappier. Drawing only.'],
   // Camera

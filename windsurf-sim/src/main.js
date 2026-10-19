@@ -38,6 +38,7 @@ const STORE_KEY = 'beam-reach-settings-v2';
 const defaults = {
   windKn: 15, gustiness: 0.45, shifts: 0.5, chop: 1,
   boardId: 'free135', sailArea: 7.0, mass: 75, height: 183, boomRel: 0, linesRel: 0,
+  harness: 'seat', // how the harness is drawn: 'waist' or 'seat'
   tuneLines: 0, tuneMast: 0, downhaul: 0, outhaul: 0, // rig tuning: cm along the boom / track, and -1..1
   autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
   windParticles: true, cameraShake: true, gpsPanel: true,
@@ -149,7 +150,7 @@ function buildModels() {
   if (sailor) boardGroup.remove(sailor.group);
   boardMesh = buildBoard(sim.board);
   rig = new Rig(sim.sailGeo);
-  sailor = new Sailor(sim.sailorHeight);
+  sailor = new Sailor(sim.sailorHeight, { harness: settings.harness });
   boardGroup.add(boardMesh, rig.group, sailor.group);
 }
 
