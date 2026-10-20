@@ -36,7 +36,7 @@ The bar is the one set by MX Bikes, Jibbers and ProjectX: the rider is a physica
 
 | System | Status | How it works now |
 | --- | --- | --- |
-| Rake, lean and sheeting | Scripted | Rate-limited servos: the sticks set an angle, the rig moves there. The rig has no inertia of its own and the sail's force doesn't move it, except for some couplings: the hang pulling it over, catapult tipping, pumping. |
+| Rake, lean and sheeting | Partly (v33) | Rake and lean are a body: the rig has inertia about the mast foot, its weight tips it over, and your hands steer it toward the stick with limited strength (stamina and body weight); gusts yank it before your hands catch it. Sheeting is still a servo on the boom angle. Secure position, uphaul and waterstart still place the rig. |
 | Pumping | Scripted | An oscillation of the rig at a fixed rate while the button is held. |
 | Uphauling | Scripted | A progress bar while the button is held, slower for big sails and in strong wind. |
 | Waterstart | Partly | The lift test is real: the sail's pull against your weight, the board across the wind. But clearing the rig and rising are timed phases. |
@@ -45,9 +45,9 @@ The bar is the one set by MX Bikes, Jibbers and ProjectX: the rider is a physica
 
 | Move | Status | How it works now |
 | --- | --- | --- |
-| Carve gybe | Partly | The carve is the physics (rail, rake, lean); the sail flip in the middle is the scripted part (below). |
-| Sail flip (Y) | Scripted | A state: the boom swings from one side to the other over 0.75 s on a curve, and your side swaps halfway. |
-| Tack (B) | Scripted | A state: your feet push the board round with a fixed torque until the nose passes the wind, then a timed step round the mast. |
+| Carve gybe | Partly | The carve is the physics (rail, rake, lean), and so is the flip now (below). |
+| Sail flip (Y) | Partly (v33) | Y lets go with the back hand. The sail then turns freely about the mast: it weathervanes in the apparent wind, you throw it across with the stick, and sheeting in reaches for the boom on the new side; you've caught it once it's close enough to hold. Your side swaps when the boom passes the bow. Still a state you enter with a button. |
+| Tack (B) | Partly (v33) | B steps you up to the mast. The board turns only while you drive it: rig back pushes the nose through the wind, rig forward on the new side bears you away. The step round the mast is still timed footwork. |
 | Duck gybe (LB + Y) | Scripted | A trick state: scripted boom throw, a timing window for when you duck, a fixed share of the sail's pull. |
 | Carving 360 (LB + X) | Scripted | A trick state: a fixed turning radius set by the rail, speed lost by formula, the sail flagged and caught by script. |
 | Spock (LB + A) | Scripted | A trick state: a scripted spin on the nose; weight back ends it. |

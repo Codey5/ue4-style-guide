@@ -65,7 +65,7 @@ export function boomStations(geo, hooked, boom = 0, center = undefined) {
  * centerX: where along the board (board x) the hands should centre, or
  * undefined for the standard grip.
  */
-export function boomGrips(board, rig, geo, hooked, centerX = undefined) {
+export function boomGrips(board, rig, geo, hooked, centerX = undefined, oneHand = false) {
   const f = rigFrame(board, rig), side = rig.side;
   const at = (x) => rigToBoard(f, boomLocal(geo, x, side));
   let center;
@@ -75,7 +75,8 @@ export function boomGrips(board, rig, geo, hooked, centerX = undefined) {
     if (Math.abs(b1 - b0) > 0.05) center = x0 + (centerX - b0) / (b1 - b0) * (x1 - x0);
   }
   const st = boomStations(geo, hooked, rig.boom, center);
-  return { f: at(st.front), b: at(st.back), lineA: at(st.lineA), lineB: at(st.lineB), st };
+  // (the back hand let go: the front hand slides up to the mast, and holds the rig there)
+  return { f: at(oneHand ? Math.min(st.front, 0.12) : st.front), b: at(st.back), lineA: at(st.lineA), lineB: at(st.lineB), st };
 }
 
 /** Where along the board the hands centre for a stance: a little ahead of the feet. */
@@ -257,7 +258,8 @@ export const BOOM_CLEAR = 0.18;
 export function overreach(ctx, body) {
   if (!ctx.hands) return -1;
   const r = ctx.reach * 0.97;
-  let e = Math.max(len(sub(body.shF, ctx.hands.f)), len(sub(body.shB, ctx.hands.b))) - r;
+  // (with the back hand let go, only the front hand has to reach: it's near the mast)
+  let e = (ctx.oneHand ? len(sub(body.shF, ctx.hands.f)) : Math.max(len(sub(body.shF, ctx.hands.f)), len(sub(body.shB, ctx.hands.b)))) - r;
   // ...nor (drawn) so close that the boom runs into your chest or your
   // head: the balance's lever barely notices the few centimetres, the eye does.
   // (from the boom's head, a hand or two in front of the front hand, to the back hand)

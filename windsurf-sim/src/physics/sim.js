@@ -159,7 +159,8 @@ export class Sim {
     this.airborne = false; this.airTime = 0; this.airHeight = 0; this.contact = 1; this.noseDrag = 0; this.slamDrag = 0;
     this.impact = 0; this.finAir = 0; this.landing = null; this.aLong = 0;
     this.popT = undefined; this.popK = 0; this.jump = null; this.takeoff = null;
-    this.rig = { rake: 0, lean: 0, boom: side * 80 * DEG, side, up: 1, cam: [side, side, side, side], camTo: [side, side, side, side] };
+    this.rig = { rake: 0, lean: 0, rakeRate: 0, leanRate: 0, boom: side * 80 * DEG, side, up: 1, cam: [side, side, side, side], camTo: [side, side, side, side] };
+    this.rigHeld = false; this.rigVel = undefined; this.reachCap = undefined; this.pullSlow = undefined; this.tipSlow = undefined;
     this.sailor = {
       side, x: this.board.mastFootX - 0.35, leanX: 0, beta: 4 * DEG, betaRate: 0, hang: 0, hangTime: 0, phi: 0, phiRate: 0,
       hooked: false, straps: 0, stamina: 1, gripLost: 0, hookTimer: 0, strapsHoldTime: 0,
@@ -192,7 +193,13 @@ export class Sim {
   setState(s, data = {}) {
     // Coming up onto the board (or out of a turn) you're already set against the pull.
     // (against the pull there is now, not the one you last felt before it)
-    if (s === S.SAILING && this.state !== S.SAILING) { this.pitchSettle = true; this.pullFelt = undefined; }
+    if (s === S.SAILING && this.state !== S.SAILING) {
+      this.pitchSettle = (this.state === S.TACK || this.state === S.FLIP || this.state === S.TRICK) ? 'move' : this.state === S.RISING ? 'rise' : true;
+      this.pullFelt = undefined;
+    }
+    // (in the water the hands start afresh: both on the rig, no slip)
+    if (s === S.FALLING) Object.assign(this.sailor, { backOff: 0, regrab: 1, gripLost: 0 });
+    this.prevState = this.state;
     this.state = s;
     this.stateTime = 0;
     this.stateData = data;
@@ -434,7 +441,10 @@ export class Sim {
     if (this.state === S.TACK) {
       const d = this.stateData;
       const turn = -d.fromSide; // heading up from the old tack = turning toward the old windward side
-      N += turn * (d.switched ? 20 : 38) * clamp(1 - Math.abs(this.yawRate) / 0.9, 0, 1) * 1.6;
+      // (your feet push the tail away as you sweep the rig back, and the nose
+      // on round as you throw it forward on the new side: only as you do)
+      const push = d.switched ? clamp(ctl.rake, 0, 1) * 20 : clamp(-ctl.rake, 0, 1) * 38;
+      N += turn * push * clamp(1 - Math.abs(this.yawRate) / 0.9, 0, 1) * 1.6;
     }
 
     // Hull yaw damping (the fin adds most of it at speed).
@@ -680,6 +690,14 @@ export class Sim {
       if (pr.tack) this.startTack(twa, speed);
       if (pr.flip) this.startFlip();
       if (pr.drop) this.dropRig();
+    } else if (st === S.FLIP) {
+      // (before it's come round: take hold of it again on the same side)
+      if (pr.flip && !this.stateData.switched) {
+        this.rig.boom = wrapAngle(this.stateData.u);
+        this.setState(S.SAILING);
+        this.sailor.regrab = 0;
+        this.emit('flipdone', 'Took hold of the sail again');
+      }
     } else if (st === S.SECURE) {
       if (pr.tack) this.startTack(twa, speed);
       if (pr.flip) {
@@ -731,11 +749,12 @@ export class Sim {
       this.fall('leeward', 'You tried to flip the sail while hooked in. Wipeout!');
       return;
     }
+    // You let go with the back hand: the sail, held at the mast by the front
+    // hand, turns about it, streaming in the wind and as you throw it.
     const r = this.rig;
-    const d0 = r.boom;
-    this.setState(S.FLIP, { d0, d1: r.side * 2 * Math.PI - d0, switched: false, T: 0.75 });
+    this.setState(S.FLIP, { side0: r.side, u: r.boom, rate: 0, switched: false });
     s.straps = 0;
-    this.emit('flip', 'Sail flip — clew round the front');
+    this.emit('flip', 'Back hand off: throw the sail across (left stick) and sheet in to catch it on the new side');
   }
 
   dropRig(why = 'Dropped the rig. Hold LB to uphaul') {
@@ -801,11 +820,10 @@ export class Sim {
         break;
       }
       case S.FLIP: {
+        // Round the front of the mast (the clew past the nose) you're on the
+        // new side; sheeting in there catches the boom. Too long and it's gone.
         const d = this.stateData;
-        const ph = clamp(this.stateTime / d.T, 0, 1);
-        const e = ph * ph * (3 - 2 * ph);
-        r.boom = lerp(d.d0, d.d1, e);
-        if (!d.switched && ph >= 0.5) {
+        if (!d.switched && d.side0 * d.u > Math.PI) {
           d.switched = true;
           s.side *= -1;
           r.side *= -1;
@@ -813,11 +831,10 @@ export class Sim {
           s.betaRate = 0;
           s.x = Math.min(s.x, b.frontStrapX + 0.1);
         }
-        if (ph >= 1) {
-          r.boom = wrapAngle(r.boom);
+        if (d.switched && ctl.sheet > 0.35 && Math.sign(r.boom) === r.side && Math.abs(r.boom) < 50 * DEG) {
           this.setState(S.SAILING);
           this.emit('flipdone', 'Sail flipped — sheet in on the new tack');
-        }
+        } else if (this.stateTime > 6) this.fall('windward', 'you let the sail go and lost it in the wind. Throw it across (left stick) and sheet in as it comes round.');
         break;
       }
       case S.FALLING: {
@@ -918,6 +935,43 @@ export class Sim {
   updateRig(dt, ctl, twa) {
     const r = this.rig, s = this.sailor, st = this.state;
     const rateRake = 115 * DEG * dt;
+    // The rig is a body you hold, not bolted to the sticks: your hands steer
+    // it (rake and lean, about the mast foot) toward where the sticks point,
+    // as hard as they can and no harder. It has inertia, its weight tips it
+    // further over once you let it lean (you hold most of that without
+    // thinking), and a gust's sudden extra pull yanks it before your hands
+    // catch it. (The sail's steady pull goes through your body: the balance.)
+    const held = this.rigHeld;
+    this.rigHeld = false;
+    const rake0 = r.rake, lean0 = r.lean;
+    const holdRig = (rakeCmd, leanCmd, strength = 1) => {
+      this.rigHeld = true;
+      // (taking hold of it, it carries on the way it was already moving)
+      if (!held) {
+        r.rakeRate = clamp(this.rigVel?.[0] ?? 0, -2, 2); r.leanRate = clamp(this.rigVel?.[1] ?? 0, -2, 2);
+        this.pullSlow = this.handForce; this.tipSlow = this.tipAero;
+      }
+      const rs = tw.controls.rigSpeed;
+      const I = this.sail.rigMass * 4 + 6; // kg·m² about the mast foot
+      const wn = 11 * rs, Kp = I * wn * wn, Kd = 2 * 0.85 * wn * I;
+      const Tmax = (450 + 350 * s.stamina) * (this.sailorMass / 75) * strength;
+      const mgh = this.sail.rigMass * G * 1.7;
+      const gRake = mgh * Math.sin(r.rake) * Math.cos(r.lean), gLean = mgh * Math.sin(r.lean) * Math.cos(r.rake);
+      // (the sudden part of the pull: what's changed in the last quarter second)
+      this.pullSlow = damp(this.pullSlow ?? this.handForce ?? 0, this.handForce ?? 0, 4, dt);
+      this.tipSlow = damp(this.tipSlow ?? this.tipAero ?? 0, this.tipAero ?? 0, 4, dt);
+      const gust = (this.handForce ?? 0) - this.pullSlow, tipGust = (this.tipAero ?? 0) - this.tipSlow;
+      const hand = (cmd, a, rate, g) => clamp(Kp * (cmd - a) - Kd * rate - 0.85 * g, -Tmax, Tmax);
+      const tRake = hand(rakeCmd, r.rake, r.rakeRate, gRake) + gRake + 0.5 * tipGust;
+      const tLean = hand(leanCmd, r.lean, r.leanRate, gLean) + gLean - s.side * gust * (this.boomHeight ?? 1.4) * 0.15;
+      r.rakeRate += (tRake / I) * dt;
+      r.leanRate += (tLean / I) * dt;
+      r.rake += r.rakeRate * dt;
+      r.lean += r.leanRate * dt;
+      const lim = (k, rk, max) => { if (Math.abs(r[k]) > max) { r[k] = Math.sign(r[k]) * max; if (r[rk] * r[k] > 0) r[rk] = 0; } };
+      lim('rake', 'rakeRate', 75 * DEG);
+      lim('lean', 'leanRate', 80 * DEG);
+    };
     const boomOpen = (sheet) => (3 + 92 * Math.pow(1 - clamp(sheet, 0, 1), 1.25)) * DEG;
     const flagAngle = (tipped = false) => {
       // Boom angle at which the sail streams like a flag in the apparent wind
@@ -968,6 +1022,12 @@ export class Sim {
       // open, the wind pushes it out to that limit (or to where it flags).
       const fa = flagAngle();
       if (Math.sign(fa) === r.side) open = Math.min(open, Math.abs(fa));
+      // (and the boom can't be further out than you can reach: swung right
+      // out over the water out of reach, holding on pulls it back in to you)
+      if (this.bodyGeo && !s.hooked && !this.bodyGeo.fits && s.backOff <= 0 && Math.abs(r.boom) > 55 * DEG) {
+        this.reachCap = Math.min(this.reachCap ?? Math.abs(r.boom), Math.abs(r.boom)) - 40 * DEG * dt;
+        open = Math.min(open, this.reachCap);
+      } else this.reachCap = undefined;
       const target = r.side * open;
       const load = clamp(this.handForce / 900, 0, 0.75);
       const ss = tw.controls.sheetSpeed, rs = tw.controls.rigSpeed;
@@ -975,8 +1035,7 @@ export class Sim {
       const outRate = (s.gripLost > 0 ? 260 : 150) * DEG * ss;
       const sheetingIn = Math.abs(target) < Math.abs(r.boom);
       r.boom = servo(r.boom, target, (ctl.pump ? 16 : 7) * ss, sheetingIn ? inRate : outRate, dt);
-      r.rake = servo(r.rake, rakeCmd + rakePump, (ctl.pump ? 14 : 6) * rs, 115 * DEG * (ctl.pump ? 2 : 1) * rs, dt);
-      r.lean = servo(r.lean, leanCmd, 6 * rs, 115 * DEG * rs, dt);
+      holdRig(rakeCmd + rakePump, leanCmd);
       r.up = 1;
     } else if (st === S.SECURE) {
       r.rake = servo(r.rake, ctl.rake * 26 * DEG, 5, 115 * DEG, dt);
@@ -986,24 +1045,32 @@ export class Sim {
       r.side = r.boom >= 0 ? 1 : -1;
       r.up = 1;
     } else if (st === S.TACK) {
-      if (!this.stateData.switched) {
-        // Rig swept back over the tail and held sheeted in: the sail drives the
-        // nose up through the wind while you move to the front of the mast.
-        r.rake = servo(r.rake, (-26 + ctl.rake * 8) * DEG, 5, 115 * DEG, dt);
-        r.boom = servo(r.boom, r.side * 6 * DEG, 6, 200 * DEG, dt);
-      } else {
-        // (held back until you've stepped back behind the mast, then forward to bear away)
-        const back = smoothstep(0.3, 0.65, this.stateTime - (this.stateData.switchTime ?? 0));
-        r.rake = servo(r.rake, lerp(-10, 18 + ctl.rake * 10, back) * DEG, 5, 115 * DEG, dt);
-        let open = boomOpen(Math.max(ctl.sheet, 0.25));
-        const fa = flagAngle();
-        if (Math.sign(fa) === r.side) open = Math.min(open, Math.abs(fa));
-        r.boom = servo(r.boom, r.side * open, 6, 200 * DEG, dt);
-      }
-      r.lean = servo(r.lean, 0, 5, 115 * DEG, dt);
+      // Stepping round the front of the mast, holding it: the rig goes where
+      // you sweep it (back over the tail drives the nose up through the wind,
+      // forward on the new side bears you away), the sail sheeted as you hold it.
+      holdRig((ctl.rake < 0 ? 26 : 18) * ctl.rake * DEG, 0, 0.8);
+      let open = boomOpen(this.stateData.switched ? Math.max(ctl.sheet, 0.25) : Math.max(ctl.sheet, 0.85));
+      const fa = flagAngle();
+      if (this.stateData.switched && Math.sign(fa) === r.side) open = Math.min(open, Math.abs(fa));
+      r.boom = servo(r.boom, r.side * open, 6, 200 * DEG, dt);
     } else if (st === S.FLIP) {
-      r.rake = servo(r.rake, (8 + ctl.rake * 16) * DEG, 5, 115 * DEG, dt);
-      r.lean = servo(r.lean, ctl.lean * 30 * DEG, 5, 115 * DEG, dt);
+      // Held only at the mast: you steer the rig one-handed, and the sail
+      // turns about the mast, streaming toward where it flags in the apparent
+      // wind and pushed round the front as you throw it (left stick, toward
+      // the new side).
+      const d = this.stateData;
+      // (once it's round, the rig comes up to windward on the new side as you
+      // lean it there and reach for the boom)
+      holdRig((8 + ctl.rake * 16) * DEG, d.switched ? ctl.lean * 30 * DEG + r.side * clamp(ctl.sheet, 0, 1) * 12 * DEG : 0, 0.5);
+      const q = clamp(this.aero?.qMean ?? 20, 2, 200);
+      const Ib = this.sail.rigMass * 0.9 + 4;
+      const vane = q * this.sail.area * 0.12 * Math.sin(wrapAngle(flagAngle() - d.u));
+      const thrown = d.switched ? 0 : clamp(-ctl.lean * d.side0, 0, 1) * 150 * d.side0;
+      // (round on the new side, sheeting in reaches for the boom and pulls it in to you)
+      const reach = d.switched ? clamp(ctl.sheet, 0, 1) * 80 * Math.sin(wrapAngle(r.side * 45 * DEG - d.u)) : 0;
+      d.rate += ((vane + thrown + reach - 6 * d.rate) / Ib) * dt;
+      d.u += d.rate * dt;
+      r.boom = wrapAngle(d.u);
     } else if (st === S.FALLING) {
       const r0 = this.stateData.rig0;
       const k = 1 - r.up;
@@ -1032,6 +1099,7 @@ export class Sim {
     } else if (st === S.TRICK) {
       this.trickRig(dt, ctl, flagAngle, boomOpen);
     }
+    this.rigVel = dt > 0 ? [(r.rake - rake0) / dt, (r.lean - lean0) / dt] : [0, 0];
     void twa;
   }
 
@@ -1556,12 +1624,13 @@ export class Sim {
     const onBoom = st === S.SAILING;
     const pose = stance(this.board, s, st, this.stateData, this.stateTime);
     const solve = (hooked) => {
-      const g = onBoom ? boomGrips(this.board, this.rig, this.sailGeo, hooked, s.gripX) : null;
+      const g = onBoom ? boomGrips(this.board, this.rig, this.sailGeo, hooked, s.gripX, s.backOff > 0 && !hooked) : null;
       const ctx = bodyContext({
         H: this.sailorHeight, stance: hooked === s.hooked ? pose : stance(this.board, { ...s, hooked }, st), side: s.side,
         leanX: s.leanX, hooked, onBoom, hands: g && { f: g.f, b: g.b }, lines: g && { a: g.lineA, b: g.lineB },
         lineLength: this.harnessLines, phi: onBoom ? reachPhi(s.phi) : 0,
       });
+      ctx.oneHand = s.backOff > 0 && !hooked;
       return { ctx, st: g?.st, ...(onBoom ? reachLimit(ctx) : { betaMax: 30 * DEG, betaMin: -30 * DEG, fits: true }) };
     };
     const now = solve(s.hooked && onBoom);
@@ -1629,8 +1698,11 @@ export class Sim {
     // back on the rig, not leaning out over your toes.)
     const phiT = clamp(phiForFwd(pt, Math.min(0.08, want - (this.pullFelt * geo.attachH) / W)), -20 * DEG, phiMax);
     if (this.pitchSettle) {
+      // (coming out of a move the sail is only just filling, and catching it
+      // can snatch: you don't throw yourself all the way back at a snatch;
+      // lifted up out of the water you arrive compact, over the board)
+      s.phi = this.pitchSettle === 'move' ? Math.min(phiT, 20 * DEG) : this.pitchSettle === 'rise' ? Math.min(phiT, 8 * DEG) : phiT;
       this.pitchSettle = false;
-      s.phi = phiT;
       s.phiRate = 0;
       comX = comFwdAt(pt, s.phi);
     }
@@ -1663,6 +1735,7 @@ export class Sim {
     }
     this.pitchBalance = {
       pull, tip, comX, cop, toe, heel, phiT, phiMax, atToe, atHeel: cop <= heel + 1e-4,
+      sailTip: pull * geo.attachH, // (the sail's share of the tip, without the board braking under you)
       // The least lean back that holds the pull, pressing through your toes,
       // and how much more pull (as metres of lean) there is than that holds now.
       phiNeed: clamp(phiForFwd(pt, toe - 0.05 - tip / W), -20 * DEG, phiMax),
@@ -1757,13 +1830,18 @@ export class Sim {
     // Coming back in you can also pull yourself up on the boom: the rig is
     // pinned at the mast foot, so it works as a handle (until you pull it over).
     const handle = 200 * (mS / 75);
-    const muscle = clamp(5000 * (target - s.beta) - 600 * s.betaRate, -(tauMax + handle), tauMax);
+    // (and with the back hand let go, leaned in over the board to leeward,
+    // you push yourself back up off it with the front hand)
+    const pushUp = s.backOff > 0 && s.beta < 0 ? handle : 0;
+    const muscle = clamp(5000 * (target - s.beta) - 600 * s.betaRate, -(tauMax + handle), tauMax + pushUp);
     // At the full reach of your arms (or harness lines) you hang on the boom:
     // they hold you in, and the same pull goes into the rig, bringing it over
     // toward you.
     const over = sailing ? s.beta - betaMax : 0;
     // (as hard as arms or lines can pull, not more)
-    const held = over > 0 ? Math.min(800, 6000 * over + 500 * Math.max(0, s.betaRate)) : 0;
+    // (a sail with little pull in it can't drag you after it: holding on, the
+    // boom swings in toward you instead)
+    const held = over > 0 ? Math.min(800, s.hooked ? 800 : 150 + 1.5 * Math.max(0, tauPull), 6000 * over + 500 * Math.max(0, s.betaRate)) : 0;
     const tau = tauGrav + tauRig - tauPull + muscle - held - 60 * s.betaRate;
     s.betaRate += (tau / I) * dt;
     s.beta += s.betaRate * dt;
@@ -1773,7 +1851,8 @@ export class Sim {
     // on your feet. (A big gust, or the rig falling to leeward, can still pull
     // you over: then you let go of the rig altogether.)
     // (only when you're straining to hold out and still being pulled in, not coming in on purpose)
-    const straining = muscle >= tauMax * 0.95 && tauPull > 0;
+    // (a pull your body could hold, being pulled in only because you were leaning out for more, isn't it)
+    const straining = muscle >= tauMax * 0.95 && tauPull > 0 && tauPull - Math.max(0, tauGrav) > 0.5 * tauMax;
     if (sailing && !s.hooked && straining && s.beta < 2 * DEG && s.betaRate < -0.4 && s.backOff <= 0 && s.side * this.rig.lean > -8 * DEG) {
       s.backOff = 1.1;
       s.regrab = 0;

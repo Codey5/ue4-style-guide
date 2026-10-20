@@ -127,13 +127,13 @@ const TECHNIQUE = `
 <p>Once planing, a broad reach (about 120–135° to the wind) is the fastest point of sail: the sail's pull points forward instead of over the side, so you're no longer overpowered. Keep the rig fairly upright, with only enough windward lean to keep the boom within reach (with the boom eased, leaning it more just tips the sail's force upward), sheet in close to the stall and sit back on the tail (right stick down) so the board rides on less water.</p>
 <p>Bear away much further and the apparent wind gets lighter as it swings behind you. In a moderate breeze you drop off the plane somewhere past 135°; it takes more wind to plane deep downwind.</p>
 <h3>Tack</h3>
-<p>Head up by raking the rig back while keeping the sail sheeted in. When the nose approaches the wind, press B and step round the front of the mast. As the nose crosses the wind you change sides; then rake the rig forward to bear away on the new tack. Small boards sink if you tack slowly.</p>
+<p>Head up by raking the rig back while keeping the sail sheeted in. When the nose approaches the wind, press B and step up to the mast. Keep the rig back (LS down): your feet push the tail away and the nose comes up through the wind. Once it's through you step round the front of the mast to the new side; then throw the rig forward (LS up) to bear away on the new tack. Stop driving it head to wind and you stall there. Small boards sink if you tack slowly.</p>
 <h3>Carve gybe</h3>
 <ol class="steps">
 <li>Planing, unhook (A) and take your feet out of the straps (hold X).</li>
 <li>Rake the rig forward and to windward, push on your toes (right stick toward the leeward rail) and carve downwind. Keep the sail sheeted in to keep the speed.</li>
-<li>At dead downwind press Y to flip the sail: let go with the back hand and the clew swings round the front of the mast.</li>
-<li>Grab the new side, keep carving out of the turn and sheet in on the new tack. Flip too early and the sail backwinds; too late and you stall.</li>
+<li>At dead downwind press Y: let go with the back hand. Throw the rig across toward the new side (LS) and the clew swings round the front of the mast.</li>
+<li>As it comes round, sheet in (RT) to grab the boom on the new side, keep carving out of the turn and sheet in on the new tack. Throw it too early and the sail blows back; leave it too long and you lose it. Y again before it's round takes hold on the same side.</li>
 </ol>
 <h3>Waterstart</h3>
 <p>In 12 knots or more you don't need to uphaul. Hold LB to clear the rig and lift it into the wind, steer the board across the wind with the rig, then sheet in. The sail lifts you onto the board. In light wind it won't. Climb on and uphaul instead.</p>

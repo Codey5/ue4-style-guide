@@ -16,7 +16,9 @@ const DT = 1 / 240;
 const LIMIT = 420; // seconds on the water allowed for a chapter
 
 const PLANE = { twa: 105, pump: true, straps: true, hook: true, hike: 'auto' };
-const LESSON_FOR = { carve: 'gybe', planegybe: 'gybe', duck: 'freestyle', c360: 'freestyle', spock: 'freestyle', heli: 'freestyle' };
+// (a trick picks up the freestyle lesson where that trick's part starts: after
+// a fall you practise the one you're on, not the whole run of them again)
+const LESSON_FOR = { carve: 'gybe', planegybe: 'gybe', duck: ['freestyle', 0], c360: ['freestyle', 2], spock: ['freestyle', 4], heli: ['freestyle', 6] };
 
 export class StoryPilot extends Pilot {
   constructor(run, sim) {
@@ -31,7 +33,7 @@ export class StoryPilot extends Pilot {
     const g = this.run.current?.goal;
     if (g && g.id !== this.goalId) {
       this.goalId = g.id;
-      if (this.lesson && this.lesson.lesson.id !== LESSON_FOR[g.id]) this.lesson = null;
+      if (this.lesson && this.lesson.lesson.id !== [LESSON_FOR[g.id]].flat()[0]) this.lesson = null;
     }
     const up = this.recover(dt);
     if (up) return up;
@@ -45,7 +47,7 @@ export class StoryPilot extends Pilot {
     const t = this.turning(dt);
     if (t) return t;
     const lid = LESSON_FOR[g.id];
-    if (lid) return this.lessonControls(lid, dt);
+    if (lid) return Array.isArray(lid) ? this.lessonControls(lid[0], dt, lid[1]) : this.lessonControls(lid, dt);
     switch (g.id) {
       case 'bearaway': return coach.sail(dt, { twa: 140, turnRate: 15, hike: 'auto' });
       case 'headup': return coach.sail(dt, { twa: 52, turnRate: 15, hike: 'auto' });

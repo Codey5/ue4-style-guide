@@ -74,6 +74,8 @@ export class Coach {
 
   /** Start a freestyle move: LB held (crouched) and its button pressed. */
   trick(c, kind) {
+    // (hooked in, resting the arms: unhook first, then go)
+    if (this.sim.sailor.hooked) { this.press(c, 'hook', 1.5); return c; }
     c.pop = true;
     this.press(c, { duck: 'flip', heli: 'tack', c360: 'straps', spock: 'hook' }[kind], 3);
     return c;
@@ -92,6 +94,21 @@ export class Coach {
   }
 
   /** Rig steering toward a true wind angle (degrees, always positive). */
+  /** Through a sail flip: thrown across round the front, then caught (sheeted in) on the new side. */
+  flipControls() {
+    const sim = this.sim, c = emptyControls(), d = sim.stateData ?? {};
+    c.rake = 0.3;
+    if (!d.switched) { c.lean = -(d.side0 ?? sim.sailor.side); c.sheet = 0; } else { c.lean = sim.sailor.side * 0.5; c.sheet = 0.6; }
+    return c;
+  }
+
+  /** Through a tack: the rig swept right back to drive the nose through the wind, then forward on the new side to bear away. */
+  tackControls() {
+    const c = emptyControls(), d = this.sim.stateData ?? {};
+    if (!d.switched) { c.rake = -1; c.sheet = 1; } else { c.rake = 0.7; c.sheet = 0.5; }
+    return c;
+  }
+
   steer(dt, twaDeg, turnRate = 6) {
     const sim = this.sim;
     const side = sim.sailor.side;
@@ -154,9 +171,11 @@ export class Coach {
       }
       // Fore and aft: ease off before the pull is more than leaning back on your toes can hold.
       const pb = sim.pitchBalance;
+      // (only the sail's share: sheeting out does nothing for a board braking under you)
       if (pb && pb.tipMax > 50) {
-        over = Math.max(over, (pb.tip - 0.75 * pb.tipMax) / pb.tipMax * 2);
-        if (pb.tipNow > 50) over = Math.max(over, (pb.tip - 0.85 * pb.tipNow) / pb.tipNow * 2);
+        const tip = Math.min(pb.tip, pb.sailTip ?? pb.tip);
+        over = Math.max(over, (tip - 0.75 * pb.tipMax) / pb.tipMax * 2);
+        if (pb.tipNow > 50) over = Math.max(over, (tip - 0.85 * pb.tipNow) / pb.tipNow * 2);
       }
     }
     // Rig lean: a little to windward when planing on a reach. More whenever
@@ -184,7 +203,9 @@ export class Coach {
     // (hanging in the harness: unhooked your arms can't hold a rig leaned that far)
     const lit = p * smoothstep(6.5, 8.5, t.speed) * (s0.hooked ? 1 : 0);
     this.reachLean = damp(this.reachLean ?? 0, smoothstep(-10 * DEG, 4 * DEG, short) * 0.22 + lit * smoothstep(-10 * DEG, REACH_LEAN_AT * DEG, short) * Math.max(0, REACH_LEAN - 0.22), 0.8, dt);
-    c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp, -0.2, 1);
+    // (just up out of a waterstart, the rig stays up over you a moment, or you can't reach to hang off it)
+    const justUp = sim.prevState === S.RISING ? 0.45 * clamp(1 - sim.stateTime / 2, 0, 1) : 0;
+    c.lean = o.lean ?? side * clamp(0.25 * p * (1 - deep) + this.reachLean + bearAway - headUp + justUp, -0.2, 1);
     // Rough water: a touch less power, so the board stays under control over the chop.
     const rough = smoothstep(0.35, 0.8, sim.waves.hsAt(sim.pos[0], sim.pos[2])) * (p > 0.9 ? 1 : 0);
     const aTarget = (o.alpha ?? 20 + 4 * deep) * DEG - clamp(over, 0, 1) * 14 * DEG - rough * 3 * DEG;
@@ -192,12 +213,16 @@ export class Coach {
     // it (a few degrees short of full stretch is just your legs and core
     // holding you; leaning back, only short of what holds the pull at all).
     const fa = sim.pitchBalance;
-    const lag = (sim.betaTarget !== undefined ? Math.max(0, sim.betaTarget - sim.sailor.beta - 6 * DEG) : 0) +
+    // (only as far out as you can reach: leaned in because the boom's too far
+    // out, easing the sheet only sends it further away)
+    const lag = (sim.betaTarget !== undefined ? Math.max(0, Math.min(sim.betaTarget, sim.betaMax ?? sim.betaTarget) - sim.sailor.beta - 6 * DEG) : 0) +
       (fa ? 2 * Math.max(0, fa.phiNeed - sim.sailor.phi) + 4 * fa.excess : 0);
+    // (arms burnt out: stop pumping a while and let them come back)
+    this.resting = s0.stamina < 0.1 ? true : s0.stamina > 0.55 ? false : !!this.resting;
     if (sim.sailor.gripLost > 0) this.sheet = Math.min(this.sheet, 0.3);
     else this.sheet = clamp(this.sheet + clamp(-(t.alpha - aTarget) * 2.2 - Math.max(0, over) * 1.5 - lag * 4, -1.5, 0.2) * dt, 0.05, 1);
     c.sheet = this.sheet;
-    c.pump = !!o.pump && p < 0.85;
+    c.pump = !!o.pump && p < 0.85 && !this.resting;
     // On the plane, steer with the feet too: toes (leeward rail) bear away,
     // heels (windward rail) head up. Off the wind a little steady heel
     // pressure stops the eased sail's drive turning the board further downwind.
@@ -226,7 +251,9 @@ export class Coach {
     if (this.slowT > 1) { c.strapsHeld = true; c.weight = 0.2; if (s.hooked) this.press(c, 'hook', 1.5); }
     // Hook in once sheeted in enough that the lines reach where you need to hang.
     const lines = sim.hookReach;
-    if ((o.hook ?? o.straps) && going && !s.hooked && this.sheet > 0.45 && lines?.fits &&
+    // (arms burnt out, you hook in as soon as there's pull enough to hang on, planing or not)
+    const tired = s.stamina < 0.3 && t.speed > 2.5 && this.sheet > 0.3;
+    if ((o.hook ?? o.straps) && (going || tired) && !s.hooked && (this.sheet > 0.45 || tired) && lines?.fits &&
       // (with auto-hike holding you out at the balance, within a few degrees of it)
       lines.betaMax >= s.beta - (sim.assists.autoHike ? 12 : 4) * DEG) this.press(c, 'hook', 1.2);
     if (o.jump) this.jump(c, o.jumpPeak);

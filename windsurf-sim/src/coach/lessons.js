@@ -49,6 +49,23 @@ function rigSteer(sim, twaDeg) {
   return clamp(-side * (2 * e + 0.8 * sim.yawRate), -1, 1);
 }
 
+// Getting going again unhooked: a beam reach, but if the board won't get
+// onto the plane, bear off onto a broad reach (less sideways pull to hold, and
+// easier to plane) and come back up once it's going.
+// (arms burnt out: hook in and let them come back before the next move)
+function resting(x) {
+  const st = x.sim.sailor.stamina;
+  x.m.rest = st < 0.3 ? true : st > 0.75 ? false : !!x.m.rest;
+  return x.m.rest;
+}
+function powerUpTwa(x) {
+  const m = x.m, sim = x.sim;
+  m.slowT = planing(sim) ? 0 : (m.slowT ?? 0) + x.dt;
+  if (m.slowT > 6) m.bear = true;
+  else if (planing(sim) && kn(sim) > 13) m.bear = false;
+  return m.bear ? 120 : 100;
+}
+
 export const LESSONS = [
   {
     id: 'uphaul',
@@ -178,7 +195,7 @@ export const LESSONS = [
       },
       {
         say: 'Wait for the nose to pass through the wind, then change sides and swing the rig forward to bear away on the new tack.',
-        run: () => { const c = emptyControls(); c.sheet = 0.5; return c; },
+        run: (x) => x.coach.tackControls(),
         done: (sim, x) => sim.state === S.SAILING && sim.sailor.side !== x.lesson.side0,
       },
       {
@@ -234,7 +251,7 @@ export const LESSONS = [
         done: (sim) => absTwa(sim) > 163,
       },
       {
-        say: 'Dead downwind: flip the sail ({Y}). Let go with the back hand and the clew swings round the front of the mast.',
+        say: 'Dead downwind: flip the sail. Let go with the back hand ({Y}) and throw the rig across toward the new side ({LS}): the clew swings round the front of the mast.',
         wait: 0.15,
         run: (x) => {
           const c = emptyControls(), side = x.lesson.turnSide;
@@ -245,14 +262,15 @@ export const LESSONS = [
         done: (sim) => sim.state === S.FLIP,
       },
       {
-        say: 'Grab the boom on the new side and keep carving on the same rail until the board is across the wind again.',
+        say: 'Sheet in ({RT}) to grab the boom as it comes round on the new side, and keep carving on the same rail until the board is across the wind again.',
         run: (x) => {
           const sim = x.sim, side = x.lesson.turnSide;
           const rail = -side * (absTwa(sim) > 135 ? 1 : 0.5);
           if (sim.state === S.FLIP) {
-            const c = emptyControls();
-            c.rail = rail; c.rake = 0.4; c.sheet = 0; c.lean = sim.sailor.side * 0.3;
-            x.coach.sheet = 0.2; // catch the new side gently
+            // (thrown round the front, then caught gently as it comes onto the new side)
+            const c = x.coach.flipControls();
+            c.rail = rail; c.rake = 0.4;
+            x.coach.sheet = c.sheet;
             x.coach.cur = undefined;
             return c;
           }
@@ -298,7 +316,7 @@ export const LESSONS = [
         done: (sim) => sim.state === S.RISING || sim.state === S.SAILING,
       },
       {
-        say: 'You\'re up! Hike out ({LT}) against the pull, sheet in and sail away.',
+        say: 'You\'re up! Keep the rig up to windward ({LS}), hike out ({LT}) against the pull, sheet in and sail away.',
         run: (x) => x.coach.sail(x.dt, { twa: 100, hike: 'auto' }),
         done: (sim, x) => x.t > 5 && sim.state === S.SAILING,
       },
@@ -570,8 +588,9 @@ export const LESSONS = [
       {
         say: 'Power up again on a beam reach.',
         retryOnFall: 'In the water! Back on, and power up again.',
-        run: (x) => x.coach.sail(x.dt, { twa: 100, pump: true, straps: true, hook: false, hike: 'auto' }),
-        done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > 16,
+        run: (x) => x.coach.sail(x.dt, { twa: powerUpTwa(x), pump: true, straps: true, hook: resting(x), hike: 'auto' }),
+        // (as fast as you'll go: a heavy sailor unhooked tops out a little slower)
+        done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > (x.t > 8 ? 14 : 16),
       },
       {
         say: 'Carving 360. At full speed, {LB} + {X} and sink the rail hard ({RS} toward the sail): the board carves right round, downwind and back up through the wind. Let the sail go as it streams out like a flag, and catch it again as you come round.',
@@ -587,8 +606,10 @@ export const LESSONS = [
             x.coach.cur = undefined; x.coach.sheet = c.sheet;
             return c;
           }
-          const c = x.coach.sail(x.dt, { twa: 100, straps: true, hook: false, hike: 'auto' });
-          if (!(sim.lastTrick?.t > m.since) && planing(sim) && kn(sim) > 17) x.coach.trick(c, 'c360');
+          // (short of speed: bear off a little and pump to build it before going in)
+          const short = x.t > 6 && kn(sim) < 16;
+          const c = x.coach.sail(x.dt, { twa: short ? 118 : 100, pump: short, straps: true, hook: false, hike: 'auto' });
+          if (!(sim.lastTrick?.t > m.since) && planing(sim) && kn(sim) > (x.t > 6 ? 15.5 : 17)) x.coach.trick(c, 'c360');
           return c;
         },
         done: (sim, x) => !!sim.lastTrick && sim.lastTrick.kind === 'c360' && sim.lastTrick.t > (x.m.since ?? 0) && x.t > 2,
@@ -596,8 +617,8 @@ export const LESSONS = [
       {
         say: 'Power up again.',
         retryOnFall: 'In the water! Back on, and power up again.',
-        run: (x) => x.coach.sail(x.dt, { twa: 100, pump: true, straps: true, hook: false, hike: 'auto' }),
-        done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > 15,
+        run: (x) => x.coach.sail(x.dt, { twa: powerUpTwa(x), pump: true, straps: true, hook: resting(x), hike: 'auto' }),
+        done: (sim, x) => x.t > 3 && planing(sim) && kn(sim) > (x.t > 8 ? 12 : 15),
       },
       {
         say: 'Spock. Weight on your front foot ({RS} up) so the nose bites, then {LB} + {A}: the board spins a full turn on its nose, you and the rig turning with it. Sheet in and go.',
@@ -613,7 +634,7 @@ export const LESSONS = [
           }
           const c = x.coach.sail(x.dt, { twa: 100, straps: true, hook: false, hike: 'auto', weight: 0.8 });
           if (sim.sailor.straps === 2) c.weight = 0.8;
-          if (!(sim.lastTrick?.t > m.since) && planing(sim) && kn(sim) > 14 && sim.sailor.leanX > 0.04) x.coach.trick(c, 'spock');
+          if (!(sim.lastTrick?.t > m.since) && planing(sim) && kn(sim) > (x.t > 6 ? 12 : 14) && sim.sailor.leanX > 0.04) x.coach.trick(c, 'spock');
           return c;
         },
         done: (sim, x) => !!sim.lastTrick && sim.lastTrick.kind === 'spock' && sim.lastTrick.t > (x.m.since ?? 0) && x.t > 2,

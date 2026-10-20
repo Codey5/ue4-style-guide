@@ -122,7 +122,8 @@ export const CHAPTERS = [
     title: 'Small board',
     intro: "The Freeride 115 sinks if you stand still on it, so there's no uphauling: you start in the water and let the sail lift you out. A waterstart.",
     outro: 'Waterstarts, planing gybes and 20 knots. Time for the chop out by the sandbar.',
-    gear: { boardId: 'free115', sailArea: 'advise', smaller: 1 },
+    // (a size you can waterstart and gybe with in these gusts, whatever your weight)
+    gear: { boardId: 'free115', sailArea: 6.3 },
     wind: { speedKn: 18, gustiness: 0.25, shifts: 0.2, chop: 0.9 },
     start: 'water',
     goals: [

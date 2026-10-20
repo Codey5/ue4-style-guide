@@ -338,10 +338,12 @@ export class Hud {
         add(g.Y, 'Swap sides (when downwind)', 'Swap sides');
         break;
       case S.TACK:
-        add(g.LS, 'Rig back until the nose crosses the wind', 'Rig back');
-        add(g.RT, 'Sheet in on the new side', 'Sheet in');
+        if (!sim.stateData.switched) add(`${g.LS} ↓`, 'Rig back: the nose comes up through the wind', 'Rig back');
+        else { add(`${g.LS} ↑`, 'Rig forward: bear away on the new side', 'Rig forward'); add(g.RT, 'Sheet in on the new side', 'Sheet in'); }
         break;
       case S.FLIP:
+        if (!sim.stateData.switched) { add(g.LS, 'Throw the sail across to the new side', 'Throw the sail'); add(g.Y, 'Take hold again on this side', 'Take hold'); }
+        else add(g.RT, 'Sheet in to catch the boom', 'Catch the boom');
         add(g.RS, 'Keep carving on the inside rail', 'Keep carving');
         break;
       case S.TRICK: {
@@ -388,7 +390,7 @@ export class Hud {
           add(`${g.LB} hold`, s.straps === 2 ? 'Crouch: pop off a chop, or a trick' : 'Crouch for a trick', s.straps === 2 ? 'Crouch to jump' : 'Crouch');
           add(g.LT, 'Hike out against the pull', 'Hike out');
           add(g.RS, 'Rail: carve with toes / heels', 'Carve');
-          add(g.Y, 'Flip the sail at dead downwind', 'Flip the sail');
+          add(g.Y, 'Flip the sail: let go with the back hand at dead downwind', 'Flip the sail');
         }
         break;
       default:

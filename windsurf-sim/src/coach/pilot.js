@@ -74,9 +74,14 @@ export class Pilot {
     }
   }
 
-  /** A lesson's own coach demonstrating the move (started afresh whenever it finishes or we fell). */
-  lessonControls(id, dt) {
-    if (!this.lesson || this.lesson.done) this.lesson = new LessonRunner(findLesson(id), 'watch', this.sim);
+  /** A lesson's own coach demonstrating the move (started afresh, at step from, whenever it finishes or we fell). */
+  lessonControls(id, dt, from = 0) {
+    if (!this.lesson || this.lesson.done) {
+      this.lesson = new LessonRunner(findLesson(id), 'watch', this.sim);
+      if (from) { this.lesson.step = from; this.lesson.enterStep(); }
+      // (carrying on from the trim we're sailing with, not a fresh guess)
+      this.lesson.coach.sheet = this.coach.sheet;
+    }
     const c = this.lesson.controls(dt);
     this.lessonPending = true;
     return c;
@@ -124,7 +129,7 @@ export class Pilot {
   /** Head up, rig right back, step round the mast at the wind, bear away on the new side. */
   tack(dt) {
     const sim = this.sim, coach = this.coach, c = emptyControls();
-    if (sim.state === S.TACK) { c.sheet = 0.5; this.tphase = 2; return c; }
+    if (sim.state === S.TACK) { this.tphase = 2; return coach.tackControls(); }
     if (this.tphase === 2 || sim.sailor.side !== this.tside) {
       if (sim.state === S.SAILING) { this.turn = null; coach.cur = undefined; coach.sheet = 0.4; return null; }
       return c;
@@ -139,7 +144,7 @@ export class Pilot {
   /** Bear away until the wind is behind, flip the sail, sheet in on the new side. */
   gybe(dt) {
     const sim = this.sim, coach = this.coach, c = emptyControls();
-    if (sim.state === S.FLIP) { c.sheet = 0; c.rake = 0.3; this.tphase = 2; coach.cur = undefined; coach.sheet = 0.2; return c; }
+    if (sim.state === S.FLIP) { this.tphase = 2; coach.cur = undefined; coach.sheet = 0.2; return coach.flipControls(); }
     if (this.tphase === 2 || sim.sailor.side !== this.tside) {
       if (sim.state === S.SAILING) { this.turn = null; return null; }
       return c;

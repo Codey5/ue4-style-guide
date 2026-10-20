@@ -45,7 +45,7 @@ const lastEvents = (sim, n = 6) => sim.events.slice(-n).map((e) => `[${e.t.toFix
       if (Math.abs(s.twa) < 35 * DEG && !tacked) { c.pressed.tack = true; tacked = true; }
       return c;
     }
-    if (s.state === S.TACK) { const c = emptyControls(); c.sheet = 0.5; return c; }
+    if (s.state === S.TACK) return ap.coach.tackControls();
     if (s.sailor.side !== side0) { ap.sheet = 0.5; return ap.controls(DT); }
     return emptyControls();
   });

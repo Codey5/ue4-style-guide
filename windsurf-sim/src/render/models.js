@@ -537,7 +537,7 @@ export class Sailor {
     // it in a tack, pushing the sail round it in a helitack); the mast and the
     // front of the boom (holding the sail in while the nose comes up through
     // the wind); or just the front of the boom, the other hand free (the sail
-    // let go in a carving 360).
+    // let go in a carving 360, or thrown round in a flip until you catch it).
     const d = sim.stateData;
     const sinceSwitch = st === S.TACK && d.switched ? sim.stateTime - (d.switchTime ?? 0) : 0;
     let hold = 'boom';
@@ -546,6 +546,7 @@ export class Sailor {
     else if (st === S.TACK) hold = !d.switched ? 'mastBoom' : sinceSwitch < 0.3 ? 'mast' : 'boom';
     else if (st === S.TRICK && d.kind === 'heli' && d.phase === 'spin') hold = 'mast';
     else if (st === S.TRICK && d.kind === 'c360' && d.turned > 75 * DEG && d.turned < 300 * DEG) hold = 'mastFree';
+    else if (st === S.FLIP) hold = d.switched && Math.sign(sim.rig.boom) === sim.rig.side && Math.abs(sim.rig.boom) < 75 * DEG ? 'boom' : 'mastFree';
     this.hold = hold;
     const onBoom = hold === 'boom';
     // (holding the mast you hang out to windward off it, at arm's length; in
@@ -580,7 +581,7 @@ export class Sailor {
         b: toBoard(new THREE.Vector3(0.12, Math.min(rig.geo.boomHeight, 0.5 + up * 0.9), -side * 0.08)).toArray(),
       };
     } else {
-      const g = boomGrips(b, sim.rig, sim.sailGeo, hooked, s.gripX);
+      const g = boomGrips(b, sim.rig, sim.sailGeo, hooked, s.gripX, s.backOff > 0 && !hooked);
       hands = { f: g.f, b: g.b };
       lines = { a: g.lineA, b: g.lineB };
     }

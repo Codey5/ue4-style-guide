@@ -100,8 +100,8 @@ Sticks are relative to the board. Push the left stick where you want the mast ti
 | LT / L2 | C more · Z less | Hike out: hang your body weight outboard (analog) |
 | A / ✕ | H | Hook in / unhook · climb onto the board when in the water |
 | X / □ | F | Tap: step into the next footstrap · hold: feet out |
-| B / ○ | T | Tack: step round the front of the mast |
-| Y / △ | G | Flip the sail (gybe) · swap sides in secure position |
+| B / ○ | T | Tack: step up to the mast (then the rig: back to head through the wind, forward to bear away) |
+| Y / △ | G | Flip the sail: let go with the back hand (then throw it across with LS and sheet in to catch it); again to take hold on the same side · swap sides in secure position |
 | LB / L1 (hold) | U or J | Uphaul on the board · waterstart in the water · sailing: hold to crouch, let go to pop off the chop (jump) |
 | LB + Y / X / A / B | U + G / F / H / T | Freestyle, from the crouch: duck gybe · carving 360 · spock · helitack |
 | RB / R1 (hold) | P | Pump |
@@ -182,6 +182,7 @@ Changed values are marked, each has its own reset, and they're kept in this brow
 - Slamming over the chop takes its energy from your speed, and every landing scrubs some off, most of all nose-first: flat water is fast. Flying, the hull lets go of the water (no drag, no rail grip) and only the tip of the fin stays in; a high or tail-first landing drags air down the fin, an easy spin-out.
 - The nose meets the faces of the chop ahead. Pointing up at them, its rocker lifts it over with a slap of spray; pushed in deeper than the rocker can deflect with the board pitched down (weight forward, or dropping off a crest), it buries and the board stops dead. The braking throws you forward through the fore-and-aft balance: that's a nose-dive catapult. Weight back keeps the nose up, in the water and in the air (your feet in the straps steer the board while it flies).
 - The rig sits on a universal joint: you hold it steady while the board pitches over the waves underneath it.
+- The rig is a body you hold, not a servo. It has mass and inertia about the mast foot, and your hands steer it toward where the left stick points (rake and lean) as hard as they can, and no harder: a heavy sailor with fresh arms moves it more briskly than a tired light one. Its own weight tips it further over once it leans, a gust's sudden extra pull yanks it to leeward and forward before your hands catch it, and the sail's steady pull goes through your body (the balance), not into the rig. Let go of it and it keeps the way it was moving.
 
 **Jumps**
 
@@ -236,8 +237,8 @@ All four moves start the same way: hold LB to crouch, then press a button. Each 
 
 **Maneuvers**
 
-- **Tack:** sheet in and rake back to head up; you move up to the mast, front hand on the mast below the boom, the back one holding the sail in, front foot just ahead of the mast foot. Once the nose crosses the wind, your back foot steps round the front of the mast to the new side and the other follows it across, hands on the mast; then you step back behind the mast onto the new side, take the boom, and only then rake the rig forward to bear away. Stall head to wind and you fall in.
-- **Carve gybe:** the sail flip at dead downwind sends the clew round the front of the mast. Flip early and it backwinds.
+- **Tack:** sheet in and rake back to head up, then B: you move up to the mast, front hand on the mast below the boom, the back one holding the sail in, front foot just ahead of the mast foot. The board only turns as you drive it: keep the rig back (left stick down) and your feet push the tail away until the nose crosses the wind. Then your back foot steps round the front of the mast to the new side and the other follows it across, hands on the mast; you step back behind the mast onto the new side, take the boom, and throw the rig forward (left stick up) to bear away. Stop driving it head to wind and you stall there and fall in.
+- **Carve gybe:** at dead downwind, Y lets go with the back hand. You hold the rig by the mast, and the sail swings about it, weathervaning to where it flags in the apparent wind; throw it across toward the new side (left stick) and the clew swings round the front of the mast. As it comes round, sheet in (RT) to reach for the boom and pull it in; it's yours once it's on the new side and close enough to hold. Press Y again before it's come round to take hold on the same side. Throw it early, before the board is downwind, and it blows back; let it go too long and you lose it.
 - **Waterstart:** held up into the wind, the sail pulls like a kite. That needs the sail filled (not flapping, not stalled past the clew) and the board across the wind. You steer the board by pushing it through the mast foot. Minimum winds come out at about 12 kn for 7.0 m² and 75 kg, and about 14 kn for 5.3 m² or a 90 kg sailor.
 - **Uphaul, secure position, dropping the rig.**
 - The coach sails rough water the way a good sailor does: weight further back and a touch less power, and knocked off the plane upwind, it bears away to get going again before heading back up.
