@@ -22,6 +22,7 @@ export class Wind {
     this.shifts = opts.shifts ?? 0.5; // direction shift amount 0..1
     this.chop = opts.chop ?? 1; // chop multiplier
     this.boost = 0; // extra wind everywhere (a scripted gust, as a fraction)
+    this.steady = false; // (debug: no gusts and no shifts)
   }
 
   get speed() {
@@ -36,7 +37,7 @@ export class Wind {
 
   /** Gust multiplier at a point. Mirrored in the water shader. */
   gustFactor(x, z, t) {
-    if (this.gustiness <= 0) return 1;
+    if (this.gustiness <= 0 || this.steady) return 1;
     const d = this.dir, adv = this.speed * GUST_ADVECT * t;
     const n = fbm3((x - d[0] * adv) / GUST_SCALE, (z - d[2] * adv) / GUST_SCALE, t / GUST_EVOLVE);
     return Math.max(0.2, 1 + 0.42 * this.gustiness * tw.physics.gusts * clamp(n, -1.2, 1.2));
@@ -44,7 +45,7 @@ export class Wind {
 
   /** Direction offset (radians, positive = veer clockwise) at a point. */
   shiftAngle(x, z, t) {
-    if (this.shifts <= 0) return 0;
+    if (this.shifts <= 0 || this.steady) return 0;
     const slow = noise1(t / 80, 3) * 9 + noise1(t / 23, 7) * 3;
     const d = this.dir, adv = this.speed * GUST_ADVECT * t;
     const local = fbm3((x - d[0] * adv) / (GUST_SCALE * 1.3) + 40, (z - d[2] * adv) / (GUST_SCALE * 1.3), t / GUST_EVOLVE) * 4;

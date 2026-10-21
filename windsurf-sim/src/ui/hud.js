@@ -52,6 +52,58 @@ export class Hud {
       html += `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="rgba(233,242,245,.35)" stroke-width="1.5"/>`;
     }
     ticks.innerHTML = html;
+    // Debug readout (Gear > Debug): the numbers behind what your inputs do.
+    this.readout = false;
+    this.readoutT = 0;
+    this.readoutEl = document.createElement('pre');
+    this.readoutEl.id = 'debug-readout';
+    Object.assign(this.readoutEl.style, {
+      position: 'fixed', left: '12px', top: '50%', transform: 'translateY(-50%)', margin: 0, padding: '8px 10px',
+      font: '11px/1.45 ui-monospace, Menlo, Consolas, monospace', color: '#e9f2f5', background: 'rgba(6,14,20,.72)',
+      borderRadius: '6px', pointerEvents: 'none', whiteSpace: 'pre', zIndex: 5, display: 'none',
+    });
+    this.root.appendChild(this.readoutEl);
+  }
+
+  /** The debug readout: hands, rig, body and inputs, a few times a second. */
+  updateReadout(dt, sim, controls) {
+    this.readoutEl.style.display = this.readout ? 'block' : 'none';
+    if (!this.readout || (this.readoutT -= dt) > 0) return;
+    this.readoutT = 0.12;
+    const s = sim.sailor, r = sim.rig, h = sim.hands ?? {}, c = controls ?? {};
+    const d = (x) => (x === undefined || Number.isNaN(x) ? '  –' : `${(x * RAD).toFixed(0).padStart(4)}°`);
+    const n = (x) => (x === undefined ? '  –' : `${Math.round(x).toString().padStart(4)} N`);
+    const f = (x) => (x === undefined ? '  –' : x.toFixed(2).padStart(5));
+    const grip = 250 + 400 * s.stamina;
+    const backHand = s.backOff > 0 ? 'let go' : s.gripLost > 0 ? 'slipping' : s.regrab < 1 ? 'taking hold' : 'on';
+    const lines = [
+      `${sim.state.toUpperCase()}  ${(sim.telemetry?.kn ?? 0).toFixed(1)} kn  ${Math.abs(sim.twa * RAD).toFixed(0)}° off the wind`,
+      '',
+      'HANDS',
+      `  pull at hands ${n(sim.handForce)}   grip limit ${n(grip)}`,
+      `  front ${n(h.front)}   back ${n(h.back)}${s.hooked ? `   harness ${n(Math.max(0, (sim.handForce ?? 0) - (h.front ?? 0) - (h.back ?? 0)))}` : ''}`,
+      `  back hand ${backHand}   stamina ${Math.round(s.stamina * 100)}%`,
+      '',
+      'RIG',
+      `  rake ${d(r.rake)} (+ forward)   rate ${d(r.rakeRate)}/s`,
+      `  lean ${d(r.lean * s.side)} (+ windward)   rate ${d((r.leanRate ?? 0) * s.side)}/s`,
+      `  boom ${d(Math.abs(r.boom))} open   held ${sim.rigHeld ? 'yes' : 'no'}`,
+      '',
+      'BODY',
+      `  out ${d(s.beta)}   reach to ${d(sim.betaMax)}   balance ${d(sim.betaEq)}`,
+      `  back ${d(s.phi)}   ${s.hooked ? 'hooked in' : 'unhooked'}   straps ${s.straps}`,
+      '',
+      'INPUTS',
+      `  sheet ${f(c.sheet)}   hike ${f(c.hike)}   pump ${c.pump ? 'on' : 'off'}`,
+      `  rake  ${f(c.rake)}   lean ${f(c.lean)}`,
+      `  weight ${f(c.weight)}  rail ${f(c.rail)}`,
+      ...(c.arms ? [`  arms: front ${f(c.arms.front)}  back ${f(c.arms.back)}  body ${f(c.arms.bodyX)} ${f(c.arms.bodyY)}`] : []),
+    ];
+    const NAMES = { autoHike: 'auto-hike', noFalls: 'no falls', holdOn: 'never let go', tireless: 'arms never tire', noCatapult: 'no catapults' };
+    const on = Object.entries(sim.assists).filter(([, v]) => v).map(([k]) => NAMES[k] ?? k);
+    if (sim.wind.steady) on.push('steady wind');
+    if (on.length) lines.push('', `ASSISTS  ${on.join(', ')}`);
+    this.readoutEl.textContent = lines.join('\n');
   }
 
   show(on) { this.root.hidden = !on; }
@@ -131,6 +183,7 @@ export class Hud {
   update(dt, sim, input, controls) {
     const tel = sim.telemetry;
     if (!tel) return;
+    this.updateReadout(dt, sim, controls);
     this.camTimer -= dt;
     if (this.camTimer < 0) $('cam-name').style.opacity = 0;
     // Wind dial: bow up. Arrows show where the wind comes FROM.

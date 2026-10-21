@@ -306,6 +306,9 @@ export class Menu {
         <h3>Debug</h3>
         ${toggle('holdon', 'Never let go: no letting go on your own (back hand, grip, dropping the rig). You still fall unless No falls is on', !!s.holdOn)}
         ${toggle('tireless', 'Arms never tire: stamina stays full', !!s.tireless)}
+        ${toggle('nocatapult', 'No catapults: other falls as usual', !!s.noCatapult)}
+        ${toggle('steadywind', 'Steady wind: no gusts and no shifts', !!s.steadyWind)}
+        ${toggle('readout', 'Readout: the pull on each hand, the rig\'s angles, your body and your inputs, on screen', !!s.debugReadout)}
         <p class="muted">Gear changes restart you in the secure position.</p>`;
     } else if (this.tab === 'speed') {
       c.innerHTML = this.speedPage();
@@ -404,6 +407,9 @@ export class Menu {
     on('nofalls', 'change', (e) => { s.noFalls = e.target.checked; h.options(); });
     on('holdon', 'change', (e) => { s.holdOn = e.target.checked; h.options(); });
     on('tireless', 'change', (e) => { s.tireless = e.target.checked; h.options(); });
+    on('nocatapult', 'change', (e) => { s.noCatapult = e.target.checked; h.options(); });
+    on('steadywind', 'change', (e) => { s.steadyWind = e.target.checked; h.options(); });
+    on('readout', 'change', (e) => { s.debugReadout = e.target.checked; h.options(); });
     on('rumble', 'change', (e) => { s.rumble = e.target.checked; h.options(); });
     on('invert', 'change', (e) => { s.invertRake = e.target.checked; h.options(); });
     on('arms', 'change', (e) => { s.controlScheme = e.target.checked ? 'arms' : 'classic'; h.options(); this.render(); });

@@ -342,7 +342,7 @@ export class Water {
     const d = wind.dir;
     this.uniforms.uWindDir.value.set(d[0], d[2]);
     this.uniforms.uWindSpeed.value = wind.speed;
-    this.uniforms.uGustiness.value = wind.gustiness * tw.physics.gusts;
+    this.uniforms.uGustiness.value = wind.steady ? 0 : wind.gustiness * tw.physics.gusts;
     this.uniforms.uHs.value = waves.hs;
     this.uniforms.uShoreZ.value = shoreZ;
     const bar = waves.bar;

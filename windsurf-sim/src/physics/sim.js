@@ -99,8 +99,8 @@ export class Sim {
     // (the spot: a sandbar sheltering a speed strip, or open water)
     this.spot = opts.spot ?? null;
     this.waves = new Waves(this.wind, this.spot?.bar ?? null);
-    // (debug: holdOn = the hands never let go on their own; tireless = the arms never tire)
-    this.assists = { autoHike: false, noFalls: false, holdOn: false, tireless: false, ...(opts.assists ?? {}) };
+    // (debug: holdOn = the hands never let go on their own; tireless = the arms never tire; noCatapult = no catapults, other falls as usual)
+    this.assists = { autoHike: false, noFalls: false, holdOn: false, tireless: false, noCatapult: false, ...(opts.assists ?? {}) };
     this.events = [];
     this.t = 0;
     this.tune = normTune(opts.tune);
@@ -768,6 +768,13 @@ export class Sim {
 
   fall(type, text) {
     if (this.assists.noFalls && type !== 'sink') return;
+    if (this.assists.noCatapult && type === 'catapult') {
+      // (held where you'd go over: no further forward than your toes, no further in than this)
+      const s = this.sailor, fa = this.pitchBalance;
+      if (fa) { s.phi = Math.max(s.phi, fa.phiAt(fa.toe)); s.phiRate = Math.max(0, s.phiRate); }
+      if (s.beta < -20 * DEG) { s.beta = -20 * DEG; s.betaRate = Math.max(0, s.betaRate); }
+      return;
+    }
     if (this.state === S.FALLING || this.state === S.WATER) return;
     const s = this.sailor;
     s.hooked = false;
