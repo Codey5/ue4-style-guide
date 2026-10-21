@@ -59,7 +59,9 @@ export class Hud {
   glyphs(input) {
     // Prefer controller glyphs whenever one is connected, unless you're typing.
     if (!input.gamepad || input.lastDevice === 'keyboard') return GLYPHS.kb;
-    return this.isPs(input) ? GLYPHS.ps : GLYPHS.xbox;
+    const g = this.isPs(input) ? GLYPHS.ps : GLYPHS.xbox;
+    // (two arms: you hike out with your body, on the left stick)
+    return input.scheme === 'arms' ? { ...g, LT: `${g.LS} out` } : g;
   }
 
   isPs(input) {

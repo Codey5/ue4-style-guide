@@ -1,7 +1,7 @@
 // Start / pause menu: conditions, gear, controls and a technique primer.
 // Navigable with a gamepad (D-pad + A/B) as well as mouse and keyboard.
 import { BOARDS, BOOM_RATIO, LINES_RATIO, SAILS } from '../physics/gear.js';
-import { CONTROL_MAP } from './input.js';
+import { ARMS_MAP, CONTROL_MAP } from './input.js';
 import { LESSONS } from '../coach/lessons.js';
 import { adviseSail, windRange } from '../physics/quiver.js';
 import { CATEGORIES } from '../game/gps.js';
@@ -309,6 +309,10 @@ export class Menu {
     } else if (this.tab === 'controls') {
       c.innerHTML = `
         <h2>Controls</h2>
+        ${toggle('arms', 'Two arms (experimental, controller only): the triggers are your arms and the left stick is your body, so the rig goes where you put it', (s.controlScheme ?? 'classic') === 'arms')}
+        ${(s.controlScheme ?? 'classic') === 'arms' ? `<div class="maptable"><table><thead><tr><th>Two arms</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
+          ${ARMS_MAP.map(([pad, what]) => `<tr><td>${pad}</td><td>–</td><td>${what}</td></tr>`).join('')}
+        </tbody></table></div><p class="muted">The keyboard keeps the standard layout below. On an Xbox controller in Chrome or Edge each trigger also buzzes with its hand's load.</p><h3>Standard layout</h3>` : ''}
         <p class="muted">Sticks are relative to the board: push the left stick where you want the mast tip to go, push the right stick toward the rail you want to sink. Every trigger is analog.</p>
         <div class="maptable"><table><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
           ${CONTROL_MAP.map(([pad, kb, what]) => `<tr><td>${pad}</td><td>${kb}</td><td>${what}</td></tr>`).join('')}
@@ -397,6 +401,7 @@ export class Menu {
     on('nofalls', 'change', (e) => { s.noFalls = e.target.checked; h.options(); });
     on('rumble', 'change', (e) => { s.rumble = e.target.checked; h.options(); });
     on('invert', 'change', (e) => { s.invertRake = e.target.checked; h.options(); });
+    on('arms', 'change', (e) => { s.controlScheme = e.target.checked ? 'arms' : 'classic'; h.options(); this.render(); });
     on('particles', 'change', (e) => { s.windParticles = e.target.checked; h.options(); });
     on('shake', 'change', (e) => { s.cameraShake = e.target.checked; h.options(); });
     on('gpspanel', 'change', (e) => { s.gpsPanel = e.target.checked; h.options(); });

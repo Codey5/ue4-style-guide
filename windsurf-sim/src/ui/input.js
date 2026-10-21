@@ -2,8 +2,8 @@
 // into the normalised controls the simulation consumes. Sticks are board-
 // relative: push the left stick where you want the mast tip to go, push the
 // right stick toward the rail you want to sink.
-import { emptyControls } from '../physics/sim.js';
-import { clamp } from '../physics/math.js';
+import { S, emptyControls } from '../physics/sim.js';
+import { DEG, clamp } from '../physics/math.js';
 import { tw } from '../tweaks.js';
 
 const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, R3: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
@@ -50,6 +50,18 @@ export const CONTROL_MAP = [
   ['Menu / Options', 'Esc', 'Pause, conditions and gear'],
 ];
 
+// The "two arms" scheme (an alternative, picked in Controls): the triggers
+// are your arms and the left stick is your body. The rig goes where your
+// body and arms put it, not where a stick points.
+export const ARMS_MAP = [
+  ['RT (R2)', 'Back arm: pull in to sheet in. Let go completely at dead downwind (unhooked) and the back hand comes off: the sail flip. Squeeze again as it comes round to catch it'],
+  ['LT (L2)', 'Front arm: pull the mast in toward you (back and to windward); ease off and it goes away from you'],
+  ['Left stick ↑ / ↓', 'Your body: lean forward (the rig goes forward with you: bear away) or back (the rig comes back: head up)'],
+  ['Left stick ← / →', 'Your body: hang out to windward (hike) or come in toward the sail. In a flip, throw the sail across'],
+  ['Right stick', 'Your feet, as before: weight front / back, sink a rail'],
+  ['Everything else', 'As before (A hook, X straps, B tack, Y flip or take hold again, LB crouch / uphaul / waterstart, RB pump)'],
+];
+
 export class Input {
   constructor(target) {
     this.keys = new Set();
@@ -64,6 +76,9 @@ export class Input {
     this.lastDevice = 'none'; // 'keyboard' or 'gamepad' once one is used
     this.rumbleEnabled = true;
     this.invertRake = false;
+    this.scheme = 'classic'; // or 'arms'
+    this.relT = 0; this.relFired = false;
+    this.trig = [0, 0]; // trigger rumble (arms scheme): front and back hand loads
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -166,6 +181,8 @@ export class Input {
         c.rail = rx;
         c.sheet = rt;
         c.hike = lt;
+        // (two arms: the raw arms and body, turned into the rig by mapArms with the sailor's side)
+        if (this.scheme === 'arms') c.arms = { front: lt, back: rt, bodyX: lx, bodyY: -ly * (this.invertRake ? -1 : 1) };
         c.pump = b(BTN.RB);
         c.uphaul = b(BTN.LB);
         c.pop = b(BTN.LB);
@@ -199,13 +216,45 @@ export class Input {
     return { controls: c, ui };
   }
 
+  /**
+   * Two arms: the rig and body controls from your arms (triggers) and body
+   * (left stick), for the side you're sailing on. Body out to windward hangs
+   * you out; the front arm pulls the mast in to you (back and to windward);
+   * leaning forward or back takes the rig with you. Letting the back arm go
+   * completely at dead downwind, unhooked, is the sail flip; in the flip the
+   * body throws the sail across, and squeezing the back arm before it's come
+   * round takes hold again.
+   */
+  mapArms(c, sim, dt) {
+    const a = c.arms;
+    if (!a) return;
+    const side = sim.sailor.side, st = sim.state;
+    const out = Math.max(0, a.bodyX * side), inward = Math.max(0, -a.bodyX * side);
+    if (st === S.FLIP) {
+      c.lean = a.bodyX;
+      c.rake = clamp(a.bodyY - 0.5 * a.front, -1, 1);
+      c.hike = 0;
+      if (!sim.stateData.switched && a.back > 0.6 && !this.relFired) c.pressed.flip = true;
+    } else {
+      c.hike = out;
+      c.rake = clamp(a.bodyY - 0.5 * a.front, -1, 1);
+      c.lean = side * clamp(0.7 * a.front - 0.4 * inward, -1, 1);
+    }
+    if (a.back > 0.2) this.relFired = false;
+    const downwind = st === S.SAILING && !sim.sailor.hooked && Math.abs(sim.twa) > 150 * DEG;
+    this.relT = downwind && a.back < 0.03 ? this.relT + dt : 0;
+    if (this.relT > 0.15 && !this.relFired) { c.pressed.flip = true; this.relFired = true; }
+  }
+
   /** Dual-motor rumble: strong = low-frequency motor (sail load), weak = high-frequency (chop, flutter). */
   rumble(strong, weak, ms = 120) {
     if (!this.rumbleEnabled || !this.gamepad || this.lastDevice !== 'gamepad') return;
     const act = this.gamepad.vibrationActuator;
     if (!act || !act.playEffect) return;
-    act.playEffect('dual-rumble', {
-      startDelay: 0, duration: ms, strongMagnitude: clamp(strong, 0, 1), weakMagnitude: clamp(weak, 0, 1),
-    }).catch(() => {});
+    const fx = { startDelay: 0, duration: ms, strongMagnitude: clamp(strong, 0, 1), weakMagnitude: clamp(weak, 0, 1) };
+    // (two arms, on a controller with trigger motors: each trigger carries its hand's load)
+    if (this.scheme === 'arms' && act.effects?.includes?.('trigger-rumble')) {
+      act.playEffect('trigger-rumble', { ...fx, leftTrigger: clamp(this.trig[0], 0, 1), rightTrigger: clamp(this.trig[1], 0, 1) }).catch(() => {});
+    } else act.playEffect('dual-rumble', fx).catch(() => {});
   }
 }

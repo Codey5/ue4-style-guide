@@ -40,7 +40,7 @@ const defaults = {
   boardId: 'free135', sailArea: 7.0, mass: 75, height: 183, boomRel: 0, linesRel: 0,
   harness: 'seat', // how the harness is drawn: 'waist' or 'seat'
   tuneLines: 0, tuneMast: 0, downhaul: 0, outhaul: 0, // rig tuning: cm along the boom / track, and -1..1
-  autoHike: false, noFalls: false, rumble: true, invertRake: false, volume: 0.8, lessonsDone: [],
+  autoHike: false, noFalls: false, rumble: true, invertRake: false, controlScheme: 'classic', volume: 0.8, lessonsDone: [],
   windParticles: true, cameraShake: true, gpsPanel: true,
   light: 'golden', bloom: true,
 };
@@ -193,6 +193,7 @@ function applyOptions() {
   sim.assists.noFalls = settings.noFalls;
   input.rumbleEnabled = settings.rumble;
   input.invertRake = settings.invertRake;
+  input.scheme = settings.controlScheme ?? 'classic';
   windFx.enabled = settings.windParticles;
   bloom.enabled = settings.bloom;
   setEnvironment(env, settings.light);
@@ -419,6 +420,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const { controls, ui } = input.poll(dt);
+  input.mapArms(controls, sim, dt);
   lastControls = controls;
   menu.setPadStatus(input);
 
@@ -644,6 +646,8 @@ function frame(now) {
     // (and goes quiet while the board flies)
     const weak = clamp((sim.airborne ? 0 : tel.planing * clamp(tel.speed / 14, 0, 1) * 0.18) + (sim.chopHit ?? 0) * 0.9 + luff * 0.25 +
       (sim.finVentilated ? 0.7 : (f.fin ?? 0) * 0.45) + (f.hand ?? 0) * 0.5 * pulse + battenKick, 0, 1);
+    const hands = sim.state === S.SAILING || sim.state === S.FLIP || sim.state === S.TACK ? sim.hands : null;
+    input.trig = [clamp((hands?.front ?? 0) / 450, 0, 1) * 0.6, clamp((hands?.back ?? 0) / 450, 0, 1) * 0.6];
     input.rumble(Math.max(strong, juice.strong) * tw.juice.rumble, Math.max(weak, juice.weak) * tw.juice.rumble, 90);
   }
 

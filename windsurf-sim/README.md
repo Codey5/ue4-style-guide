@@ -112,6 +112,18 @@ Sticks are relative to the board. Push the left stick where you want the mast ti
 | View / Share | Tab | Detailed HUD: telemetry, stance diagram, every bar and every control for now |
 | Menu / Options | Esc | Pause: conditions, gear, controls, technique |
 
+**Two arms** (experimental: Controls → Two arms, controller only). The triggers are your arms and the left stick is your body, so the rig goes where your body and arms put it instead of where a stick points:
+
+| Controller | Action |
+| --- | --- |
+| RT / R2 | Back arm: pull in to sheet in. Let go completely at dead downwind, unhooked, and the back hand comes off: the sail flip. Squeeze it again before the sail's round to take hold on the same side, or as it comes round on the new side to catch it |
+| LT / L2 | Front arm: pull the mast in toward you (mostly to windward, a little back); ease off and it goes away from you |
+| Left stick ↑ / ↓ | Lean forward (the rig goes forward with you: bear away) or back (it comes back: head up) |
+| Left stick ← / → | Hang out to windward (hike) or come in toward the sail; in a flip, throw the sail across |
+| Right stick, buttons | As in the standard layout |
+
+To lean the rig to windward without heading up, pull the front arm in and lean forward together. On an Xbox controller in Chrome or Edge each trigger also buzzes with the load on its hand. The keyboard keeps the standard layout.
+
 **The HUD** shows only what you need while sailing: your speed and the wind's (top left, with chips for planing, hooked in and the straps when they're on), the wind's direction on a dial (top right), the balance strip with your grip left in ten segments and a warning when you're at your limit (bottom), and the one or two buttons worth pressing next (bottom right; crouched, the freestyle moves). In the story the chapter's card sits at the top: a dot for each goal and the one you're on, with an arrow and the distance to the mark, and Kai talks you through it from the bottom of the screen (offering his lesson if you're stuck on a goal for a while). View / Tab brings up the detailed HUD: the telemetry, the stance diagram, the sheet, hike, hands and forearms bars, and every control for the moment with the reason for each. The lessons show the stance diagram and the bars they talk about.
 
 The in-game **Technique** tab walks through uphauling, steering, getting planing, harness and straps, hanging off the rig, leaning back against the pull, gusts and catapults, tuning the rig, what the rumble tells you, sailing through chop, jumping off it, freestyle, the living sail, the broad reach, tacking, the carve gybe and the waterstart, with a glossary.
