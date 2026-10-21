@@ -1,0 +1,176 @@
+// Scripted maneuver checks: uphaul, tack, waterstart, overpowering, sinkers.
+// The carve gybe and the other techniques are checked through the lessons.
+// Run: node tools/maneuver-check.mjs
+import { DEG, MS_TO_KN, clamp } from '../src/physics/math.js';
+import { Sim, S, emptyControls } from '../src/physics/sim.js';
+import { Autopilot } from './autopilot.mjs';
+import { Coach } from '../src/coach/coach.js';
+
+const DT = 1 / 240;
+const run = (sim, seconds, fn) => {
+  for (let i = 0; i < seconds / DT; i++) {
+    const c = fn(sim) ?? emptyControls();
+    sim.step(DT, c);
+  }
+};
+let failures = 0;
+const report = (name, ok, extra = '') => { if (!ok) failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${extra}`); };
+const lastEvents = (sim, n = 6) => sim.events.slice(-n).map((e) => `[${e.t.toFixed(1)}] ${e.text}`).join(' | ');
+
+// 1. Uphaul on the beginner board in light wind.
+{
+  const sim = new Sim({ boardId: 'begin210', sailArea: 5.3, wind: { speedKn: 8, gustiness: 0, shifts: 0 }, start: 'water' });
+  let pressed = false;
+  run(sim, 8, (s) => {
+    const c = emptyControls();
+    if (s.state === S.WATER && !pressed) { c.pressed.climb = true; pressed = true; }
+    if (s.state === S.UPHAUL) c.uphaul = true;
+    return c;
+  });
+  report('uphaul to secure position', sim.state === S.SECURE, lastEvents(sim, 3));
+}
+
+// 2. Tack on the beginner board: sail close-hauled, head up, step round.
+{
+  const sim = new Sim({ boardId: 'begin210', sailArea: 5.3, wind: { speedKn: 9, gustiness: 0, shifts: 0 }, start: 'secure' });
+  const ap = new Autopilot(sim, 60, { straps: false });
+  run(sim, 15, () => ap.controls(DT));
+  const side0 = sim.sailor.side;
+  let tacked = false;
+  run(sim, 12, (s) => {
+    if (s.state === S.SAILING && s.sailor.side === side0) {
+      const c = ap.controls(DT);
+      c.rake = -1; // rig back: head up into the wind
+      c.sheet = 1; // stay sheeted in so the sail drives the turn
+      if (Math.abs(s.twa) < 35 * DEG && !tacked) { c.pressed.tack = true; tacked = true; }
+      return c;
+    }
+    if (s.state === S.TACK) return ap.coach.tackControls();
+    if (s.sailor.side !== side0) { ap.sheet = 0.5; return ap.controls(DT); }
+    return emptyControls();
+  });
+  report('tack (step round the mast)', sim.sailor.side === -side0 && sim.state === S.SAILING, `side ${side0}->${sim.sailor.side} state ${sim.state} twa ${(sim.twa / DEG).toFixed(0)} | ${lastEvents(sim, 4)}`);
+}
+
+// 3. The carve gybe is covered by the coach's lesson (tools/lesson-check.mjs).
+
+// 4. Waterstart in 16 kn.
+{
+  const sim = new Sim({ boardId: 'free115', sailArea: 6.3, wind: { speedKn: 16, gustiness: 0, shifts: 0 }, start: 'water', assists: { autoHike: true } });
+  let maxLift = 0, rose = false;
+  run(sim, 9, (s) => {
+    const c = emptyControls();
+    c.uphaul = true;
+    if (s.state === S.WATERSTART && s.stateData.phase === 'power') {
+      c.sheet = clamp(s.stateTime / 2, 0, 0.55);
+      // Steer the board across the wind with the rig: forward bears away, back heads up.
+      const side = s.sailor.side;
+      c.rake = clamp(-side * (2 * (s.twa - side * 95 * DEG) + 0.8 * s.yawRate), -1, 1);
+      maxLift = Math.max(maxLift, s.stateData.lift ?? 0);
+    }
+    if (s.state === S.RISING) rose = true;
+    if (s.state === S.SAILING) { c.uphaul = false; c.sheet = 0.5; }
+    return c;
+  });
+  report('waterstart', rose && sim.state === S.SAILING, `max lift ${maxLift.toFixed(0)} N, state ${sim.state} | ${lastEvents(sim, 4)}`);
+}
+
+// 5. Waterstart should fail in light wind.
+{
+  const sim = new Sim({ boardId: 'free135', sailArea: 7, wind: { speedKn: 6, gustiness: 0, shifts: 0 }, start: 'water' });
+  run(sim, 10, (s) => { const c = emptyControls(); c.uphaul = true; c.sheet = 0.9; return c; });
+  report('no waterstart in 6 kn', sim.state !== S.SAILING && sim.state !== S.RISING, `state ${sim.state} | ${lastEvents(sim, 2)}`);
+}
+
+// 6. Overpowered: sheeting in hard without hiking pulls you over.
+{
+  const sim = new Sim({ boardId: 'free135', sailArea: 7.8, wind: { speedKn: 22, gustiness: 0, shifts: 0 }, start: 'sailing' });
+  run(sim, 4, () => { const c = emptyControls(); c.sheet = 1; c.hike = 0; return c; });
+  report('overpowered without hiking -> pulled over, sail ripped out or let go', sim.events.some((e) => e.type === 'fall' || e.type === 'grip' || e.type === 'letgo'), lastEvents(sim, 3));
+}
+
+// 7. Sinker: a 95 L board can't be uphauled by an 85 kg sailor.
+{
+  const sim = new Sim({ boardId: 'move95', sailArea: 5.3, sailorMass: 85, wind: { speedKn: 10, gustiness: 0, shifts: 0 }, start: 'water' });
+  run(sim, 2, (s) => { const c = emptyControls(); c.pressed.climb = s.t < 0.1; return c; });
+  report('sinker refuses climb-on', sim.state === S.WATER && sim.events.some((e) => e.type === 'sinker'), lastEvents(sim, 1));
+}
+// 8–10. Fore and aft: planing hooked in, a gust's extra pull through the
+// harness lines tips you over the front. Weight forward with the sail locked
+// in, it catapults you over the boom; weight back and easing the sheet, you
+// ride it out. In between, you lean back against the pull.
+const gustRun = (technique) => {
+  const sim = new Sim({ boardId: 'free115', sailArea: 6.3, wind: { speedKn: 16, gustiness: 0, shifts: 0 }, start: 'sailing', assists: { autoHike: true } });
+  const coach = new Coach(sim);
+  let lock, settled = null, warnAt = null, steadyFeel = 0;
+  run(sim, 30, (s) => {
+    // The controller's warning (fore-and-aft load) before anything happens.
+    if (s.feel && s.t > 10 && s.t < 23.5) steadyFeel = Math.max(steadyFeel, s.feel.pitch, s.feel.lateral);
+    if (warnAt === null && s.t > 23.5 && s.feel?.pitch > 0.5) warnAt = s.t;
+    s.wind.boost = s.t < 24 ? 0 : 0.5 * clamp((s.t - 24) / 0.6, 0, 1);
+    if (s.state !== S.SAILING) return emptyControls();
+    const c = coach.sail(DT, { twa: 105, straps: true, hook: true, hike: 'auto' });
+    if (s.t > 22.5 && !settled) settled = { ...s.pitchBalance, phi: s.sailor.phi, hooked: s.sailor.hooked, straps: s.sailor.straps };
+    if (s.t > 23 && technique === 'locked') { lock ??= c.sheet; c.sheet = coach.sheet = lock; c.weight = 0.5; }
+    if (s.t > 23 && technique === 'ride') c.weight = s.wind.boost > 0.02 ? -1 : -0.3;
+    return c;
+  });
+  const fall = sim.events.find((e) => e.type === 'fall');
+  return { sim, settled, fall, type: fall ? sim.sailor.fallType : null, warnAt, steadyFeel };
+};
+{
+  const { settled } = gustRun('ride');
+  report('planing hooked in: leaning back against the pull', settled.hooked && settled.straps === 2 && settled.phi > 10 * DEG && settled.comX < settled.cop - 0.15,
+    `lean back ${(settled.phi / DEG).toFixed(0)}°, centre of mass ${((settled.cop - settled.comX) * 100).toFixed(0)} cm behind the feet's pressure`);
+}
+{
+  const r = gustRun('locked');
+  report('gust, weight forward and sail locked in -> catapult', r.type === 'catapult', lastEvents(r.sim, 2));
+  const lead = r.fall && r.warnAt !== null ? r.fall.t - r.warnAt : 0;
+  report('rumble: quiet planing steadily, warns before the catapult', r.steadyFeel < 0.05 && lead > 0.25,
+    `steady ${r.steadyFeel.toFixed(2)}, warning ${lead.toFixed(2)} s before`);
+}
+{
+  const r = gustRun('ride');
+  report('gust, weight back and sheet eased -> rides it out', !r.fall && r.sim.state === S.SAILING && r.sim.telemetry.planing > 0.95, `${r.sim.telemetry.kn.toFixed(1)} kn | ${lastEvents(r.sim, 2)}`);
+}
+// 11–12. The first minute on a beginner board: sheeting in with the rig
+// upright rounds you up into the wind (in irons); easing the sheet and
+// pushing the rig forward turns you back out. Sheeting in gently with the
+// rig a little forward, you sail off across the wind.
+{
+  const beginner = () => new Sim({ boardId: 'begin210', sailArea: 4.2, sailorMass: 75, wind: { speedKn: 7, gustiness: 0, shifts: 0, chop: 0.3 }, start: 'secure', assists: { autoHike: false } });
+  const ctl = (o) => Object.assign(emptyControls(), o);
+  const sim = beginner();
+  run(sim, 2, () => ctl({}));
+  run(sim, 10, () => ctl({ sheet: 0.7 }));
+  const rounded = Math.abs(sim.twa) / DEG;
+  run(sim, 4, () => ctl({ sheet: 0, rake: 1 }));
+  const out = Math.abs(sim.twa) / DEG;
+  report('beginner board: sheeted in hard rig upright -> into irons; rig forward turns you back out', rounded < 40 && out > 75 && sim.state === S.SAILING && sim.events.some((e) => e.type === 'irons'),
+    `${rounded.toFixed(0)}° off the wind, then ${out.toFixed(0)}° after 4 s of rig forward`);
+  const gentle = beginner();
+  let lo = 180, hi = 0;
+  run(gentle, 2, () => ctl({}));
+  run(gentle, 20, (sm) => { if (sm.t > 6) { lo = Math.min(lo, Math.abs(sm.twa) / DEG); hi = Math.max(hi, Math.abs(sm.twa) / DEG); } return ctl({ sheet: 0.5, rake: 0.35 }); });
+  report('beginner board: sheeted in gently, rig a little forward -> sails off across the wind', lo > 70 && hi < 130 && gentle.telemetry.kn > 2,
+    `${lo.toFixed(0)}–${hi.toFixed(0)}° off the wind at ${gentle.telemetry.kn.toFixed(1)} kn`);
+}
+// 13. Overpowered on the beginner board without hiking: you let go with the
+// back hand (the sail opens and stops pulling) and stay on, rather than
+// being dragged in or dropping the rig.
+{
+  const sim = new Sim({ boardId: 'begin210', sailArea: 6.3, sailorMass: 75, wind: { speedKn: 13, gustiness: 0.12, shifts: 0.15, chop: 0.5 }, start: 'sailing', assists: { autoHike: false } });
+  let falls = 0, drops = 0, prev = sim.state;
+  run(sim, 60, (sm) => {
+    if (sm.state === S.FALLING && prev !== S.FALLING) falls++;
+    if (sm.state === S.UPHAUL && prev === S.SAILING) drops++;
+    prev = sm.state;
+    const e = sm.twa - sm.sailor.side * 90 * DEG;
+    return Object.assign(emptyControls(), { sheet: 1, rake: clamp(-sm.sailor.side * (2 * e + 0.8 * sm.yawRate), -1, 1) * 0.6 });
+  });
+  const letgo = sim.events.filter((e) => e.type === 'letgo').length;
+  report('beginner overpowered without hiking -> lets go with the back hand, stays on', letgo > 0 && falls === 0 && drops === 0 && sim.state === S.SAILING, `${letgo} let-go(s), ${falls} falls, ${drops} rig drops`);
+}
+void MS_TO_KN;
+if (failures) { console.log(`${failures} maneuver check(s) failed`); process.exit(1); }
