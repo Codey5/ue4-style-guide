@@ -40,7 +40,7 @@ const defaults = {
   boardId: 'free135', sailArea: 7.0, mass: 75, height: 183, boomRel: 0, linesRel: 0,
   harness: 'seat', // how the harness is drawn: 'waist' or 'seat'
   tuneLines: 0, tuneMast: 0, downhaul: 0, outhaul: 0, // rig tuning: cm along the boom / track, and -1..1
-  autoHike: false, noFalls: false, rumble: true, invertRake: false, controlScheme: 'classic', volume: 0.8, lessonsDone: [],
+  autoHike: false, noFalls: false, holdOn: false, tireless: false, rumble: true, invertRake: false, controlScheme: 'classic', volume: 0.8, lessonsDone: [],
   windParticles: true, cameraShake: true, gpsPanel: true,
   light: 'golden', bloom: true,
 };
@@ -134,7 +134,7 @@ function makeSim(start, setup = null, watch = false) {
     sailorHeight: settings.height / 100, boomHeight: boomHeightFor(settings) / 100, harnessLines: linesFor(settings) * 0.0254,
     wind: { ...wind, fromDeg: 270 },
     // The coach does its own hiking and never uses the no-falls assist.
-    assists: watch ? { autoHike: false, noFalls: false } : { autoHike: settings.autoHike, noFalls: settings.noFalls },
+    assists: watch ? { autoHike: false, noFalls: false } : { autoHike: settings.autoHike, noFalls: settings.noFalls, holdOn: settings.holdOn, tireless: settings.tireless },
     start: setup?.start ?? (start === 'strip' ? 'sailing' : start),
     spot: { bar: SANDBAR },
     // Lessons sail a standard tune (or their own); free sailing, yours.
@@ -191,6 +191,10 @@ function restart(mode, setup = null, watch = false, logged = false) {
 function applyOptions() {
   sim.assists.autoHike = settings.autoHike;
   sim.assists.noFalls = settings.noFalls;
+  // (debug assists: not for the coach demonstrating a lesson)
+  const coachDemo = lesson && lesson.mode === 'watch';
+  sim.assists.holdOn = !coachDemo && !!settings.holdOn;
+  sim.assists.tireless = !coachDemo && !!settings.tireless;
   input.rumbleEnabled = settings.rumble;
   input.invertRake = settings.invertRake;
   input.scheme = settings.controlScheme ?? 'classic';

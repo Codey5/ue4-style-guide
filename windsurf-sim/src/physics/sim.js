@@ -99,7 +99,8 @@ export class Sim {
     // (the spot: a sandbar sheltering a speed strip, or open water)
     this.spot = opts.spot ?? null;
     this.waves = new Waves(this.wind, this.spot?.bar ?? null);
-    this.assists = { autoHike: false, noFalls: false, ...(opts.assists ?? {}) };
+    // (debug: holdOn = the hands never let go on their own; tireless = the arms never tire)
+    this.assists = { autoHike: false, noFalls: false, holdOn: false, tireless: false, ...(opts.assists ?? {}) };
     this.events = [];
     this.t = 0;
     this.tune = normTune(opts.tune);
@@ -1729,7 +1730,7 @@ export class Sim {
     this.copX = this.copX === undefined ? base[0] + cop : damp(this.copX, base[0] + cop, 10, dt);
     const atToe = cop >= toe - 1e-4;
     // Unhooked, being dragged forward over your toes you let go with the back hand.
-    if (!s.hooked && atToe && s.phiRate < -0.6 && s.gripLost <= 0) {
+    if (!this.assists.holdOn && !s.hooked && atToe && s.phiRate < -0.6 && s.gripLost <= 0) {
       s.gripLost = 0.7;
       this.emit('grip', 'Dragged forward — you let go with the back hand. Lean back against the pull.', 2);
     }
@@ -1853,7 +1854,7 @@ export class Sim {
     // (only when you're straining to hold out and still being pulled in, not coming in on purpose)
     // (a pull your body could hold, being pulled in only because you were leaning out for more, isn't it)
     const straining = muscle >= tauMax * 0.95 && tauPull > 0 && tauPull - Math.max(0, tauGrav) > 0.5 * tauMax;
-    if (sailing && !s.hooked && straining && s.beta < 2 * DEG && s.betaRate < -0.4 && s.backOff <= 0 && s.side * this.rig.lean > -8 * DEG) {
+    if (!this.assists.holdOn && sailing && !s.hooked && straining && s.beta < 2 * DEG && s.betaRate < -0.4 && s.backOff <= 0 && s.side * this.rig.lean > -8 * DEG) {
       s.backOff = 1.1;
       s.regrab = 0;
       if (this.t - (this.letGoAt ?? -99) > 8) this.emit('letgo', 'Too much pull: you let go with the back hand. Lean back (LT) before you sheet in again.', 1);
@@ -1883,10 +1884,10 @@ export class Sim {
     // the harness lines don't balance (see handLoads).
     const armLoad = s.hooked ? handForce * 0.1 + Math.abs(this.hands?.couple ?? 0) : handForce;
     const drain = Math.max(0, armLoad - 110) / 300 * 0.03 + (ctl.pump ? 0.05 : 0);
-    s.stamina = clamp(s.stamina + (armLoad < 110 && !ctl.pump ? 0.045 : 0) * dt - drain * dt, 0, 1);
+    s.stamina = this.assists.tireless ? 1 : clamp(s.stamina + (armLoad < 110 && !ctl.pump ? 0.045 : 0) * dt - drain * dt, 0, 1);
     s.gripLost = Math.max(0, s.gripLost - dt);
     const grip = 250 + 400 * s.stamina;
-    if (!s.hooked && handForce > grip && s.gripLost <= 0 && this.state === S.SAILING) {
+    if (!this.assists.holdOn && !s.hooked && handForce > grip && s.gripLost <= 0 && this.state === S.SAILING) {
       s.gripLost = 0.7;
       this.emit('grip', s.stamina < 0.35 ? 'Forearm burn — the sail was ripped from your hands' : 'Too much power — the sail was ripped from your back hand', 2);
     }
@@ -1927,7 +1928,7 @@ export class Sim {
       // Slow and unhooked on a board that floats you easily, you let go of the
       // rig rather than get dragged in after it (on a small board you'd sink:
       // you go in, and waterstart).
-      else if (!s.hooked && speed < 3 && this.board.volume > 1.4 * this.totalMass) {
+      else if (!this.assists.holdOn && !s.hooked && speed < 3 && this.board.volume > 1.4 * this.totalMass) {
         this.dropRig(rigOver ? 'The rig fell to leeward and pulled you off balance, so you let go of it. Keep it upright (left stick). Hold LB to uphaul.'
           : 'Pulled off balance, so you let go of the rig. Lean back (LT) or ease the sheet (RT) sooner. Hold LB to uphaul.');
       } else this.fall('leeward', rigOver ? 'the rig fell to leeward and dragged you over. Keep it upright, or tilted a little to windward (left stick).' : 'too much power for your stance. Hike out (LT) or sheet out (RT).');

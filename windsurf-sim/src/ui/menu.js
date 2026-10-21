@@ -303,6 +303,9 @@ export class Menu {
         <h3>Assists</h3>
         ${toggle('autohike', 'Auto-hike: the game balances your body against the pull (LT is ignored)', s.autoHike)}
         ${toggle('nofalls', 'No falls: you never get pulled over or fall back', s.noFalls)}
+        <h3>Debug</h3>
+        ${toggle('holdon', 'Never let go: no letting go on your own (back hand, grip, dropping the rig). You still fall unless No falls is on', !!s.holdOn)}
+        ${toggle('tireless', 'Arms never tire: stamina stays full', !!s.tireless)}
         <p class="muted">Gear changes restart you in the secure position.</p>`;
     } else if (this.tab === 'speed') {
       c.innerHTML = this.speedPage();
@@ -399,6 +402,8 @@ export class Menu {
     }
     on('autohike', 'change', (e) => { s.autoHike = e.target.checked; h.options(); });
     on('nofalls', 'change', (e) => { s.noFalls = e.target.checked; h.options(); });
+    on('holdon', 'change', (e) => { s.holdOn = e.target.checked; h.options(); });
+    on('tireless', 'change', (e) => { s.tireless = e.target.checked; h.options(); });
     on('rumble', 'change', (e) => { s.rumble = e.target.checked; h.options(); });
     on('invert', 'change', (e) => { s.invertRake = e.target.checked; h.options(); });
     on('arms', 'change', (e) => { s.controlScheme = e.target.checked ? 'arms' : 'classic'; h.options(); this.render(); });
